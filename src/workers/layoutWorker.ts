@@ -1,38 +1,14 @@
-import {
-  collectPreparedMathRequests,
-  finishMarkdownLayout,
-  prepareMarkdownLayout
-} from "../core/engine/createDocumentEngine";
-import type { MathMeasurementMap, MathMeasureRequest } from "../core/layout/mathMetrics";
-import type { MathMeasureWorkerResponse, WorkerRequest, WorkerResponse } from "../core/engine/workerProtocol";
-
-const pendingMeasurements = new Map<number, (measurements: MathMeasurementMap) => void>();
+import { finishMarkdownLayout, prepareMarkdownLayout } from "../core/engine/createDocumentEngine";
+import type { WorkerRequest, WorkerResponse } from "../core/engine/workerProtocol";
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
-  const request = event.data;
-  if (request.type === "measureMathResult") {
-    console.log("[math-worker] received measurements", {
-      id: request.id,
-      count: Object.keys(request.measurements).length
-    });
-    pendingMeasurements.get(request.id)?.(request.measurements);
-    pendingMeasurements.delete(request.id);
-    return;
-  }
-
-  void handleLayout(request);
+  void handleLayout(event.data);
 };
 
-async function handleLayout(request: Exclude<WorkerRequest, MathMeasureWorkerResponse>) {
+async function handleLayout(request: WorkerRequest) {
   try {
     const prepared = prepareMarkdownLayout(request.markdown, request.options);
-    const measureRequests = collectPreparedMathRequests(prepared);
-    console.log("[math-worker] collected measurement requests", {
-      id: request.id,
-      count: measureRequests.length
-    });
-    const measurements = measureRequests.length > 0 ? await requestMathMeasurements(request.id, measureRequests) : {};
-    const result = finishMarkdownLayout(prepared, measurements);
+    const result = finishMarkdownLayout(prepared, request.mathMeasurements);
     const response: WorkerResponse = {
       id: request.id,
       type: "layoutResult",
@@ -48,23 +24,4 @@ async function handleLayout(request: Exclude<WorkerRequest, MathMeasureWorkerRes
     };
     self.postMessage(response);
   }
-}
-
-function requestMathMeasurements(
-  id: number,
-  requests: MathMeasureRequest[]
-): Promise<MathMeasurementMap> {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      console.warn("[math-worker] measurement timeout", { id, count: requests.length });
-      pendingMeasurements.delete(id);
-      resolve({});
-    }, 3000);
-    pendingMeasurements.set(id, resolve);
-    pendingMeasurements.set(id, (measurements) => {
-      clearTimeout(timeout);
-      resolve(measurements);
-    });
-    self.postMessage({ id, type: "measureMath", requests } satisfies WorkerResponse);
-  });
 }

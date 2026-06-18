@@ -2,92 +2,118 @@ import { useEffect, useMemo, useState } from "react";
 import {
   collectPreparedMathRequests,
   finishMarkdownLayout,
-  prepareMarkdownLayout
+  prepareMarkdownLayout,
+  type PreparedLayout
 } from "../core/engine/createDocumentEngine";
 import { createWorkerClient } from "../core/engine/workerClient";
 import { measureMathInDom } from "../core/engine/measureMathInDom";
 import type { EngineOptions } from "../core/engine/workerProtocol";
 import type { PagedDisplayList, PreviewStats } from "../core/display-list/displayTypes";
+import type { MathMeasurementMap } from "../core/layout/mathMetrics";
 
 export type DocumentLayoutState = {
   layout?: PagedDisplayList;
   stats?: PreviewStats;
+  timing?: CompletedPreviewUpdateTiming;
   error?: Error;
   loading: boolean;
 };
 
-export function useDocumentLayout(markdown: string, options: EngineOptions = {}): DocumentLayoutState {
+export type PreviewUpdateTiming = {
+  id: number;
+  editedAt: number;
+  debounceFinishedAt: number;
+  debounceMs: number;
+};
+
+export type CompletedPreviewUpdateTiming = PreviewUpdateTiming & {
+  layoutQueuedAt: number;
+  layoutStartedAt: number;
+  layoutFinishedAt: number;
+  layoutDelayMs: number;
+  layoutMs: number;
+};
+
+export function useDocumentLayout(
+  markdown: string,
+  options: EngineOptions = {},
+  timing?: PreviewUpdateTiming
+): DocumentLayoutState {
   const [state, setState] = useState<DocumentLayoutState>({ loading: true });
   const workerEnabled = options.useWorker !== false && typeof Worker !== "undefined";
-  const engine = useMemo(
-    () => (workerEnabled ? createWorkerClient(options) : {
-      layout(markdownToLayout: string) {
-        return layoutWithDomMeasurements(markdownToLayout, options);
-      }
-    }),
+  const workerClient = useMemo(
+    () => workerEnabled ? createWorkerClient(options) : undefined,
     [workerEnabled, options.pageSize, options.margin, options.theme]
   );
 
   useEffect(() => {
     let cancelled = false;
+    const layoutQueuedAt = performance.now();
     setState((current) => ({ ...current, loading: true, error: undefined }));
-    const timeout = window.setTimeout(() => {
-      const workerLayout = engine.layout(markdown);
-      const layoutPromise = workerEnabled
-        ? Promise.race([
-            workerLayout,
-            new Promise<never>((_, reject) => {
-              window.setTimeout(() => reject(new Error("Layout worker timed out")), 1000);
-            })
-          ])
-        : workerLayout;
+    const layoutStartedAt = performance.now();
+    const layoutPromise = layoutWithPremeasuredMath(markdown, options, workerEnabled)
+      .then(({ prepared, measurements, result }) => {
+        if (!workerClient) return result ?? finishMarkdownLayout(prepared, measurements);
+        return Promise.race([
+          workerClient.layout(markdown, measurements),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error("Layout worker timed out")), 500);
+          })
+        ]).catch(() => finishMarkdownLayout(prepared, measurements));
+      });
 
-      layoutPromise
-        .then((result) => {
-          if (!cancelled) setState({ ...result, loading: false });
-        })
-        .catch((error: Error) => {
-          if (cancelled) return;
-          if (workerEnabled) {
-            console.warn("[layout-worker-fallback]", error.message);
-            layoutWithDomMeasurements(markdown, options)
-              .then((result) => {
-                if (!cancelled) setState({ ...result, loading: false });
-              })
-              .catch((fallbackError: Error) => {
-                if (!cancelled) setState({ error: fallbackError, loading: false });
-              });
-            return;
-          }
-          setState({ error, loading: false });
-        });
-    }, 80);
+    layoutPromise
+      .then((result) => {
+        if (!cancelled) setState({ ...result, timing: finishTiming(timing, layoutQueuedAt, layoutStartedAt), loading: false });
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setState({ error, loading: false });
+      });
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timeout);
     };
-  }, [engine, markdown]);
+  }, [workerClient, markdown, timing]);
 
   useEffect(() => {
     return () => {
-      if (hasDispose(engine)) engine.dispose();
+      workerClient?.dispose();
     };
-  }, [engine]);
+  }, [workerClient]);
 
   return state;
 }
 
-async function layoutWithDomMeasurements(
+function finishTiming(
+  timing: PreviewUpdateTiming | undefined,
+  layoutQueuedAt: number,
+  layoutStartedAt: number
+): CompletedPreviewUpdateTiming | undefined {
+  if (!timing) return undefined;
+  const layoutFinishedAt = performance.now();
+  return {
+    ...timing,
+    layoutQueuedAt,
+    layoutStartedAt,
+    layoutFinishedAt,
+    layoutDelayMs: layoutStartedAt - timing.debounceFinishedAt,
+    layoutMs: layoutFinishedAt - layoutStartedAt
+  };
+}
+
+async function layoutWithPremeasuredMath(
   markdown: string,
-  options: EngineOptions
-): Promise<{ layout: PagedDisplayList; stats: PreviewStats }> {
+  options: EngineOptions,
+  deferFinish: boolean
+): Promise<{
+  prepared: PreparedLayout;
+  measurements: MathMeasurementMap;
+  result?: { layout: PagedDisplayList; stats: PreviewStats };
+}> {
   const prepared = prepareMarkdownLayout(markdown, options);
   const requests = collectPreparedMathRequests(prepared);
   const measurements = await measureMathInDom(requests);
-  return finishMarkdownLayout(prepared, measurements);
-}
-
-function hasDispose(value: unknown): value is { dispose: () => void } {
-  return typeof value === "object" && value !== null && "dispose" in value && typeof value.dispose === "function";
+  const result = deferFinish ? undefined : finishMarkdownLayout(prepared, measurements);
+  return { prepared, measurements, result };
 }

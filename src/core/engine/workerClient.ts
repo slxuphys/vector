@@ -1,9 +1,9 @@
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
 import type { EngineOptions, WorkerRequest, WorkerResponse } from "./workerProtocol";
-import { measureMathInDom } from "./measureMathInDom";
+import type { MathMeasurementMap } from "../layout/mathMetrics";
 
 export type WorkerLayoutClient = {
-  layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
+  layout(markdown: string, mathMeasurements?: MathMeasurementMap): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
   dispose(): void;
 };
 
@@ -22,24 +22,6 @@ export function createWorkerClient(options: EngineOptions = {}): WorkerLayoutCli
 
   worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     const response = event.data;
-    if (response.type === "measureMath") {
-      console.log("[math-worker-client] measuring", {
-        id: response.id,
-        count: response.requests.length
-      });
-      measureMathInDom(response.requests)
-        .then((measurements) => {
-          console.log("[math-worker-client] measured", {
-            id: response.id,
-            count: Object.keys(measurements).length
-          });
-          worker.postMessage({ id: response.id, type: "measureMathResult", measurements } satisfies WorkerRequest);
-        })
-        .catch(() => {
-          worker.postMessage({ id: response.id, type: "measureMathResult", measurements: {} } satisfies WorkerRequest);
-        });
-      return;
-    }
     const entry = pending.get(response.id);
     if (!entry) return;
     pending.delete(response.id);
@@ -53,9 +35,9 @@ export function createWorkerClient(options: EngineOptions = {}): WorkerLayoutCli
   };
 
   return {
-    layout(markdown) {
+    layout(markdown, mathMeasurements) {
       const id = nextId++;
-      const message: WorkerRequest = { id, type: "layout", markdown, options };
+      const message: WorkerRequest = { id, type: "layout", markdown, options, mathMeasurements };
       worker.postMessage(message);
       return new Promise((resolve, reject) => {
         pending.set(id, { resolve, reject });

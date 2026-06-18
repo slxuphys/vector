@@ -4,6 +4,7 @@ import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
 
 let root: HTMLDivElement | undefined;
 const loadedFontSizes = new Set<number>();
+const measurementCache = new Map<string, MathMeasurement>();
 
 export async function measureMathInDom(
   requests: MathMeasureRequest[]
@@ -14,6 +15,12 @@ export async function measureMathInDom(
   const measurements: Record<string, MathMeasurement> = {};
 
   for (const request of requests) {
+    const cached = measurementCache.get(request.key);
+    if (cached) {
+      measurements[request.key] = cached;
+      continue;
+    }
+
     await waitForKatexFonts(request.fontSize);
     const node = document.createElement("div");
     node.className = "svg-md-katex-measure";
@@ -29,20 +36,13 @@ export async function measureMathInDom(
     const rect = node.getBoundingClientRect();
     const width = Math.ceil(rect.width * 100) / 100;
     const height = Math.ceil(rect.height * 100) / 100;
-    measurements[request.key] = {
+    const measurement = {
       width: width + 1,
       height: Math.max(height, request.fontSize * 1.2),
       advance: width
     };
-    console.log("[math-measure]", {
-      key: request.key,
-      latex: request.latex,
-      displayMode: request.displayMode,
-      fontSize: request.fontSize,
-      width: measurements[request.key].width,
-      height: measurements[request.key].height,
-      advance: measurements[request.key].advance
-    });
+    measurementCache.set(request.key, measurement);
+    measurements[request.key] = measurement;
     node.remove();
   }
 

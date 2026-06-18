@@ -4,21 +4,45 @@ import { now } from "../../utils/timing";
 import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
 import { drawPdfMath } from "./pdfMath";
-import { drawPdfMathArtifact } from "./pdfMathArtifact";
+import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
 
 export async function renderToPdf(layout: PagedDisplayList): Promise<Uint8Array> {
   const start = now();
+  const fontStart = now();
   const pdf = await PDFDocument.create();
 
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
   const mono = await pdf.embedFont(StandardFonts.Courier);
+  const fontMs = now() - fontStart;
+  const drawStart = now();
+  const mathStats: PdfMathArtifactStats = {
+    attempted: 0,
+    drawn: 0,
+    failed: 0,
+    imageCacheHits: 0,
+    imageCacheMisses: 0,
+    rasterCacheHits: 0,
+    rasterCacheMisses: 0,
+    rasterMs: 0,
+    embedMs: 0
+  };
+  const mathContext: PdfMathArtifactContext = {
+    stats: mathStats,
+    imageCache: new Map()
+  };
+  const objectCounts = {
+    text: 0,
+    math: 0,
+    shape: 0
+  };
 
   for (const displayPage of layout.pages) {
     const page = pdf.addPage([displayPage.width, displayPage.height]);
     for (const object of displayPage.objects) {
       if (object.type === "text") {
+        objectCounts.text += 1;
         const font = object.fontFamily.includes("Consolas") || object.fontFamily.includes("Monaco")
           ? mono
           : object.bold
@@ -28,16 +52,42 @@ export async function renderToPdf(layout: PagedDisplayList): Promise<Uint8Array>
               : regular;
         drawPdfText(page, object, font, displayPage.height);
       } else if (object.type === "math") {
-        const drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height);
+        objectCounts.math += 1;
+        const drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
         if (!drewArtifact) drawPdfMath(page, object, { regular, italic }, displayPage.height);
       } else {
+        objectCounts.shape += 1;
         drawPdfShape(page, object, displayPage.height);
       }
     }
   }
 
+  const drawMs = now() - drawStart;
+  const saveStart = now();
   const bytes = await pdf.save();
-  Object.defineProperty(bytes, "__pdfMs", { value: now() - start, enumerable: false });
+  const saveMs = now() - saveStart;
+  const totalMs = now() - start;
+  console.log("[pdf-export]", {
+    totalMs: round(totalMs),
+    fontMs: round(fontMs),
+    drawMs: round(drawMs),
+    saveMs: round(saveMs),
+    pages: layout.pages.length,
+    bytes: bytes.byteLength,
+    objects: objectCounts,
+    mathArtifacts: {
+      attempted: mathStats.attempted,
+      drawn: mathStats.drawn,
+      failed: mathStats.failed,
+      imageCacheHits: mathStats.imageCacheHits,
+      imageCacheMisses: mathStats.imageCacheMisses,
+      rasterCacheHits: mathStats.rasterCacheHits,
+      rasterCacheMisses: mathStats.rasterCacheMisses,
+      rasterMs: round(mathStats.rasterMs),
+      embedMs: round(mathStats.embedMs)
+    }
+  });
+  Object.defineProperty(bytes, "__pdfMs", { value: totalMs, enumerable: false });
   return bytes;
 }
 
@@ -52,4 +102,8 @@ export async function downloadPdf(layout: PagedDisplayList, filename: string): P
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function round(value: number): number {
+  return Math.round(value * 10) / 10;
 }

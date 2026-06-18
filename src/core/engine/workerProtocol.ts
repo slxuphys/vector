@@ -1,5 +1,5 @@
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
-import type { MathMeasurement, MathMeasureRequest } from "../layout/mathMetrics";
+import type { MathMeasurementMap } from "../layout/mathMetrics";
 import type { PageSizeName } from "../layout/pageConfig";
 import type { DocumentTheme } from "../theme/themeTypes";
 
@@ -15,6 +15,7 @@ export type LayoutRequest = {
   type: "layout";
   markdown: string;
   options: EngineOptions;
+  mathMeasurements?: MathMeasurementMap;
 };
 
 export type LayoutResponse = {
@@ -30,17 +31,5 @@ export type LayoutErrorResponse = {
   message: string;
 };
 
-export type MathMeasureWorkerRequest = {
-  id: number;
-  type: "measureMath";
-  requests: MathMeasureRequest[];
-};
-
-export type MathMeasureWorkerResponse = {
-  id: number;
-  type: "measureMathResult";
-  measurements: Record<string, MathMeasurement>;
-};
-
-export type WorkerRequest = LayoutRequest | MathMeasureWorkerResponse;
-export type WorkerResponse = LayoutResponse | LayoutErrorResponse | MathMeasureWorkerRequest;
+export type WorkerRequest = LayoutRequest;
+export type WorkerResponse = LayoutResponse | LayoutErrorResponse;

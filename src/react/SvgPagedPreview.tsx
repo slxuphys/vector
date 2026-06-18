@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { PagedDisplayList } from "../core/display-list/displayTypes";
 import { PageViewport } from "./PageViewport";
+import type { CompletedPreviewUpdateTiming } from "./useDocumentLayout";
 
 export type SvgPagedPreviewProps = {
   layout: PagedDisplayList;
   zoom?: number | "fit-width";
   currentPage?: number;
   overscanPages?: number;
-  timingLabel?: string;
+  timing?: CompletedPreviewUpdateTiming;
 };
 
 export function SvgPagedPreview({
@@ -15,7 +16,7 @@ export function SvgPagedPreview({
   zoom = 1,
   currentPage,
   overscanPages = 2,
-  timingLabel
+  timing
 }: SvgPagedPreviewProps) {
   const numericZoom = zoom === "fit-width" ? 1 : zoom;
   const start = currentPage === undefined ? 0 : Math.max(0, currentPage - overscanPages);
@@ -23,25 +24,56 @@ export function SvgPagedPreview({
     ? layout.pages.length
     : Math.min(layout.pages.length, currentPage + overscanPages + 1);
   const renderIdRef = useRef(0);
-  const renderLabel = useMemo(() => {
+  const refresh = useMemo(() => {
     renderIdRef.current += 1;
-    return timingLabel ? `${timingLabel}#${renderIdRef.current}` : undefined;
-  }, [layout, timingLabel]);
-
-  if (renderLabel) console.time(renderLabel);
+    return {
+      id: renderIdRef.current,
+      startedAt: performance.now()
+    };
+  }, [layout, numericZoom, start, end]);
 
   useEffect(() => {
-    if (!renderLabel) return;
+    if (!timing) return;
     requestAnimationFrame(() => {
-      console.timeEnd(renderLabel);
+      const paintedAt = performance.now();
+      const renderMs = paintedAt - refresh.startedAt;
+      const totalMs = paintedAt - timing.editedAt;
+      console.log(
+        `[preview-update] total ${totalMs.toFixed(1)} ms`,
+        {
+          update: timing.id,
+          debounceMs: round(timing.debounceMs),
+          layoutDelayMs: round(timing.layoutDelayMs),
+          layoutMs: round(timing.layoutMs),
+          renderMs: round(renderMs),
+          totalPages: layout.pages.length,
+          renderedPages: end - start
+        }
+      );
     });
-  }, [renderLabel]);
+  }, [end, layout.pages.length, refresh, start, timing]);
 
   return (
     <div className="svg-md-preview" data-page-count={layout.pages.length}>
-      {layout.pages.slice(start, end).map((page) => (
-        <PageViewport key={page.index} page={page} zoom={numericZoom} timingLabel={renderLabel} />
+      {layout.pages.map((page, index) => (
+        index >= start && index < end
+          ? <PageViewport key={page.index} page={page} zoom={numericZoom} />
+          : (
+            <div
+              key={page.index}
+              className="svg-md-page-placeholder"
+              aria-hidden="true"
+              style={{
+                width: page.width * numericZoom,
+                height: page.height * numericZoom
+              }}
+            />
+          )
       ))}
     </div>
   );
+}
+
+function round(value: number): number {
+  return Math.round(value * 10) / 10;
 }

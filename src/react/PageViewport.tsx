@@ -5,17 +5,13 @@ import { renderPageToSvg } from "../core/renderers/svg/renderPageToSvg";
 export type PageViewportProps = {
   page: DisplayPage;
   zoom: number;
-  timingLabel?: string;
 };
 
-export function PageViewport({ page, zoom, timingLabel }: PageViewportProps) {
+export function PageViewport({ page, zoom }: PageViewportProps) {
   const svg = useMemo(() => {
-    const label = timingLabel ? `${timingLabel}:svg-page-${page.index + 1}` : undefined;
-    if (label) console.time(label);
     const rendered = renderPageToSvg(page, { className: "svg-md-page-svg" });
-    if (label) console.timeEnd(label);
     return rendered;
-  }, [page, timingLabel]);
+  }, [page]);
   return (
     <div
       className="svg-md-page"

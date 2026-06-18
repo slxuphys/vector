@@ -210,13 +210,6 @@ function drawLines(
         const advance = measured?.advance ?? measureInlineMathAdvance(latex, fontSize, theme);
         const height = measured?.height ?? fontSize * options.lineHeight;
         const html = renderKatex(latex, false);
-        console.log("[math-layout]", {
-          latex,
-          measured: Boolean(measured),
-          width,
-          height,
-          advance
-        });
         cursor.page.objects.push({
           type: "math",
           latex,

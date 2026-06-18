@@ -36,6 +36,29 @@ button:disabled {
   opacity: 0.5;
 }
 
+.svg-md-download-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 132px;
+}
+
+.svg-md-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c9d3df;
+  border-top-color: #344054;
+  border-radius: 50%;
+  animation: svg-md-spin 0.75s linear infinite;
+}
+
+@keyframes svg-md-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .app {
   height: 100%;
   min-height: 0;
@@ -150,6 +173,11 @@ button:disabled {
   background: #ffffff;
   box-shadow: 0 12px 28px rgba(20, 32, 48, 0.22);
   flex: 0 0 auto;
+}
+
+.svg-md-page-placeholder {
+  flex: 0 0 auto;
+  pointer-events: none;
 }
 
 .svg-md-page-svg {

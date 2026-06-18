@@ -13,7 +13,7 @@ export function App() {
       pageSize,
       margin,
       theme: dark ? darkTheme : defaultTheme,
-      useWorker: true
+      useWorker: false
     }),
     [pageSize, margin, dark]
   );
