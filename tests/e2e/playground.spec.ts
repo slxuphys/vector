@@ -46,6 +46,31 @@ test("switches math to MathJax vector", async ({ page }) => {
   expect(download.suggestedFilename()).toBe("document.pdf");
 });
 
+test("switches math to KaTeX glyph", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".app-controls select").nth(1).selectOption("katex-glyph");
+  await expect(page.locator(".svg-md-katex").first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByLabel("KaTeX glyph PDF")).toBeDisabled();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("document.pdf");
+});
+
+test("switches math to MathJax glyph", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".app-controls select").nth(1).selectOption("mathjax-glyph");
+  await expect(page.locator("svg.svg-md-page-svg path").first()).toBeVisible({ timeout: 15000 });
+  await expect.poll(async () => page.locator("svg.svg-md-page-svg foreignObject").count()).toBe(0);
+  await expect(page.getByLabel("MathJax glyph PDF")).toBeDisabled();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("document.pdf");
+});
+
 test("downloads the current PDF", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });

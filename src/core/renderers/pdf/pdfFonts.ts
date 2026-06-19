@@ -5,6 +5,11 @@ import katexMainBoldUrl from "katex/dist/fonts/KaTeX_Main-Bold.ttf?url";
 import katexMainBoldItalicUrl from "katex/dist/fonts/KaTeX_Main-BoldItalic.ttf?url";
 import katexMainItalicUrl from "katex/dist/fonts/KaTeX_Main-Italic.ttf?url";
 import katexMainRegularUrl from "katex/dist/fonts/KaTeX_Main-Regular.ttf?url";
+import katexMathItalicUrl from "katex/dist/fonts/KaTeX_Math-Italic.ttf?url";
+import katexSize1RegularUrl from "katex/dist/fonts/KaTeX_Size1-Regular.ttf?url";
+import katexSize2RegularUrl from "katex/dist/fonts/KaTeX_Size2-Regular.ttf?url";
+import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
+import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
 
 type TextObject = Extract<DisplayObject, { type: "text" }>;
 
@@ -19,6 +24,11 @@ export type PdfFontSet = {
     bold: PDFFont;
     italic: PDFFont;
     boldItalic: PDFFont;
+    mathItalic?: PDFFont;
+    size1?: PDFFont;
+    size2?: PDFFont;
+    size3?: PDFFont;
+    size4?: PDFFont;
   };
 };
 
@@ -51,13 +61,18 @@ function isTexFont(fontFamily: string): boolean {
 async function loadTexFonts(pdf: PDFDocument): Promise<PdfFontSet["tex"]> {
   try {
     pdf.registerFontkit(fontkit);
-    const [regular, bold, italic, boldItalic] = await Promise.all([
+    const [regular, bold, italic, boldItalic, mathItalic, size1, size2, size3, size4] = await Promise.all([
       embedCustomFont(pdf, katexMainRegularUrl),
       embedCustomFont(pdf, katexMainBoldUrl),
       embedCustomFont(pdf, katexMainItalicUrl),
-      embedCustomFont(pdf, katexMainBoldItalicUrl)
+      embedCustomFont(pdf, katexMainBoldItalicUrl),
+      embedCustomFont(pdf, katexMathItalicUrl),
+      embedCustomFont(pdf, katexSize1RegularUrl),
+      embedCustomFont(pdf, katexSize2RegularUrl),
+      embedCustomFont(pdf, katexSize3RegularUrl),
+      embedCustomFont(pdf, katexSize4RegularUrl)
     ]);
-    return { regular, bold, italic, boldItalic };
+    return { regular, bold, italic, boldItalic, mathItalic, size1, size2, size3, size4 };
   } catch {
     return undefined;
   }

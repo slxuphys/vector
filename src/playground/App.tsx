@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { MarkdownEditorPreview } from "../react/MarkdownEditorPreview";
 import { darkTheme, defaultTheme } from "../core/theme/defaultTheme";
+import type { MathRendererName } from "../core/engine/workerProtocol";
 import { playgroundSamples } from "./sampleMarkdown";
 
 export function App() {
   const [sample, setSample] = useState<keyof typeof playgroundSamples>("short");
   const [font, setFont] = useState<"sans" | "tex">("sans");
-  const [mathRenderer, setMathRenderer] = useState<"katex-raster" | "mathjax-vector">("katex-raster");
+  const [mathRenderer, setMathRenderer] = useState<MathRendererName>("katex-raster");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
   const [dark, setDark] = useState(false);
@@ -45,10 +46,12 @@ export function App() {
             Math
             <select
               value={mathRenderer}
-              onChange={(event) => setMathRenderer(event.target.value as "katex-raster" | "mathjax-vector")}
+              onChange={(event) => setMathRenderer(event.target.value as MathRendererName)}
             >
               <option value="katex-raster">KaTeX raster</option>
+              <option value="katex-glyph">KaTeX glyph</option>
               <option value="mathjax-vector">MathJax vector</option>
+              <option value="mathjax-glyph">MathJax glyph</option>
             </select>
           </label>
           <label>

@@ -4,17 +4,20 @@ import { now } from "../../utils/timing";
 import { loadPdfFonts, selectPdfTextFont } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
+import { drawPdfKatexDomGlyphs } from "./pdfKatexDom";
 import { drawPdfMath } from "./pdfMath";
 import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
+import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
 
 export type PdfRenderOptions = {
   rasterizeMath?: boolean;
+  mathPdfMode?: "raster" | "vector" | "glyph";
 };
 
 export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOptions = {}): Promise<Uint8Array> {
   const start = now();
-  const rasterizeMath = options.rasterizeMath ?? true;
+  const mathPdfMode = options.mathPdfMode ?? (options.rasterizeMath ?? true ? "raster" : "vector");
   const fontStart = now();
   const pdf = await PDFDocument.create();
 
@@ -50,11 +53,18 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
         drawPdfText(page, object, selectPdfTextFont(object, fonts), displayPage.height);
       } else if (object.type === "math") {
         objectCounts.math += 1;
-        const drewArtifact = rasterizeMath
-          ? await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext)
-          : object.renderer === "mathjax-vector"
-            ? drawPdfMathJaxVector(page, object, displayPage.height)
-            : false;
+        let drewArtifact = false;
+        if (mathPdfMode === "raster") {
+          drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
+        } else if (mathPdfMode === "glyph" && object.renderer === "katex-glyph") {
+          drewArtifact = await drawPdfKatexDomGlyphs(page, object, fonts, displayPage.height);
+          if (!drewArtifact) drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
+        } else if (mathPdfMode === "glyph" && object.renderer === "mathjax-glyph") {
+          drewArtifact = drawPdfMathGlyphs(page, object, fonts, displayPage.height);
+          if (!drewArtifact) drewArtifact = drawPdfMathJaxVector(page, object, displayPage.height);
+        } else if (object.renderer === "mathjax-vector" || object.renderer === "mathjax-glyph") {
+          drewArtifact = drawPdfMathJaxVector(page, object, displayPage.height);
+        }
         if (!drewArtifact) {
           const mathFonts = fonts.tex ?? fonts;
           drawPdfMath(page, object, { regular: mathFonts.regular, italic: mathFonts.italic }, displayPage.height);
@@ -78,7 +88,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     saveMs: round(saveMs),
     pages: layout.pages.length,
     bytes: bytes.byteLength,
-    mathMode: rasterizeMath ? "rasterized-artifact" : "pdf-vector",
+    mathMode: mathPdfMode === "raster" ? "rasterized-artifact" : mathPdfMode === "glyph" ? "pdf-glyph" : "pdf-vector",
     objects: objectCounts,
     mathArtifacts: {
       attempted: mathStats.attempted,

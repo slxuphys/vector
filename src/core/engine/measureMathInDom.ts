@@ -12,7 +12,7 @@ export async function measureMathInDom(
   requests: MathMeasureRequest[],
   renderer: MathRendererName = "katex-raster"
 ): Promise<Record<string, MathMeasurement>> {
-  if (renderer === "mathjax-vector") return measureMathJax(requests);
+  if (renderer === "mathjax-vector" || renderer === "mathjax-glyph") return measureMathJax(requests);
   if (typeof document === "undefined") return {};
 
   const container = getRoot();

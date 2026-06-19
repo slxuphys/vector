@@ -203,7 +203,7 @@ function drawLines(
         const width = measured?.width ?? measureInlineMathBoxWidth(latex, fontSize, theme);
         const advance = measured?.advance ?? measureInlineMathAdvance(latex, fontSize, theme);
         const height = measured?.height ?? fontSize * options.lineHeight;
-        const y = mathRenderer === "mathjax-vector"
+        const y = isMathJaxRenderer(mathRenderer)
           ? cursor.y
           : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
         cursor.page.objects.push(createMathObject({
@@ -321,12 +321,12 @@ function createMathObject(options: {
   color: string;
   mathRenderer: MathRendererName;
 }): Extract<DisplayObject, { type: "math" }> {
-  if (options.mathRenderer === "mathjax-vector") {
+  if (isMathJaxRenderer(options.mathRenderer)) {
     const artifact = getCachedMathJaxSvgArtifact(options.latex, options.displayMode, options.fontSize, options.color);
     const y = options.displayMode ? options.y : options.y + options.fontSize - artifact.baseline;
     return {
       type: "math",
-      renderer: "mathjax-vector",
+      renderer: options.mathRenderer,
       latex: options.latex,
       html: "",
       svg: artifact.svg,
@@ -347,7 +347,7 @@ function createMathObject(options: {
   const html = renderKatex(options.latex, options.displayMode);
   return {
     type: "math",
-    renderer: "katex-raster",
+    renderer: options.mathRenderer,
     latex: options.latex,
     html,
     svg: renderKatexSvg({
@@ -368,6 +368,10 @@ function createMathObject(options: {
     fontSize: options.fontSize,
     color: options.color
   };
+}
+
+function isMathJaxRenderer(renderer: MathRendererName): boolean {
+  return renderer === "mathjax-vector" || renderer === "mathjax-glyph";
 }
 
 function readLatexScript(text: string, start: number): { value: string; end: number } {

@@ -30,7 +30,11 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   const previewUpdateRef = useRef<number | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
   const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
+  const usingKatexGlyph = options.mathRenderer === "katex-glyph";
   const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
+  const usingMathJaxGlyph = options.mathRenderer === "mathjax-glyph";
+  const usingMathJax = usingMathJaxVector || usingMathJaxGlyph;
+  const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
 
   const extensions = useMemo(
     () => [
@@ -101,7 +105,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   }, [layoutState.layout, zoom]);
 
   useEffect(() => {
-    if (!layoutState.layout || experimentalVectorMath || usingMathJaxVector) return;
+    if (!layoutState.layout || experimentalVectorMath || usingMathJax || usingKatexGlyph) return;
     let cancelled = false;
     const timeout = window.setTimeout(() => {
       if (!cancelled && layoutState.layout) void warmPdfMathArtifactCache(layoutState.layout);
@@ -110,14 +114,15 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [experimentalVectorMath, layoutState.layout, usingMathJaxVector]);
+  }, [experimentalVectorMath, layoutState.layout, usingMathJax, usingKatexGlyph]);
 
   const handleDownloadPdf = () => {
     const layout = layoutState.layout;
     if (!layout || pdfPending) return;
     setPdfPending(true);
     window.setTimeout(() => {
-      void downloadPdf(layout, "document.pdf", { rasterizeMath: !experimentalVectorMath && !usingMathJaxVector })
+      const mathPdfMode = usingGlyphPdf ? "glyph" : usingMathJaxVector || experimentalVectorMath ? "vector" : "raster";
+      void downloadPdf(layout, "document.pdf", { mathPdfMode })
         .finally(() => setPdfPending(false));
     }, 150);
   };
@@ -137,11 +142,11 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
         <label className="toggle">
           <input
             type="checkbox"
-            disabled={usingMathJaxVector}
+            disabled={usingMathJax || usingKatexGlyph}
             checked={experimentalVectorMath}
             onChange={(event) => setExperimentalVectorMath(event.target.checked)}
           />
-          {usingMathJaxVector ? "MathJax vector PDF" : "Experimental vector math"}
+          {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : "Experimental vector math"}
         </label>
         <label>
           Zoom

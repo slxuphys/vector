@@ -18,7 +18,7 @@ export function renderPageToSvg(page: DisplayPage, options: SvgRenderOptions = {
 
 function renderObject(object: DisplayObject): string {
   if (object.type === "math") {
-    if (object.renderer === "mathjax-vector") {
+    if (object.renderer === "mathjax-vector" || object.renderer === "mathjax-glyph") {
       return `<svg x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" viewBox="${escapeXml(object.viewBox ?? `0 0 ${object.width} ${object.height}`)}" overflow="visible">${object.svgBody ?? ""}</svg>`;
     }
     return renderKatexForeignObject({
