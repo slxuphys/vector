@@ -23,6 +23,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   const [zoom, setZoom] = useState(0.9);
   const [currentPage, setCurrentPage] = useState(0);
   const [pdfPending, setPdfPending] = useState(false);
+  const [rasterizePdfMath, setRasterizePdfMath] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const previewUpdateRef = useRef<number | undefined>(undefined);
@@ -97,14 +98,14 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
     };
   }, [layoutState.layout, zoom]);
 
-  const handleDownloadPdf = async () => {
-    if (!layoutState.layout || pdfPending) return;
+  const handleDownloadPdf = () => {
+    const layout = layoutState.layout;
+    if (!layout || pdfPending) return;
     setPdfPending(true);
-    try {
-      await downloadPdf(layoutState.layout, "document.pdf");
-    } finally {
-      setPdfPending(false);
-    }
+    window.setTimeout(() => {
+      void downloadPdf(layout, "document.pdf", { rasterizeMath: rasterizePdfMath })
+        .finally(() => setPdfPending(false));
+    }, 150);
   };
 
   return (
@@ -119,6 +120,14 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
           {pdfPending ? <span className="svg-md-spinner" aria-hidden="true" /> : null}
           <span>{pdfPending ? "Generating PDF" : "Download PDF"}</span>
         </button>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={rasterizePdfMath}
+            onChange={(event) => setRasterizePdfMath(event.target.checked)}
+          />
+          Raster math
+        </label>
         <label>
           Zoom
           <input

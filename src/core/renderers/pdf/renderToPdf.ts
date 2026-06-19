@@ -6,8 +6,13 @@ import { drawPdfText } from "./pdfText";
 import { drawPdfMath } from "./pdfMath";
 import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
 
-export async function renderToPdf(layout: PagedDisplayList): Promise<Uint8Array> {
+export type PdfRenderOptions = {
+  rasterizeMath?: boolean;
+};
+
+export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOptions = {}): Promise<Uint8Array> {
   const start = now();
+  const rasterizeMath = options.rasterizeMath ?? true;
   const fontStart = now();
   const pdf = await PDFDocument.create();
 
@@ -53,7 +58,9 @@ export async function renderToPdf(layout: PagedDisplayList): Promise<Uint8Array>
         drawPdfText(page, object, font, displayPage.height);
       } else if (object.type === "math") {
         objectCounts.math += 1;
-        const drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
+        const drewArtifact = rasterizeMath
+          ? await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext)
+          : false;
         if (!drewArtifact) drawPdfMath(page, object, { regular, italic }, displayPage.height);
       } else {
         objectCounts.shape += 1;
@@ -74,6 +81,7 @@ export async function renderToPdf(layout: PagedDisplayList): Promise<Uint8Array>
     saveMs: round(saveMs),
     pages: layout.pages.length,
     bytes: bytes.byteLength,
+    mathMode: rasterizeMath ? "rasterized-artifact" : "pdf-vector-fallback",
     objects: objectCounts,
     mathArtifacts: {
       attempted: mathStats.attempted,
@@ -91,8 +99,8 @@ export async function renderToPdf(layout: PagedDisplayList): Promise<Uint8Array>
   return bytes;
 }
 
-export async function downloadPdf(layout: PagedDisplayList, filename: string): Promise<void> {
-  const bytes = await renderToPdf(layout);
+export async function downloadPdf(layout: PagedDisplayList, filename: string, options: PdfRenderOptions = {}): Promise<void> {
+  const bytes = await renderToPdf(layout, options);
   const data = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(data).set(bytes);
   const blob = new Blob([data], { type: "application/pdf" });

@@ -210,6 +210,7 @@ function drawLines(
         const advance = measured?.advance ?? measureInlineMathAdvance(latex, fontSize, theme);
         const height = measured?.height ?? fontSize * options.lineHeight;
         const html = renderKatex(latex, false);
+        const y = cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
         cursor.page.objects.push({
           type: "math",
           latex,
@@ -225,7 +226,7 @@ function drawLines(
           }),
           displayMode: false,
           x,
-          y: cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2),
+          y,
           width,
           height,
           advance,
