@@ -43,6 +43,115 @@ Markdown is parsed into an AST, normalized into layout blocks, measured, broken 
 This page starts after an explicit page break. Try editing the document and watching the page count update.
 `;
 
+const mathSuites = [
+  `Inline spacing checks: $E = mc^2$, $\\frac{a}{b}$, $x_i^2 + y_i^2 = r^2$, and $\\alpha + \\beta = \\gamma$ should sit naturally inside prose.
+
+$$
+\\int_0^1 x^2 dx = \\frac{1}{3}
+$$
+
+$$
+\\sqrt{x^2 + y^2} = r
+$$`,
+  `Operators and scripts: $a_n = a_0 q^n$, $\\lim_{n \\to \\infty} \\frac{1}{n} = 0$, and $\\sum_{k=1}^n k$ appear inline.
+
+$$
+\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}
+$$
+
+$$
+\\prod_{i=1}^{n} x_i = x_1 x_2 \\cdots x_n
+$$`,
+  `Fractions and nested fractions: $\\frac{1}{1+x}$, $\\frac{a+b}{c+d}$, and $\\frac{\\frac{1}{2}}{\\frac{3}{4}}$ are useful for baseline checks.
+
+$$
+\\frac{\\partial f}{\\partial x} = \\lim_{h\\to 0}\\frac{f(x+h)-f(x)}{h}
+$$
+
+$$
+\\frac{1}{1 + \\frac{x}{1+x}} = \\frac{1+x}{1+2x}
+$$`,
+  `Roots and powers: $\\sqrt{2}$, $\\sqrt[3]{x}$, $e^{i\\pi}+1=0$, and $x^{y^z}$ should keep scripts compact.
+
+$$
+e^{i\\pi} + 1 = 0
+$$
+
+$$
+\\sqrt{a^2 + b^2} = c
+$$`,
+  `Greek letters and relations: $\\mu$, $\\sigma^2$, $\\theta \\in [0, 2\\pi]$, and $\\lambda_1 \\le \\lambda_2$ should use the math fonts consistently.
+
+$$
+\\sigma^2 = \\frac{1}{n}\\sum_{i=1}^{n}(x_i - \\mu)^2
+$$
+
+$$
+\\alpha + \\beta \\le \\gamma \\Rightarrow \\delta > 0
+$$`,
+  `Matrices and brackets are intentionally challenging for PDF glyph extraction.
+
+$$
+\\begin{pmatrix}
+a & b \\\\
+c & d
+\\end{pmatrix}
+\\begin{pmatrix}
+x \\\\
+y
+\\end{pmatrix}
+=
+\\begin{pmatrix}
+ax+by \\\\
+cx+dy
+\\end{pmatrix}
+$$`,
+  `Cases and piecewise layout test vertical alignment and brace sizing.
+
+$$
+f(x) =
+\\begin{cases}
+x^2, & x \\ge 0 \\\\
+-x, & x < 0
+\\end{cases}
+$$
+
+$$
+|x| =
+\\begin{cases}
+x, & x \\ge 0 \\\\
+-x, & x < 0
+\\end{cases}
+$$`,
+  `Accents and decorated symbols: $\\hat{x}$, $\\bar{y}$, $\\vec{v}$, $\\tilde{f}$, and $\\dot{x}$ can reveal misplaced marks.
+
+$$
+\\vec{F} = m\\vec{a}
+$$
+
+$$
+\\hat{\\theta} = \\arg\\max_{\\theta} L(\\theta)
+$$`,
+  `Delimiters and absolute values: $\\left(\\frac{x+1}{x-1}\\right)$, $\\left|x\\right|$, and $\\left\\lVert v \\right\\rVert$ should scale cleanly.
+
+$$
+\\left(\\frac{x+1}{x-1}\\right)^2 + \\left(\\frac{y+1}{y-1}\\right)^2 = 1
+$$
+
+$$
+\\left\\lVert v \\right\\rVert = \\sqrt{v_1^2 + v_2^2 + \\cdots + v_n^2}
+$$`,
+  `Mixed equation stress test with integrals, fractions, sums, and symbols in one line.
+
+$$
+\\int_a^b f(x) dx \\approx \\sum_{i=1}^{n} f(x_i)\\Delta x
+$$
+
+$$
+P(A \\mid B) = \\frac{P(B \\mid A)P(A)}{P(B)}
+$$`
+];
+
 const longSections = Array.from({ length: 10 }, (_, index) => {
   const chapter = index + 1;
   return `# Long Example ${chapter}
@@ -55,9 +164,9 @@ This longer sample is meant to exercise live pagination, math placement, tables,
 - Inline math such as $E = mc^2$ and $\\frac{a}{b}$ should keep the next words close.
 - Display math should stay centered and match the downloaded PDF.
 
-$$
-\\int_0^1 x^${chapter + 1} dx = \\frac{1}{${chapter + 2}}
-$$
+## Math Stress ${chapter}
+
+${mathSuites[index % mathSuites.length]}
 
 | Step | Operation | Expected result |
 | --- | --- | --- |

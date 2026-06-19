@@ -14,6 +14,7 @@ export type MathMeasurement = {
   width: number;
   height: number;
   advance: number;
+  baseline?: number;
 };
 
 export type MathMeasurementMap = Record<string, MathMeasurement>;

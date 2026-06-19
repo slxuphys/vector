@@ -6,6 +6,14 @@ import { hexToRgb } from "./pdfText";
 
 type MathObject = Extract<DisplayObject, { type: "math" }>;
 
+type TextRun = {
+  text: string;
+  x: number;
+  baseline: number;
+  fontSize: number;
+  font: PDFFont;
+};
+
 let root: HTMLDivElement | undefined;
 
 export async function drawPdfKatexDomGlyphs(
@@ -29,19 +37,18 @@ export async function drawPdfKatexDomGlyphs(
 
   const containerRect = container.getBoundingClientRect();
   drawRules(page, katexHtml, containerRect, object, pageHeight);
-  drawTextNodes(page, katexHtml, containerRect, object, fonts, pageHeight);
+  drawTextRuns(page, collectTextRuns(katexHtml, containerRect, object, fonts), object, pageHeight);
   container.remove();
   return true;
 }
 
-function drawTextNodes(
-  page: PDFPage,
+function collectTextRuns(
   rootElement: Element,
   containerRect: DOMRect,
   object: MathObject,
-  fonts: PdfFontSet,
-  pageHeight: number
-) {
+  fonts: PdfFontSet
+): TextRun[] {
+  const runs: TextRun[] = [];
   const walker = document.createTreeWalker(rootElement, NodeFilter.SHOW_TEXT);
   const range = document.createRange();
   let node = walker.nextNode();
@@ -59,19 +66,49 @@ function drawTextNodes(
         if (encodedText) {
           const baseline = measureTextBaseline(node, containerRect);
           const relX = rect.left - containerRect.left;
-          page.drawText(encodedText, {
-            x: object.x + relX,
-            y: pageHeight - object.y - baseline,
-            size: fontSize,
-            font,
-            color: hexToRgb(object.color)
-          });
+          runs.push({ text: encodedText, x: relX, baseline, fontSize, font });
         }
       }
     }
     node = walker.nextNode();
   }
   range.detach();
+  return mergeTextRuns(runs);
+}
+
+function drawTextRuns(page: PDFPage, runs: TextRun[], object: MathObject, pageHeight: number) {
+  for (const run of runs) {
+    page.drawText(run.text, {
+      x: object.x + run.x,
+      y: pageHeight - object.y - run.baseline,
+      size: run.fontSize,
+      font: run.font,
+      color: hexToRgb(object.color)
+    });
+  }
+}
+
+function mergeTextRuns(runs: TextRun[]): TextRun[] {
+  const merged: TextRun[] = [];
+  for (const run of runs) {
+    const previous = merged.at(-1);
+    if (previous && canMergeTextRuns(previous, run)) {
+      previous.text += run.text;
+    } else {
+      merged.push({ ...run });
+    }
+  }
+  return merged;
+}
+
+function canMergeTextRuns(left: TextRun, right: TextRun): boolean {
+  if (left.font !== right.font) return false;
+  if (Math.abs(left.fontSize - right.fontSize) > 0.1) return false;
+  if (Math.abs(left.baseline - right.baseline) > 0.5) return false;
+
+  const expectedRight = left.x + left.font.widthOfTextAtSize(left.text, left.fontSize);
+  const gap = right.x - expectedRight;
+  return gap >= -left.fontSize * 0.05 && gap <= left.fontSize * 0.08;
 }
 
 function measureTextBaseline(node: Node, containerRect: DOMRect): number {

@@ -16,6 +16,7 @@ type MathJaxGlobal = {
 
 const artifactCache = new Map<string, MathJaxSvgArtifact>();
 let mathJaxPromise: Promise<MathJaxGlobal> | undefined;
+let measureRoot: HTMLDivElement | undefined;
 
 export async function renderMathJaxSvgArtifact(
   latex: string,
@@ -33,8 +34,10 @@ export async function renderMathJaxSvgArtifact(
   if (!svg) return fallbackArtifact(latex, fontSize, color);
 
   const viewBox = svg.getAttribute("viewBox") ?? "0 0 1000 1000";
+  const verticalAlign = parseVerticalAlign(svg.getAttribute("style") ?? "", fontSize);
+  const measuredBaseline = displayMode ? undefined : measureMathJaxBaseline(node);
   const body = svg.innerHTML;
-  const artifact = buildArtifact(viewBox, body, fontSize, color);
+  const artifact = buildArtifact(viewBox, body, fontSize, color, verticalAlign, measuredBaseline);
   artifactCache.set(key, artifact);
   return artifact;
 }
@@ -82,17 +85,83 @@ async function ensureMathJax(): Promise<MathJaxGlobal> {
   return mathJaxPromise;
 }
 
-function buildArtifact(viewBox: string, body: string, fontSize: number, color: string): MathJaxSvgArtifact {
+function buildArtifact(
+  viewBox: string,
+  body: string,
+  fontSize: number,
+  color: string,
+  verticalAlign?: number,
+  measuredBaseline?: { baseline: number; height: number }
+): MathJaxSvgArtifact {
   const [, minY, viewWidth, viewHeight] = viewBox.split(/\s+/).map(Number);
   const safeWidth = Number.isFinite(viewWidth) && viewWidth > 0 ? viewWidth : 1000;
   const safeHeight = Number.isFinite(viewHeight) && viewHeight > 0 ? viewHeight : 1000;
   const safeMinY = Number.isFinite(minY) ? minY : -safeHeight;
   const width = Math.max(1, safeWidth / 1000 * fontSize);
   const height = Math.max(fontSize * 1.2, safeHeight / 1000 * fontSize);
-  const baseline = Math.max(0, -safeMinY / 1000 * fontSize);
+  const viewBoxBaseline = Math.max(0, -safeMinY / 1000 * fontSize);
+  const styleBaseline = verticalAlign === undefined ? undefined : height + verticalAlign;
+  const domBaseline = measuredBaseline && measuredBaseline.height > 0
+    ? measuredBaseline.baseline * (height / measuredBaseline.height)
+    : undefined;
+  const baseline = domBaseline ?? Math.max(viewBoxBaseline, styleBaseline ?? 0);
   const coloredBody = color === "#000000" ? body : `<g fill="${escapeAttr(color)}">${body}</g>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}">${coloredBody}</svg>`;
   return { svg, body: coloredBody, viewBox, width, height, baseline };
+}
+
+function measureMathJaxBaseline(node: HTMLElement): { baseline: number; height: number } | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  const container = document.createElement("span");
+  container.style.display = "inline";
+  container.style.lineHeight = "normal";
+
+  const marker = document.createElement("span");
+  marker.style.display = "inline-block";
+  marker.style.width = "0";
+  marker.style.height = "0";
+  marker.style.padding = "0";
+  marker.style.margin = "0";
+  marker.style.border = "0";
+  marker.style.verticalAlign = "baseline";
+
+  container.appendChild(node.cloneNode(true));
+  container.appendChild(marker);
+  getMeasureRoot().appendChild(container);
+
+  const svg = container.querySelector("svg");
+  const svgRect = svg?.getBoundingClientRect();
+  const markerRect = marker.getBoundingClientRect();
+  container.remove();
+
+  if (!svgRect || svgRect.height <= 0) return undefined;
+  const baseline = markerRect.top - svgRect.top;
+  return Number.isFinite(baseline) && baseline > 0 ? { baseline, height: svgRect.height } : undefined;
+}
+
+function getMeasureRoot(): HTMLDivElement {
+  if (measureRoot) return measureRoot;
+
+  measureRoot = document.createElement("div");
+  measureRoot.setAttribute("aria-hidden", "true");
+  measureRoot.style.position = "absolute";
+  measureRoot.style.left = "-10000px";
+  measureRoot.style.top = "0";
+  measureRoot.style.visibility = "hidden";
+  measureRoot.style.pointerEvents = "none";
+  measureRoot.style.whiteSpace = "nowrap";
+  document.body.appendChild(measureRoot);
+  return measureRoot;
+}
+
+function parseVerticalAlign(style: string, fontSize: number): number | undefined {
+  const match = style.match(/vertical-align:\s*([-+]?\d*\.?\d+)(e[mx]|px)/);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return undefined;
+  if (match[2] === "px") return value;
+  return value * 0.5 * fontSize;
 }
 
 function fallbackArtifact(latex: string, fontSize: number, color: string): MathJaxSvgArtifact {

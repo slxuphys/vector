@@ -205,7 +205,9 @@ function drawLines(
         const height = measured?.height ?? fontSize * options.lineHeight;
         const y = isMathJaxRenderer(mathRenderer)
           ? cursor.y
-          : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
+          : measured?.baseline !== undefined
+            ? baseline - measured.baseline
+            : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
         cursor.page.objects.push(createMathObject({
           latex,
           displayMode: false,

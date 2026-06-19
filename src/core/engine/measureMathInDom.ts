@@ -30,20 +30,25 @@ export async function measureMathInDom(
     node.className = "svg-md-katex-measure";
     node.style.fontSize = `${request.fontSize}px`;
     node.style.color = request.color;
-    node.style.display = "inline-flex";
-    node.style.alignItems = request.displayMode ? "center" : "flex-start";
-    node.style.justifyContent = request.displayMode ? "center" : "flex-start";
+    node.style.display = request.displayMode ? "inline-flex" : "inline-block";
+    node.style.alignItems = request.displayMode ? "center" : "";
+    node.style.justifyContent = request.displayMode ? "center" : "";
     node.style.lineHeight = "normal";
-    node.innerHTML = renderKatex(request.latex, request.displayMode);
+    node.innerHTML = `${renderKatex(request.latex, request.displayMode)}${request.displayMode ? "" : '<span class="svg-md-baseline-marker"></span>'}`;
     container.appendChild(node);
 
-    const rect = node.getBoundingClientRect();
+    const mathNode = node.querySelector(".katex, .katex-display") ?? node;
+    const rect = mathNode.getBoundingClientRect();
+    const wrapperRect = node.getBoundingClientRect();
+    const marker = node.querySelector(".svg-md-baseline-marker");
+    const markerRect = marker?.getBoundingClientRect();
     const width = Math.ceil(rect.width * 100) / 100;
     const height = Math.ceil(rect.height * 100) / 100;
     const measurement = {
       width: width + 1,
       height: Math.max(height, request.fontSize * 1.2),
-      advance: width
+      advance: width,
+      baseline: markerRect ? markerRect.top - wrapperRect.top : undefined
     };
     measurementCache.set(request.key, measurement);
     measurements[request.key] = measurement;
@@ -75,7 +80,9 @@ async function waitForKatexFonts(fontSize: number): Promise<void> {
     document.fonts.load(`${fontSize}px "KaTeX_Main"`),
     document.fonts.load(`${fontSize}px "KaTeX_Math"`),
     document.fonts.load(`${fontSize}px "KaTeX_Size1"`),
-    document.fonts.load(`${fontSize}px "KaTeX_Size2"`)
+    document.fonts.load(`${fontSize}px "KaTeX_Size2"`),
+    document.fonts.load(`${fontSize}px "KaTeX_Size3"`),
+    document.fonts.load(`${fontSize}px "KaTeX_Size4"`)
   ];
   await Promise.race([
     Promise.allSettled(loads),
@@ -98,6 +105,7 @@ function getRoot(): HTMLDivElement {
   const style = document.createElement("style");
   style.textContent = `${katexCssWithInlineFonts}
 .svg-md-katex-measure .katex-display{margin:0;}
+.svg-md-katex-measure .svg-md-baseline-marker{display:inline-block;width:0;height:0;padding:0;margin:0;border:0;vertical-align:baseline;}
 `;
   root.appendChild(style);
   document.body.appendChild(root);
