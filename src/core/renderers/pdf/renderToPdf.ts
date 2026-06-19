@@ -6,6 +6,7 @@ import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
 import { drawPdfMath } from "./pdfMath";
 import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
+import { drawPdfMathJaxVector } from "./pdfMathJax";
 
 export type PdfRenderOptions = {
   rasterizeMath?: boolean;
@@ -51,7 +52,9 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
         objectCounts.math += 1;
         const drewArtifact = rasterizeMath
           ? await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext)
-          : false;
+          : object.renderer === "mathjax-vector"
+            ? drawPdfMathJaxVector(page, object, displayPage.height)
+            : false;
         if (!drewArtifact) {
           const mathFonts = fonts.tex ?? fonts;
           drawPdfMath(page, object, { regular: mathFonts.regular, italic: mathFonts.italic }, displayPage.height);
@@ -75,7 +78,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     saveMs: round(saveMs),
     pages: layout.pages.length,
     bytes: bytes.byteLength,
-    mathMode: rasterizeMath ? "rasterized-artifact" : "pdf-vector-fallback",
+    mathMode: rasterizeMath ? "rasterized-artifact" : "pdf-vector",
     objects: objectCounts,
     mathArtifacts: {
       attempted: mathStats.attempted,

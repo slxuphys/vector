@@ -1,5 +1,5 @@
 import type { PDFDocument, PDFImage, PDFPage } from "pdf-lib";
-import type { DisplayObject } from "../../display-list/displayTypes";
+import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
 import { now } from "../../utils/timing";
 import { svgToDataUrl } from "../math/renderKatex";
 
@@ -21,6 +21,38 @@ export type PdfMathArtifactContext = {
 };
 
 const rasterCache = new Map<string, Uint8Array>();
+
+export async function warmPdfMathArtifactCache(layout: PagedDisplayList): Promise<void> {
+  if (typeof document === "undefined" || typeof Image === "undefined") return;
+
+  const start = now();
+  const mathObjects = new Map<string, Extract<DisplayObject, { type: "math" }>>();
+  for (const page of layout.pages) {
+    for (const object of page.objects) {
+      if (object.type !== "math") continue;
+      const key = mathArtifactCacheKey(object);
+      if (!rasterCache.has(key)) mathObjects.set(key, object);
+    }
+  }
+
+  let warmed = 0;
+  for (const [key, object] of mathObjects) {
+    await yieldToBrowser();
+    const pngBytes = await rasterizeSvg(object.svg, object.width, object.height);
+    if (pngBytes) {
+      rasterCache.set(key, pngBytes);
+      warmed += 1;
+    }
+  }
+
+  if (mathObjects.size > 0) {
+    console.log("[math-raster-cache]", {
+      warmed,
+      requested: mathObjects.size,
+      totalMs: roundLog(now() - start)
+    });
+  }
+}
 
 export async function drawPdfMathArtifact(
   pdf: PDFDocument,
@@ -75,6 +107,20 @@ function mathArtifactCacheKey(object: Extract<DisplayObject, { type: "math" }>):
 
 function roundKey(value: number): string {
   return value.toFixed(2);
+}
+
+function roundLog(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    const requestIdle = (globalThis as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    }).requestIdleCallback;
+    if (requestIdle) requestIdle(resolve, { timeout: 400 });
+    else window.setTimeout(resolve, 0);
+  });
 }
 
 async function rasterizeSvg(svg: string, width: number, height: number): Promise<Uint8Array | undefined> {

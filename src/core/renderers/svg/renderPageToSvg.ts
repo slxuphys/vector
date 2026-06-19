@@ -1,4 +1,5 @@
 import type { DisplayObject, DisplayPage } from "../../display-list/displayTypes";
+import { escapeXml } from "../../utils/sanitize";
 import { renderKatexForeignObject } from "../math/renderKatex";
 import { renderSvgShape } from "./svgShapes";
 import { renderSvgText } from "./svgText";
@@ -17,6 +18,9 @@ export function renderPageToSvg(page: DisplayPage, options: SvgRenderOptions = {
 
 function renderObject(object: DisplayObject): string {
   if (object.type === "math") {
+    if (object.renderer === "mathjax-vector") {
+      return `<svg x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" viewBox="${escapeXml(object.viewBox ?? `0 0 ${object.width} ${object.height}`)}" overflow="visible">${object.svgBody ?? ""}</svg>`;
+    }
     return renderKatexForeignObject({
       html: object.html,
       displayMode: object.displayMode,
@@ -30,4 +34,8 @@ function renderObject(object: DisplayObject): string {
     });
   }
   return object.type === "text" ? renderSvgText(object) : renderSvgShape(object);
+}
+
+function round(value: number): string {
+  return Number(value.toFixed(2)).toString();
 }

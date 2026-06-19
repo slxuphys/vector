@@ -34,11 +34,23 @@ test("switches main text to TeX font", async ({ page }) => {
   await expect(page.locator("svg.svg-md-page-svg text").first()).toHaveAttribute("font-family", /KaTeX_Main/);
 });
 
+test("switches math to MathJax vector", async ({ page }) => {
+  await page.goto("/");
+  await page.locator(".app-controls select").nth(1).selectOption("mathjax-vector");
+  await expect(page.locator("svg.svg-md-page-svg path").first()).toBeVisible({ timeout: 15000 });
+  await expect.poll(async () => page.locator("svg.svg-md-page-svg foreignObject").count()).toBe(0);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("document.pdf");
+});
+
 test("downloads the current PDF", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });
 
-  await expect(page.getByLabel("Raster math")).not.toBeChecked();
+  await expect(page.getByLabel("Experimental vector math")).not.toBeChecked();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PDF" }).click();
   await expect(page.getByRole("button", { name: "Generating PDF" })).toBeVisible();

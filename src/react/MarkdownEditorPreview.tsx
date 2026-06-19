@@ -4,6 +4,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EngineOptions } from "../core/engine/workerProtocol";
+import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
 import { SvgPagedPreview } from "./SvgPagedPreview";
 import { useDocumentLayout, type PreviewUpdateTiming } from "./useDocumentLayout";
@@ -23,12 +24,13 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   const [zoom, setZoom] = useState(0.9);
   const [currentPage, setCurrentPage] = useState(0);
   const [pdfPending, setPdfPending] = useState(false);
-  const [rasterizePdfMath, setRasterizePdfMath] = useState(false);
+  const [experimentalVectorMath, setExperimentalVectorMath] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const previewUpdateRef = useRef<number | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
   const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
+  const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
 
   const extensions = useMemo(
     () => [
@@ -98,12 +100,24 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
     };
   }, [layoutState.layout, zoom]);
 
+  useEffect(() => {
+    if (!layoutState.layout || experimentalVectorMath || usingMathJaxVector) return;
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      if (!cancelled && layoutState.layout) void warmPdfMathArtifactCache(layoutState.layout);
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [experimentalVectorMath, layoutState.layout, usingMathJaxVector]);
+
   const handleDownloadPdf = () => {
     const layout = layoutState.layout;
     if (!layout || pdfPending) return;
     setPdfPending(true);
     window.setTimeout(() => {
-      void downloadPdf(layout, "document.pdf", { rasterizeMath: rasterizePdfMath })
+      void downloadPdf(layout, "document.pdf", { rasterizeMath: !experimentalVectorMath && !usingMathJaxVector })
         .finally(() => setPdfPending(false));
     }, 150);
   };
@@ -123,10 +137,11 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
         <label className="toggle">
           <input
             type="checkbox"
-            checked={rasterizePdfMath}
-            onChange={(event) => setRasterizePdfMath(event.target.checked)}
+            disabled={usingMathJaxVector}
+            checked={experimentalVectorMath}
+            onChange={(event) => setExperimentalVectorMath(event.target.checked)}
           />
-          Raster math
+          {usingMathJaxVector ? "MathJax vector PDF" : "Experimental vector math"}
         </label>
         <label>
           Zoom

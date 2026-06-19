@@ -1,4 +1,5 @@
 import type { DocumentTheme } from "../theme/themeTypes";
+import type { MathRendererName } from "../engine/workerProtocol";
 import type { InlineRun } from "./layoutBlocks";
 import { getMeasuredMath, type MathMeasurementMap } from "./mathMetrics";
 import { measureText } from "./measureText";
@@ -14,7 +15,8 @@ export function breakRunsIntoLines(
   maxWidth: number,
   fontSize: number,
   theme: DocumentTheme,
-  mathMeasurements?: MathMeasurementMap
+  mathMeasurements?: MathMeasurementMap,
+  mathRenderer: MathRendererName = "katex-raster"
 ): LayoutLine[] {
   const lines: LayoutLine[] = [];
   let current: InlineRun[] = [];
@@ -33,14 +35,14 @@ export function breakRunsIntoLines(
     const words = run.math ? [run.text.trim()] : run.text.match(/\S+\s*|\s+/g) ?? [];
     for (const word of words) {
       const width = run.math
-        ? measureMathChunk(word, fontSize, mathMeasurements)
+        ? measureMathChunk(word, fontSize, mathMeasurements, mathRenderer)
         : measureText(word, {
         fontSize,
         fontFamily: theme.fontFamily,
         monoFontFamily: theme.monoFontFamily,
         ...run
       });
-      const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements) : lineHeight;
+      const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements, mathRenderer) : lineHeight;
       if (current.length > 0 && currentWidth + width > maxWidth) pushLine();
       if (run.math) {
         current.push({ ...run, text: word });
@@ -73,15 +75,21 @@ export function breakRunsIntoLines(
   return lines.length > 0 ? lines : [{ runs: [], width: 0, height: lineHeight }];
 }
 
-function measureMathChunk(text: string, fontSize: number, mathMeasurements?: MathMeasurementMap): number {
-  return getMeasuredMath(mathMeasurements, text, false, fontSize)?.advance ?? fontSize * Math.max(1, text.length * 0.6);
+function measureMathChunk(
+  text: string,
+  fontSize: number,
+  mathMeasurements?: MathMeasurementMap,
+  mathRenderer: MathRendererName = "katex-raster"
+): number {
+  return getMeasuredMath(mathMeasurements, text, false, fontSize, mathRenderer)?.advance ?? fontSize * Math.max(1, text.length * 0.6);
 }
 
 function measureMathHeight(
   text: string,
   fontSize: number,
   fallback: number,
-  mathMeasurements?: MathMeasurementMap
+  mathMeasurements?: MathMeasurementMap,
+  mathRenderer: MathRendererName = "katex-raster"
 ): number {
-  return getMeasuredMath(mathMeasurements, text, false, fontSize)?.height ?? fallback;
+  return getMeasuredMath(mathMeasurements, text, false, fontSize, mathRenderer)?.height ?? fallback;
 }

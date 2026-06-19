@@ -43,7 +43,7 @@ export function useDocumentLayout(
   const workerEnabled = options.useWorker !== false && typeof Worker !== "undefined";
   const workerClient = useMemo(
     () => workerEnabled ? createWorkerClient(options) : undefined,
-    [workerEnabled, options.pageSize, options.margin, options.theme]
+    [workerEnabled, options.pageSize, options.margin, options.theme, options.mathRenderer]
   );
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, workerEnabled]);
+  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, options.mathRenderer, workerEnabled]);
 
   useEffect(() => {
     return () => {
@@ -113,7 +113,7 @@ async function layoutWithPremeasuredMath(
 }> {
   const prepared = prepareMarkdownLayout(markdown, options);
   const requests = collectPreparedMathRequests(prepared);
-  const measurements = await measureMathInDom(requests);
+  const measurements = await measureMathInDom(requests, prepared.mathRenderer);
   const result = deferFinish ? undefined : finishMarkdownLayout(prepared, measurements);
   return { prepared, measurements, result };
 }

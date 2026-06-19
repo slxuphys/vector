@@ -17,15 +17,19 @@ export type DisplayObject =
   | ({ type: "text" } & DisplayTextRun)
   | {
       type: "math";
+      renderer?: "katex-raster" | "mathjax-vector";
       latex: string;
       html: string;
       svg: string;
+      svgBody?: string;
+      viewBox?: string;
       displayMode: boolean;
       x: number;
       y: number;
       width: number;
       height: number;
       advance?: number;
+      baseline?: number;
       fontSize: number;
       color: string;
     }

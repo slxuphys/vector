@@ -10,7 +10,7 @@ import { parseMarkdown } from "../markdown/parseMarkdown";
 import { defaultTheme } from "../theme/defaultTheme";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
-import type { EngineOptions } from "./workerProtocol";
+import type { EngineOptions, MathRendererName } from "./workerProtocol";
 
 export type DocumentEngine = {
   layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
@@ -20,6 +20,7 @@ export type PreparedLayout = {
   blocks: LayoutBlock[];
   page: PageConfig;
   theme: DocumentTheme;
+  mathRenderer: MathRendererName;
   parseMs: number;
   totalStart: number;
 };
@@ -49,8 +50,9 @@ export function prepareMarkdownLayout(markdown: string, options: EngineOptions =
   const parseMs = now() - parseStart;
   const page = createPageConfig(options.pageSize ?? "letter", options.margin ?? 72);
   const theme: DocumentTheme = { ...defaultTheme, ...(options.theme ?? {}) };
+  const mathRenderer = options.mathRenderer ?? "katex-raster";
 
-  return { blocks, page, theme, parseMs, totalStart };
+  return { blocks, page, theme, mathRenderer, parseMs, totalStart };
 }
 
 export function finishMarkdownLayout(
@@ -58,7 +60,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 
@@ -75,5 +77,5 @@ export function finishMarkdownLayout(
 }
 
 export function collectPreparedMathRequests(prepared: PreparedLayout) {
-  return collectMathMeasureRequests(prepared.blocks, prepared.theme);
+  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer);
 }

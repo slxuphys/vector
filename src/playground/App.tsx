@@ -6,6 +6,7 @@ import { playgroundSamples } from "./sampleMarkdown";
 export function App() {
   const [sample, setSample] = useState<keyof typeof playgroundSamples>("short");
   const [font, setFont] = useState<"sans" | "tex">("sans");
+  const [mathRenderer, setMathRenderer] = useState<"katex-raster" | "mathjax-vector">("katex-raster");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
   const [dark, setDark] = useState(false);
@@ -15,6 +16,7 @@ export function App() {
       return {
         pageSize,
         margin,
+        mathRenderer,
         theme: font === "tex"
           ? {
               ...theme,
@@ -24,7 +26,7 @@ export function App() {
         useWorker: false
       };
     },
-    [pageSize, margin, dark, font]
+    [pageSize, margin, dark, font, mathRenderer]
   );
 
   return (
@@ -37,6 +39,16 @@ export function App() {
             <select value={sample} onChange={(event) => setSample(event.target.value as keyof typeof playgroundSamples)}>
               <option value="short">Short</option>
               <option value="long">Long</option>
+            </select>
+          </label>
+          <label>
+            Math
+            <select
+              value={mathRenderer}
+              onChange={(event) => setMathRenderer(event.target.value as "katex-raster" | "mathjax-vector")}
+            >
+              <option value="katex-raster">KaTeX raster</option>
+              <option value="mathjax-vector">MathJax vector</option>
             </select>
           </label>
           <label>

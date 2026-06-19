@@ -1,4 +1,6 @@
 import type { MathMeasurement, MathMeasureRequest } from "../layout/mathMetrics";
+import type { MathRendererName } from "./workerProtocol";
+import { renderMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
 
@@ -7,8 +9,10 @@ const loadedFontSizes = new Set<number>();
 const measurementCache = new Map<string, MathMeasurement>();
 
 export async function measureMathInDom(
-  requests: MathMeasureRequest[]
+  requests: MathMeasureRequest[],
+  renderer: MathRendererName = "katex-raster"
 ): Promise<Record<string, MathMeasurement>> {
+  if (renderer === "mathjax-vector") return measureMathJax(requests);
   if (typeof document === "undefined") return {};
 
   const container = getRoot();
@@ -46,6 +50,19 @@ export async function measureMathInDom(
     node.remove();
   }
 
+  return measurements;
+}
+
+async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {
+  const measurements: Record<string, MathMeasurement> = {};
+  for (const request of requests) {
+    const artifact = await renderMathJaxSvgArtifact(request.latex, request.displayMode, request.fontSize, request.color);
+    measurements[request.key] = {
+      width: artifact.width,
+      height: artifact.height,
+      advance: artifact.width
+    };
+  }
   return measurements;
 }
 

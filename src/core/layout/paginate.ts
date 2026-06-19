@@ -1,11 +1,13 @@
 import type { DisplayObject, DisplayPage } from "../display-list/displayTypes";
+import type { MathRendererName } from "../engine/workerProtocol";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { LayoutBlock, InlineRun } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
 import { breakRunsIntoLines } from "./lineBreaking";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
-import { getMeasuredMath, headingSize, normalizeMathLatex, type MathMeasurementMap } from "./mathMetrics";
+import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
+import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMetrics";
 
 type Cursor = {
   page: DisplayPage;
@@ -19,7 +21,8 @@ export function paginate(
   blocks: LayoutBlock[],
   page: PageConfig,
   theme: DocumentTheme,
-  mathMeasurements?: MathMeasurementMap
+  mathMeasurements?: MathMeasurementMap,
+  mathRenderer: MathRendererName = "katex-raster"
 ): DisplayPage[] {
   const pages: DisplayPage[] = [];
   const newPage = (): Cursor => {
@@ -63,19 +66,19 @@ export function paginate(
       const fontSize = headingSize(block.level, theme.fontSize);
       const before = block.level === 1 ? 4 : 10;
       const after = block.level <= 2 ? 10 : 7;
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements);
+      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer);
       ensure(before + lines.length * fontSize * 1.2 + after);
       cursor.y += before;
-      drawLines(cursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements);
+      drawLines(cursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer);
       cursor.y += after;
       continue;
     }
 
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements);
+      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer);
       ensure(lines.length * fontSize * theme.lineHeight + 10);
-      drawLines(cursor, lines, fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements);
+      drawLines(cursor, lines, fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements, mathRenderer);
       cursor.y += 10;
       continue;
     }
@@ -89,14 +92,14 @@ export function paginate(
             ? `${index + 1}.`
             : "•";
         const markerWidth = 28;
-        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements);
+        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements, mathRenderer);
         ensure(lines.length * fontSize * theme.lineHeight + 4);
         cursor.page.objects.push(textObject(marker, cursor.x, cursor.y + fontSize, fontSize, theme, { color: theme.mutedText }));
         drawLines(cursor, lines, fontSize, theme, {
           color: theme.text,
           lineHeight: theme.lineHeight,
           xOffset: markerWidth
-        }, mathMeasurements);
+        }, mathMeasurements, mathRenderer);
         cursor.y += 4;
       }
       cursor.y += 6;
@@ -138,7 +141,7 @@ export function paginate(
     if (block.type === "math") {
       const fontSize = theme.fontSize * 1.05;
       const text = block.text.replace(/\s+/g, " ").trim();
-      const measured = getMeasuredMath(mathMeasurements, text, true, fontSize);
+      const measured = getMeasuredMath(mathMeasurements, text, true, fontSize, mathRenderer);
       const width = Math.min(cursor.contentWidth, measured?.width ?? Math.max(cursor.contentWidth * 0.35, measureText(text, {
         fontSize,
         fontFamily: theme.fontFamily,
@@ -146,29 +149,19 @@ export function paginate(
         italic: true
       }) * 1.15));
       const height = measured?.height ?? fontSize * 3.2;
-      const html = renderKatex(text, true);
-      ensure(height + 10);
-      cursor.page.objects.push({
-        type: "math",
+      const mathObject = createMathObject({
         latex: text,
-        html,
-        svg: renderKatexSvg({
-          latex: text,
-          html,
-          displayMode: true,
-          width,
-          height,
-          fontSize,
-          color: theme.text
-        }),
         displayMode: true,
         x: cursor.x + (cursor.contentWidth - width) / 2,
         y: cursor.y,
         width,
         height,
         fontSize,
-        color: theme.text
+        color: theme.text,
+        mathRenderer
       });
+      ensure(height + 10);
+      cursor.page.objects.push(mathObject);
       cursor.y += height + 12;
       continue;
     }
@@ -197,7 +190,8 @@ function drawLines(
   fontSize: number,
   theme: DocumentTheme,
   options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number },
-  mathMeasurements?: MathMeasurementMap
+  mathMeasurements?: MathMeasurementMap,
+  mathRenderer: MathRendererName = "katex-raster"
 ) {
   for (const line of lines) {
     let x = cursor.x + (options.xOffset ?? 0);
@@ -205,25 +199,15 @@ function drawLines(
     for (const run of line.runs) {
       if (run.math) {
         const latex = run.text.trim();
-        const measured = getMeasuredMath(mathMeasurements, latex, false, fontSize);
+        const measured = getMeasuredMath(mathMeasurements, latex, false, fontSize, mathRenderer);
         const width = measured?.width ?? measureInlineMathBoxWidth(latex, fontSize, theme);
         const advance = measured?.advance ?? measureInlineMathAdvance(latex, fontSize, theme);
         const height = measured?.height ?? fontSize * options.lineHeight;
-        const html = renderKatex(latex, false);
-        const y = cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
-        cursor.page.objects.push({
-          type: "math",
+        const y = mathRenderer === "mathjax-vector"
+          ? cursor.y
+          : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
+        cursor.page.objects.push(createMathObject({
           latex,
-          html,
-          svg: renderKatexSvg({
-            latex,
-            html,
-            displayMode: false,
-            width,
-            height,
-            fontSize,
-            color: run.link ? theme.link : options.color
-          }),
           displayMode: false,
           x,
           y,
@@ -231,8 +215,9 @@ function drawLines(
           height,
           advance,
           fontSize,
-          color: run.link ? theme.link : options.color
-        });
+          color: run.link ? theme.link : options.color,
+          mathRenderer
+        }));
         x += advance;
         continue;
       }
@@ -322,6 +307,67 @@ function measureInlineMathText(text: string, fontSize: number, theme: DocumentTh
     monoFontFamily: theme.monoFontFamily,
     italic: true
   });
+}
+
+function createMathObject(options: {
+  latex: string;
+  displayMode: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  advance?: number;
+  fontSize: number;
+  color: string;
+  mathRenderer: MathRendererName;
+}): Extract<DisplayObject, { type: "math" }> {
+  if (options.mathRenderer === "mathjax-vector") {
+    const artifact = getCachedMathJaxSvgArtifact(options.latex, options.displayMode, options.fontSize, options.color);
+    const y = options.displayMode ? options.y : options.y + options.fontSize - artifact.baseline;
+    return {
+      type: "math",
+      renderer: "mathjax-vector",
+      latex: options.latex,
+      html: "",
+      svg: artifact.svg,
+      svgBody: artifact.body,
+      viewBox: artifact.viewBox,
+      displayMode: options.displayMode,
+      x: options.x,
+      y,
+      width: artifact.width,
+      height: artifact.height,
+      advance: options.advance ?? artifact.width,
+      baseline: artifact.baseline,
+      fontSize: options.fontSize,
+      color: options.color
+    };
+  }
+
+  const html = renderKatex(options.latex, options.displayMode);
+  return {
+    type: "math",
+    renderer: "katex-raster",
+    latex: options.latex,
+    html,
+    svg: renderKatexSvg({
+      latex: options.latex,
+      html,
+      displayMode: options.displayMode,
+      width: options.width,
+      height: options.height,
+      fontSize: options.fontSize,
+      color: options.color
+    }),
+    displayMode: options.displayMode,
+    x: options.x,
+    y: options.y,
+    width: options.width,
+    height: options.height,
+    advance: options.advance,
+    fontSize: options.fontSize,
+    color: options.color
+  };
 }
 
 function readLatexScript(text: string, start: number): { value: string; end: number } {

@@ -8,7 +8,10 @@ export type EngineOptions = {
   margin?: number;
   theme?: Partial<DocumentTheme>;
   useWorker?: boolean;
+  mathRenderer?: MathRendererName;
 };
+
+export type MathRendererName = "katex-raster" | "mathjax-vector";
 
 export type LayoutRequest = {
   id: number;
