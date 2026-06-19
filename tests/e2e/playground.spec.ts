@@ -28,6 +28,12 @@ test("switches to the long example", async ({ page }) => {
   await expect.poll(async () => page.locator("svg.svg-md-page-svg").count()).toBeLessThan(10);
 });
 
+test("switches main text to TeX font", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Font").selectOption("tex");
+  await expect(page.locator("svg.svg-md-page-svg text").first()).toHaveAttribute("font-family", /KaTeX_Main/);
+});
+
 test("downloads the current PDF", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });

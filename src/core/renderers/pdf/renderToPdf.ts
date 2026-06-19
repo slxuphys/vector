@@ -1,6 +1,7 @@
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 import type { PagedDisplayList } from "../../display-list/displayTypes";
 import { now } from "../../utils/timing";
+import { loadPdfFonts, selectPdfTextFont } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
 import { drawPdfMath } from "./pdfMath";
@@ -16,10 +17,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
   const fontStart = now();
   const pdf = await PDFDocument.create();
 
-  const regular = await pdf.embedFont(StandardFonts.Helvetica);
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
-  const mono = await pdf.embedFont(StandardFonts.Courier);
+  const fonts = await loadPdfFonts(pdf);
   const fontMs = now() - fontStart;
   const drawStart = now();
   const mathStats: PdfMathArtifactStats = {
@@ -48,20 +46,16 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     for (const object of displayPage.objects) {
       if (object.type === "text") {
         objectCounts.text += 1;
-        const font = object.fontFamily.includes("Consolas") || object.fontFamily.includes("Monaco")
-          ? mono
-          : object.bold
-            ? bold
-            : object.italic
-              ? italic
-              : regular;
-        drawPdfText(page, object, font, displayPage.height);
+        drawPdfText(page, object, selectPdfTextFont(object, fonts), displayPage.height);
       } else if (object.type === "math") {
         objectCounts.math += 1;
         const drewArtifact = rasterizeMath
           ? await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext)
           : false;
-        if (!drewArtifact) drawPdfMath(page, object, { regular, italic }, displayPage.height);
+        if (!drewArtifact) {
+          const mathFonts = fonts.tex ?? fonts;
+          drawPdfMath(page, object, { regular: mathFonts.regular, italic: mathFonts.italic }, displayPage.height);
+        }
       } else {
         objectCounts.shape += 1;
         drawPdfShape(page, object, displayPage.height);

@@ -5,17 +5,26 @@ import { playgroundSamples } from "./sampleMarkdown";
 
 export function App() {
   const [sample, setSample] = useState<keyof typeof playgroundSamples>("short");
+  const [font, setFont] = useState<"sans" | "tex">("sans");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
   const [dark, setDark] = useState(false);
   const options = useMemo(
-    () => ({
-      pageSize,
-      margin,
-      theme: dark ? darkTheme : defaultTheme,
-      useWorker: false
-    }),
-    [pageSize, margin, dark]
+    () => {
+      const theme = dark ? darkTheme : defaultTheme;
+      return {
+        pageSize,
+        margin,
+        theme: font === "tex"
+          ? {
+              ...theme,
+              fontFamily: "KaTeX_Main, 'Times New Roman', serif"
+            }
+          : theme,
+        useWorker: false
+      };
+    },
+    [pageSize, margin, dark, font]
   );
 
   return (
@@ -28,6 +37,13 @@ export function App() {
             <select value={sample} onChange={(event) => setSample(event.target.value as keyof typeof playgroundSamples)}>
               <option value="short">Short</option>
               <option value="long">Long</option>
+            </select>
+          </label>
+          <label>
+            Font
+            <select value={font} onChange={(event) => setFont(event.target.value as "sans" | "tex")}>
+              <option value="sans">Sans</option>
+              <option value="tex">TeX</option>
             </select>
           </label>
           <label>

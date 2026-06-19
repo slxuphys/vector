@@ -74,7 +74,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [workerClient, markdown, timing]);
+  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, workerEnabled]);
 
   useEffect(() => {
     return () => {
