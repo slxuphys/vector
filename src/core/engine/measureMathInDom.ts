@@ -3,6 +3,7 @@ import type { MathRendererName } from "./workerProtocol";
 import { renderMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
+import { layoutNativeMath } from "../renderers/math/nativeMath";
 
 let root: HTMLDivElement | undefined;
 const loadedFontSizes = new Set<number>();
@@ -12,6 +13,7 @@ export async function measureMathInDom(
   requests: MathMeasureRequest[],
   renderer: MathRendererName = "katex-raster"
 ): Promise<Record<string, MathMeasurement>> {
+  if (renderer === "native") return measureNativeMath(requests);
   if (renderer === "mathjax-vector" || renderer === "mathjax-glyph") return measureMathJax(requests);
   if (typeof document === "undefined") return {};
 
@@ -58,6 +60,21 @@ export async function measureMathInDom(
   return measurements;
 }
 
+async function measureNativeMath(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {
+  const measurements: Record<string, MathMeasurement> = {};
+  for (const request of requests) {
+    await waitForKatexFonts(request.fontSize);
+    const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize);
+    measurements[request.key] = {
+      width: layout.width,
+      height: layout.height,
+      advance: layout.advance,
+      baseline: layout.baseline
+    };
+  }
+  return measurements;
+}
+
 async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {
   const measurements: Record<string, MathMeasurement> = {};
   for (const request of requests) {
@@ -72,6 +89,7 @@ async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<st
 }
 
 async function waitForKatexFonts(fontSize: number): Promise<void> {
+  if (typeof document === "undefined") return;
   if (!document.fonts) return;
   if (loadedFontSizes.has(fontSize)) return;
   loadedFontSizes.add(fontSize);

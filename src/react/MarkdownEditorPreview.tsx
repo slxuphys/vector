@@ -32,8 +32,10 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   const previewUpdateIdRef = useRef(0);
   const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
   const usingKatexGlyph = options.mathRenderer === "katex-glyph";
+  const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
   const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
   const usingMathJaxGlyph = options.mathRenderer === "mathjax-glyph";
+  const usingNativeMath = options.mathRenderer === "native";
   const usingMathJax = usingMathJaxVector || usingMathJaxGlyph;
   const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
 
@@ -106,7 +108,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   }, [layoutState.layout, zoom]);
 
   useEffect(() => {
-    if (!layoutState.layout || experimentalVectorMath || usingMathJax || usingKatexGlyph) return;
+    if (!layoutState.layout || !usingKatexRaster || experimentalVectorMath) return;
     let cancelled = false;
     const timeout = window.setTimeout(() => {
       if (!cancelled && layoutState.layout) void warmPdfMathArtifactCache(layoutState.layout);
@@ -115,7 +117,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [experimentalVectorMath, layoutState.layout, usingMathJax, usingKatexGlyph]);
+  }, [experimentalVectorMath, layoutState.layout, usingKatexRaster]);
 
   useEffect(() => {
     const printQuery = window.matchMedia("print");
@@ -159,11 +161,11 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
         <label className="toggle">
           <input
             type="checkbox"
-            disabled={usingMathJax || usingKatexGlyph}
+            disabled={usingMathJax || usingKatexGlyph || usingNativeMath}
             checked={experimentalVectorMath}
             onChange={(event) => setExperimentalVectorMath(event.target.checked)}
           />
-          {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : "Experimental vector math"}
+          {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : usingNativeMath ? "Native PDF" : "Experimental vector math"}
         </label>
         <label>
           Zoom

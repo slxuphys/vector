@@ -231,8 +231,86 @@ ${page < 100 ? "<!-- pagebreak -->" : ""}
 
 export const hundredPageSampleMarkdown = hundredPageSections.join("\n");
 
+export const mathHeavySampleMarkdown = `# Native Math Stress
+
+This sample is meant to be used with the **Native engine** math mode. It does not hide unsupported TeX behind KaTeX, so red markers show where our own parser/layout still needs work.
+
+## Inline Basics
+
+Inline equations should keep the surrounding text close: $E = mc^2$, $x_i^2 + y_i^2 = r^2$, $\\alpha + \\beta = \\gamma$, and $\\lambda_1 \\le \\lambda_2$.
+
+Fractions and roots should also stay on the baseline: $\\frac{a}{b}$, $\\frac{x+1}{x-1}$, $\\sqrt{x^2 + y^2}$, and $\\sqrt[3]{x}$.
+
+## Display Basics
+
+$$
+E = mc^2
+$$
+
+$$
+\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
+$$
+
+$$
+\\int_0^1 x^2 dx = \\frac{1}{3}
+$$
+
+$$
+\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}
+$$
+
+## Maxwell
+
+$$
+\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0} \\qquad
+\\nabla \\cdot \\mathbf{B} = 0
+$$
+
+$$
+\\nabla \\times \\mathbf{E} = -\\frac{\\partial \\mathbf{B}}{\\partial t} \\qquad
+\\nabla \\times \\mathbf{B} = \\mu_0\\mathbf{J} + \\mu_0\\varepsilon_0\\frac{\\partial \\mathbf{E}}{\\partial t}
+$$
+
+## Accents And Operators
+
+These are expected to expose missing native rules: $\\hat{x}$, $\\bar{y}$, $\\vec{v}$, $\\tilde{f}$, $\\dot{x}$, $\\lim_{n \\to \\infty} \\frac{1}{n} = 0$.
+
+$$
+\\vec{F} = m\\vec{a}
+$$
+
+$$
+\\hat{\\theta} = \\arg\\max_{\\theta} L(\\theta)
+$$
+
+## Unsupported Environments
+
+The native path should visibly mark these instead of silently using KaTeX.
+
+$$
+\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}
+\\begin{pmatrix} x \\\\ y \\end{pmatrix} =
+\\begin{pmatrix} ax + by \\\\ cx + dy \\end{pmatrix}
+$$
+
+$$
+f(x) =
+\\begin{cases}
+x^2, & x \\ge 0 \\\\
+-x, & x < 0
+\\end{cases}
+$$
+
+## Delimiters
+
+$$
+\\left(\\frac{x+1}{x-1}\\right)^2 + \\left|x\\right| = 1
+$$
+`;
+
 export const playgroundSamples = {
   short: sampleMarkdown,
   long: longSampleMarkdown,
-  hundred: hundredPageSampleMarkdown
+  hundred: hundredPageSampleMarkdown,
+  mathHeavy: mathHeavySampleMarkdown
 } as const;

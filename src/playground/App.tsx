@@ -5,9 +5,9 @@ import type { MathRendererName } from "../core/engine/workerProtocol";
 import { playgroundSamples } from "./sampleMarkdown";
 
 export function App() {
-  const [sample, setSample] = useState<keyof typeof playgroundSamples>("short");
+  const [sample, setSample] = useState<keyof typeof playgroundSamples>("mathHeavy");
   const [font, setFont] = useState<"sans" | "tex">("sans");
-  const [mathRenderer, setMathRenderer] = useState<MathRendererName>("katex-raster");
+  const [mathRenderer, setMathRenderer] = useState<MathRendererName>("native");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
   const [dark, setDark] = useState(false);
@@ -41,6 +41,7 @@ export function App() {
               <option value="short">Short</option>
               <option value="long">Long</option>
               <option value="hundred">100 pages</option>
+              <option value="mathHeavy">Math heavy</option>
             </select>
           </label>
           <label>
@@ -53,6 +54,7 @@ export function App() {
               <option value="katex-glyph">KaTeX glyph</option>
               <option value="mathjax-vector">MathJax vector</option>
               <option value="mathjax-glyph">MathJax glyph</option>
+              <option value="native">Native engine</option>
             </select>
           </label>
           <label>

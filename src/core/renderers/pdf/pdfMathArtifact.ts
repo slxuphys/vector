@@ -30,6 +30,7 @@ export async function warmPdfMathArtifactCache(layout: PagedDisplayList): Promis
   for (const page of layout.pages) {
     for (const object of page.objects) {
       if (object.type !== "math") continue;
+      if (!canRasterizeMathArtifact(object)) continue;
       const key = mathArtifactCacheKey(object);
       if (!rasterCache.has(key)) mathObjects.set(key, object);
     }
@@ -63,6 +64,10 @@ export async function drawPdfMathArtifact(
 ): Promise<boolean> {
   const stats = context?.stats;
   if (stats) stats.attempted += 1;
+  if (!canRasterizeMathArtifact(object)) {
+    if (stats) stats.failed += 1;
+    return false;
+  }
   const cacheKey = mathArtifactCacheKey(object);
   let image = context?.imageCache.get(cacheKey);
 
@@ -99,6 +104,10 @@ export async function drawPdfMathArtifact(
   });
   if (stats) stats.drawn += 1;
   return true;
+}
+
+function canRasterizeMathArtifact(object: Extract<DisplayObject, { type: "math" }>): boolean {
+  return object.renderer !== "native" && object.svg.trim().length > 0;
 }
 
 function mathArtifactCacheKey(object: Extract<DisplayObject, { type: "math" }>): string {

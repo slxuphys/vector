@@ -11,7 +11,7 @@ export type EngineOptions = {
   mathRenderer?: MathRendererName;
 };
 
-export type MathRendererName = "katex-raster" | "katex-glyph" | "mathjax-vector" | "mathjax-glyph";
+export type MathRendererName = "katex-raster" | "katex-glyph" | "mathjax-vector" | "mathjax-glyph" | "native";
 
 export type LayoutRequest = {
   id: number;

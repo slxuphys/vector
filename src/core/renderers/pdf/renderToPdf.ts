@@ -9,6 +9,7 @@ import { drawPdfMath } from "./pdfMath";
 import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
 import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
+import { drawPdfNativeMath } from "./pdfNativeMath";
 
 export type PdfRenderOptions = {
   rasterizeMath?: boolean;
@@ -54,7 +55,9 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
       } else if (object.type === "math") {
         objectCounts.math += 1;
         let drewArtifact = false;
-        if (mathPdfMode === "raster") {
+        if (object.renderer === "native") {
+          drewArtifact = drawPdfNativeMath(page, object, fonts, displayPage.height);
+        } else if (mathPdfMode === "raster") {
           drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
         } else if (mathPdfMode === "glyph" && object.renderer === "katex-glyph") {
           drewArtifact = await drawPdfKatexDomGlyphs(page, object, fonts, displayPage.height);

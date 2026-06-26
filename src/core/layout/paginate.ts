@@ -7,6 +7,7 @@ import { breakRunsIntoLines } from "./lineBreaking";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
 import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
+import { layoutNativeMath } from "../renderers/math/nativeMath";
 import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMetrics";
 
 type Cursor = {
@@ -341,6 +342,27 @@ function createMathObject(options: {
       height: artifact.height,
       advance: options.advance ?? artifact.width,
       baseline: artifact.baseline,
+      fontSize: options.fontSize,
+      color: options.color
+    };
+  }
+
+  if (options.mathRenderer === "native") {
+    const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize);
+    const y = options.displayMode ? options.y : options.y + options.fontSize - layout.baseline;
+    return {
+      type: "math",
+      renderer: options.mathRenderer,
+      latex: options.latex,
+      html: "",
+      svg: "",
+      displayMode: options.displayMode,
+      x: options.x,
+      y,
+      width: layout.width,
+      height: layout.height,
+      advance: options.advance ?? layout.advance,
+      baseline: layout.baseline,
       fontSize: options.fontSize,
       color: options.color
     };
