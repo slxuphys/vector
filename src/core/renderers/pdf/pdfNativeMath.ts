@@ -12,7 +12,7 @@ export function drawPdfNativeMath(
   fonts: PdfFontSet,
   pageHeight: number
 ): boolean {
-  const layout = layoutNativeMath(object.latex, object.displayMode, object.fontSize);
+  const layout = layoutNativeMath(object.latex, object.displayMode, object.fontSize, object.nativeMetrics);
   const texFonts = fonts.tex ?? fonts;
   for (const node of layout.nodes) {
     if (node.type === "rule") {

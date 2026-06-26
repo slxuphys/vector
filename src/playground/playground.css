@@ -136,6 +136,10 @@ button:disabled {
   overflow: hidden;
 }
 
+.svg-md-workspace-with-panel {
+  grid-template-columns: minmax(280px, 34%) minmax(360px, 1fr) 300px;
+}
+
 .svg-md-editor {
   min-height: 0;
   border-right: 1px solid #cbd5df;
@@ -159,6 +163,91 @@ button:disabled {
   overflow: auto;
   background: #dfe6ee;
   overscroll-behavior: contain;
+}
+
+.svg-md-side-panel {
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid #cbd5df;
+  background: #ffffff;
+}
+
+.native-tuner {
+  padding: 14px;
+}
+
+.native-tuner-disabled {
+  opacity: 0.62;
+}
+
+.native-tuner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.native-tuner h2,
+.native-tuner h3 {
+  margin: 0;
+  color: #172033;
+}
+
+.native-tuner h2 {
+  font-size: 15px;
+}
+
+.native-tuner h3 {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.native-tuner-group {
+  padding: 10px 0;
+  border-top: 1px solid #e3e8ef;
+}
+
+.native-metric-control {
+  display: grid;
+  grid-template-columns: 1fr 76px 58px;
+  gap: 6px 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  color: #344054;
+  font-size: 12px;
+}
+
+.native-metric-control span {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.native-metric-control span i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0b6bcb;
+}
+
+.native-metric-control-changed span {
+  color: #0b4f9c;
+  font-weight: 600;
+}
+
+.native-metric-control input[type="range"] {
+  width: 100%;
+}
+
+.native-metric-control input[type="number"] {
+  width: 76px;
+}
+
+.native-metric-control button {
+  padding: 5px 6px;
+  font-size: 11px;
 }
 
 .svg-md-preview {
@@ -216,9 +305,18 @@ button:disabled {
     grid-template-rows: 42vh 1fr;
   }
 
+  .svg-md-workspace-with-panel {
+    grid-template-rows: 34vh 1fr 34vh;
+  }
+
   .svg-md-editor {
     border-right: 0;
     border-bottom: 1px solid #cbd5df;
+  }
+
+  .svg-md-side-panel {
+    border-left: 0;
+    border-top: 1px solid #cbd5df;
   }
 }
 
@@ -248,6 +346,7 @@ button:disabled {
   .app-header,
   .svg-md-toolbar,
   .svg-md-editor,
+  .svg-md-side-panel,
   .svg-md-page-placeholder,
   .svg-md-error {
     display: none;

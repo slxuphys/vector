@@ -2,7 +2,7 @@ import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/workerProtocol";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
@@ -12,6 +12,7 @@ import { useDocumentLayout, type PreviewUpdateTiming } from "./useDocumentLayout
 export type MarkdownEditorPreviewProps = {
   initialMarkdown?: string;
   options?: EngineOptions;
+  sidePanel?: ReactNode;
 };
 
 type PreviewRequest = {
@@ -19,7 +20,7 @@ type PreviewRequest = {
   timing?: PreviewUpdateTiming;
 };
 
-export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: MarkdownEditorPreviewProps) {
+export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, sidePanel }: MarkdownEditorPreviewProps) {
   const [previewRequest, setPreviewRequest] = useState<PreviewRequest>({ markdown: initialMarkdown });
   const [zoom, setZoom] = useState(0.9);
   const [currentPage, setCurrentPage] = useState(0);
@@ -180,7 +181,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
         </label>
         <span>{layoutState.stats ? `${layoutState.stats.pageCount} pages` : "Laying out..."}</span>
       </div>
-      <div className="svg-md-workspace">
+      <div className={sidePanel ? "svg-md-workspace svg-md-workspace-with-panel" : "svg-md-workspace"}>
         <div className="svg-md-editor" ref={editorRef} />
         <div className="svg-md-preview-pane" ref={previewPaneRef}>
           {layoutState.error ? <div className="svg-md-error">{layoutState.error.message}</div> : null}
@@ -195,6 +196,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
             />
           ) : null}
         </div>
+        {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
       </div>
     </div>
   );

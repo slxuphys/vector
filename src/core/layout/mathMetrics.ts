@@ -1,6 +1,7 @@
 import type { LayoutBlock, InlineRun } from "./layoutBlocks";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
+import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 
 export type MathMeasureRequest = {
   key: string;
@@ -8,6 +9,7 @@ export type MathMeasureRequest = {
   displayMode: boolean;
   fontSize: number;
   color: string;
+  nativeMetrics?: NativeMathMetrics;
 };
 
 export type MathMeasurement = {
@@ -23,9 +25,11 @@ export function mathMeasureKey(
   latex: string,
   displayMode: boolean,
   fontSize: number,
-  renderer: MathRendererName = "katex-raster"
+  renderer: MathRendererName = "katex-raster",
+  nativeMetrics?: NativeMathMetrics
 ): string {
-  return `${renderer}:${displayMode ? "display" : "inline"}:${round(fontSize)}:${normalizeMathLatex(latex)}`;
+  const metricsKey = renderer === "native" && nativeMetrics ? `:${nativeMetricsKey(nativeMetrics)}` : "";
+  return `${renderer}:${displayMode ? "display" : "inline"}:${round(fontSize)}:${normalizeMathLatex(latex)}${metricsKey}`;
 }
 
 export function normalizeMathLatex(latex: string): string {
@@ -35,15 +39,16 @@ export function normalizeMathLatex(latex: string): string {
 export function collectMathMeasureRequests(
   blocks: LayoutBlock[],
   theme: DocumentTheme,
-  renderer: MathRendererName = "katex-raster"
+  renderer: MathRendererName = "katex-raster",
+  nativeMetrics?: NativeMathMetrics
 ): MathMeasureRequest[] {
   const requests = new Map<string, MathMeasureRequest>();
 
   const addRun = (run: InlineRun, fontSize: number, color: string) => {
     if (!run.math) return;
     const latex = run.text.trim();
-    const key = mathMeasureKey(latex, false, fontSize, renderer);
-    requests.set(key, { key, latex, displayMode: false, fontSize, color });
+    const key = mathMeasureKey(latex, false, fontSize, renderer, nativeMetrics);
+    requests.set(key, { key, latex, displayMode: false, fontSize, color, nativeMetrics });
   };
 
   for (const block of blocks) {
@@ -58,10 +63,10 @@ export function collectMathMeasureRequests(
       block.headers.forEach((cell) => cell.forEach((run) => addRun(run, fontSize, theme.text)));
       block.rows.forEach((row) => row.forEach((cell) => cell.forEach((run) => addRun(run, fontSize, theme.text))));
     } else if (block.type === "math") {
-      const fontSize = theme.fontSize * 1.05;
+      const fontSize = theme.fontSize;
       const latex = block.text.replace(/\s+/g, " ").trim();
-      const key = mathMeasureKey(latex, true, fontSize, renderer);
-      requests.set(key, { key, latex, displayMode: true, fontSize, color: theme.text });
+      const key = mathMeasureKey(latex, true, fontSize, renderer, nativeMetrics);
+      requests.set(key, { key, latex, displayMode: true, fontSize, color: theme.text, nativeMetrics });
     }
   }
 
@@ -73,9 +78,10 @@ export function getMeasuredMath(
   latex: string,
   displayMode: boolean,
   fontSize: number,
-  renderer: MathRendererName = "katex-raster"
+  renderer: MathRendererName = "katex-raster",
+  nativeMetrics?: NativeMathMetrics
 ): MathMeasurement | undefined {
-  return measurements?.[mathMeasureKey(latex, displayMode, fontSize, renderer)];
+  return measurements?.[mathMeasureKey(latex, displayMode, fontSize, renderer, nativeMetrics)];
 }
 
 export function headingSize(level: number, base: number): number {
@@ -84,4 +90,11 @@ export function headingSize(level: number, base: number): number {
 
 function round(value: number): string {
   return Number(value.toFixed(2)).toString();
+}
+
+function nativeMetricsKey(metrics: NativeMathMetrics): string {
+  return Object.keys(metrics)
+    .sort()
+    .map((key) => `${key}=${round(metrics[key as keyof NativeMathMetrics])}`)
+    .join(",");
 }

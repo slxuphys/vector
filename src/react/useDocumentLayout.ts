@@ -43,7 +43,7 @@ export function useDocumentLayout(
   const workerEnabled = options.useWorker !== false && typeof Worker !== "undefined";
   const workerClient = useMemo(
     () => workerEnabled ? createWorkerClient(options) : undefined,
-    [workerEnabled, options.pageSize, options.margin, options.theme, options.mathRenderer]
+    [workerEnabled, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics]
   );
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, options.mathRenderer, workerEnabled]);
+  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, workerEnabled]);
 
   useEffect(() => {
     return () => {

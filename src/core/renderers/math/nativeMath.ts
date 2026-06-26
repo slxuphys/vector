@@ -32,6 +32,64 @@ export type NativeMathLayout = {
   nodes: NativeNode[];
 };
 
+export type NativeMathMetrics = {
+  inlinePadding: number;
+  displayPadding: number;
+  inlineBaseline: number;
+  scriptScale: number;
+  superscriptBaseline: number;
+  subscriptBaseline: number;
+  scriptGap: number;
+  inlineGlyphGap: number;
+  displayGlyphGap: number;
+  inlineFractionScale: number;
+  displayFractionScale: number;
+  fractionGap: number;
+  fractionRuleThickness: number;
+  fractionSidePadding: number;
+  fractionRuleInset: number;
+  displayFractionDenominatorBaseline: number;
+  inlineFractionAxisOffset: number;
+  sqrtBodyScale: number;
+  sqrtRadicalWidth: number;
+  sqrtTopGap: number;
+  sqrtRuleThickness: number;
+  sqrtGlyphScale: number;
+  sqrtRuleStart: number;
+  sqrtOverbarExtra: number;
+  relationMargin: number;
+  binaryMargin: number;
+};
+
+export const defaultNativeMathMetrics: NativeMathMetrics = {
+  inlinePadding: 0.08,
+  displayPadding: 0.25,
+  inlineBaseline: 0.905,
+  scriptScale: 0.68,
+  superscriptBaseline: -0.37,
+  subscriptBaseline: 0.28,
+  scriptGap: 0.06,
+  inlineGlyphGap: 0.155,
+  displayGlyphGap: 0.155,
+  inlineFractionScale: 0.72,
+  displayFractionScale: 0.82,
+  fractionGap: 0.05,
+  fractionRuleThickness: 0.045,
+  fractionSidePadding: 0.55,
+  fractionRuleInset: 0.18,
+  displayFractionDenominatorBaseline: 0,
+  inlineFractionAxisOffset: 0.3,
+  sqrtBodyScale: 0.92,
+  sqrtRadicalWidth: 0.72,
+  sqrtTopGap: 0.12,
+  sqrtRuleThickness: 0.045,
+  sqrtGlyphScale: 1.16,
+  sqrtRuleStart: 0.72,
+  sqrtOverbarExtra: 0.12,
+  relationMargin: 0.32,
+  binaryMargin: 0.32
+};
+
 type GlyphStyle = {
   italic?: boolean;
   bold?: boolean;
@@ -46,6 +104,17 @@ const commandGlyphs: Record<string, string> = {
   "\\beta": "β",
   "\\gamma": "γ",
   "\\delta": "δ",
+  "\\Gamma": "Γ",
+  "\\Delta": "Δ",
+  "\\Theta": "Θ",
+  "\\Lambda": "Λ",
+  "\\Xi": "Ξ",
+  "\\Pi": "Π",
+  "\\Sigma": "Σ",
+  "\\Upsilon": "Υ",
+  "\\Phi": "Φ",
+  "\\Psi": "Ψ",
+  "\\Omega": "Ω",
   "\\epsilon": "ϵ",
   "\\varepsilon": "ε",
   "\\zeta": "ζ",
@@ -73,9 +142,29 @@ const commandGlyphs: Record<string, string> = {
   "\\;": " "
 };
 
-export function layoutNativeMath(latex: string, displayMode: boolean, fontSize: number): NativeMathLayout {
-  const layout = layoutSequence(latex.trim(), fontSize, displayMode);
-  const padding = fontSize * (displayMode ? 0.25 : 0.08);
+const uprightCommandGlyphs = new Set([
+  "\\nabla",
+  "\\Gamma",
+  "\\Delta",
+  "\\Theta",
+  "\\Lambda",
+  "\\Xi",
+  "\\Pi",
+  "\\Sigma",
+  "\\Upsilon",
+  "\\Phi",
+  "\\Psi",
+  "\\Omega"
+]);
+
+export function layoutNativeMath(
+  latex: string,
+  displayMode: boolean,
+  fontSize: number,
+  metrics: NativeMathMetrics = defaultNativeMathMetrics
+): NativeMathLayout {
+  const layout = layoutSequence(latex.trim(), fontSize, displayMode, metrics);
+  const padding = fontSize * (displayMode ? metrics.displayPadding : metrics.inlinePadding);
   return {
     width: Math.max(1, layout.width + padding * 2),
     height: Math.max(fontSize * 1.2, layout.height + padding * 2),
@@ -86,7 +175,7 @@ export function layoutNativeMath(latex: string, displayMode: boolean, fontSize: 
 }
 
 export function renderNativeMathSvg(object: NativeMathObject): string {
-  const layout = layoutNativeMath(object.latex, object.displayMode, object.fontSize);
+  const layout = layoutNativeMath(object.latex, object.displayMode, object.fontSize, object.nativeMetrics);
   const body = layout.nodes.map((node) => {
     if (node.type === "rule") {
       return `<rect x="${round(object.x + node.x)}" y="${round(object.y + node.y)}" width="${round(node.width)}" height="${round(node.height)}" fill="${escapeXml(object.color)}" />`;
@@ -111,23 +200,23 @@ type Box = {
   nodes: NativeNode[];
 };
 
-function layoutSequence(input: string, fontSize: number, displayMode: boolean): Box {
+function layoutSequence(input: string, fontSize: number, displayMode: boolean, metrics: NativeMathMetrics): Box {
   const nodes: NativeNode[] = [];
   let x = 0;
   let lastAtom: { x: number; width: number; scriptAdvance: number } | undefined;
   let maxTop = fontSize * 0.9;
   let maxBottom = fontSize * 0.3;
-  const glyphGap = displayMode ? 0 : fontSize * 0.03;
+  const glyphGap = fontSize * (displayMode ? metrics.displayGlyphGap : metrics.inlineGlyphGap);
 
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index];
     if (char === "{" || char === "}") continue;
     if (char === "^" || char === "_") {
       const script = readArgument(input, index + 1);
-      const scriptBox = layoutSequence(script.value, fontSize * 0.68, false);
-      const scriptBaseline = char === "^" ? -fontSize * 0.32 : fontSize * 0.28;
+      const scriptBox = layoutSequence(script.value, fontSize * metrics.scriptScale, false, metrics);
+      const scriptBaseline = fontSize * (char === "^" ? metrics.superscriptBaseline : metrics.subscriptBaseline);
       const yShift = scriptBaseline - scriptBox.baseline;
-      const scriptGap = fontSize * 0.06;
+      const scriptGap = fontSize * metrics.scriptGap;
       const anchor = lastAtom ? lastAtom.x + lastAtom.width + scriptGap : x;
       nodes.push(...translateNodes(scriptBox.nodes, anchor, yShift));
       const neededAdvance = Math.max(0, anchor + scriptBox.width - x);
@@ -145,12 +234,15 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean): 
       if (command.name === "\\frac") {
         const numerator = readArgument(input, command.end + 1);
         const denominator = readArgument(input, numerator.end + 1);
-        const frac = layoutFraction(numerator.value, denominator.value, fontSize, displayMode);
+        const frac = layoutFraction(numerator.value, denominator.value, fontSize, displayMode, metrics);
         nodes.push(...translateNodes(frac.nodes, x, -frac.baseline));
         lastAtom = { x, width: frac.width, scriptAdvance: 0 };
         x += frac.width + glyphGap;
-        maxTop = Math.max(maxTop, frac.baseline);
-        maxBottom = Math.max(maxBottom, frac.height - frac.baseline);
+        const axisOffsetDelta = displayMode
+          ? 0
+          : fontSize * (metrics.inlineFractionAxisOffset - defaultNativeMathMetrics.inlineFractionAxisOffset);
+        maxTop = Math.max(maxTop, frac.baseline - axisOffsetDelta);
+        maxBottom = Math.max(maxBottom, frac.height - frac.baseline + axisOffsetDelta);
         index = denominator.end;
         continue;
       }
@@ -159,7 +251,7 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean): 
         const body = input[command.end + 1] === "["
           ? readArgument(input, input.indexOf("]", command.end + 1) + 1)
           : readArgument(input, command.end + 1);
-        const sqrt = layoutSqrt(body.value, fontSize, displayMode);
+        const sqrt = layoutSqrt(body.value, fontSize, displayMode, metrics);
         nodes.push(...translateNodes(sqrt.nodes, x, -sqrt.baseline));
         lastAtom = { x, width: sqrt.width, scriptAdvance: 0 };
         x += sqrt.width + glyphGap;
@@ -194,41 +286,52 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean): 
 
       const text = commandGlyphs[command.name] ?? unsupported(command.name);
       const isUnsupported = !commandGlyphs[command.name];
-      const style = { color: isUnsupported ? "#b42318" : undefined, italic: !isOperatorText(text) };
-      x += operatorLeftMargin(text, fontSize);
+      const style = {
+        color: isUnsupported ? "#b42318" : undefined,
+        italic: !uprightCommandGlyphs.has(command.name) && !isOperatorText(text)
+      };
+      x += operatorLeftMargin(text, fontSize, metrics);
       nodes.push(glyph(text, x, 0, fontSize, style));
       const width = measureGlyphWidth(text, fontSize, style);
       lastAtom = { x, width, scriptAdvance: 0 };
-      x += width + operatorRightMargin(text, fontSize) + glyphGap;
-      index = command.end;
+      x += width + operatorRightMargin(text, fontSize, metrics) + glyphGap;
+      index = skipIgnoredCommandSpaces(input, command.name, command.end);
       continue;
     }
 
-    const text = char === "\n" ? " " : char;
+    if (char === " ") continue;
+
+    const text = normalizeMathGlyph(char === "\n" ? " " : char);
     const style = { italic: shouldItalicize(text) };
-    x += operatorLeftMargin(text, fontSize);
+    x += operatorLeftMargin(text, fontSize, metrics);
     nodes.push(glyph(text, x, 0, fontSize, style));
     const width = measureGlyphWidth(text, fontSize, style);
     lastAtom = { x, width, scriptAdvance: 0 };
-    x += width + operatorRightMargin(text, fontSize) + glyphGap;
+    x += width + operatorRightMargin(text, fontSize, metrics) + glyphGap;
   }
 
-  const baseline = maxTop;
+  const baseline = displayMode ? maxTop : fontSize * metrics.inlineBaseline;
   return {
     width: x,
-    height: maxTop + maxBottom,
+    height: Math.max(maxTop + maxBottom, baseline + maxBottom),
     baseline,
     nodes: translateNodes(nodes, 0, baseline)
   };
 }
 
-function layoutFraction(numeratorLatex: string, denominatorLatex: string, fontSize: number, displayMode: boolean): Box {
-  const childSize = fontSize * (displayMode ? 0.82 : 0.72);
-  const numerator = layoutSequence(numeratorLatex, childSize, false);
-  const denominator = layoutSequence(denominatorLatex, childSize, false);
-  const gap = fontSize * 0.22;
-  const rule = Math.max(0.6, fontSize * 0.045);
-  const width = Math.max(numerator.width, denominator.width) + fontSize * 0.55;
+function layoutFraction(
+  numeratorLatex: string,
+  denominatorLatex: string,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics
+): Box {
+  const childSize = fontSize * (displayMode ? metrics.displayFractionScale : metrics.inlineFractionScale);
+  const numerator = layoutSequence(numeratorLatex, childSize, false, metrics);
+  const denominator = layoutSequence(denominatorLatex, childSize, false, metrics);
+  const gap = fontSize * metrics.fractionGap;
+  const rule = Math.max(0.6, fontSize * metrics.fractionRuleThickness);
+  const width = Math.max(numerator.width, denominator.width) + fontSize * metrics.fractionSidePadding;
   const numeratorX = (width - numerator.width) / 2;
   const denominatorX = (width - denominator.width) / 2;
   const numeratorY = 0;
@@ -236,25 +339,25 @@ function layoutFraction(numeratorLatex: string, denominatorLatex: string, fontSi
   const denominatorY = ruleY + rule + gap;
   const height = denominatorY + denominator.height;
   const baseline = displayMode
-    ? ruleY + rule + gap + denominator.baseline * 0.45
-    : ruleY + rule / 2 + fontSize * 0.08;
+    ? ruleY + rule + gap + denominator.baseline * metrics.displayFractionDenominatorBaseline
+    : ruleY + rule / 2 + fontSize * metrics.inlineFractionAxisOffset;
   return {
     width,
     height,
     baseline,
     nodes: [
       ...translateNodes(numerator.nodes, numeratorX, numeratorY),
-      { type: "rule", x: fontSize * 0.18, y: ruleY, width: width - fontSize * 0.36, height: rule },
+      { type: "rule", x: fontSize * metrics.fractionRuleInset, y: ruleY, width: width - fontSize * metrics.fractionRuleInset * 2, height: rule },
       ...translateNodes(denominator.nodes, denominatorX, denominatorY)
     ]
   };
 }
 
-function layoutSqrt(bodyLatex: string, fontSize: number, displayMode: boolean): Box {
-  const body = layoutSequence(bodyLatex, fontSize * 0.92, displayMode);
-  const radicalWidth = fontSize * 0.72;
-  const top = fontSize * 0.12;
-  const rule = Math.max(0.6, fontSize * 0.045);
+function layoutSqrt(bodyLatex: string, fontSize: number, displayMode: boolean, metrics: NativeMathMetrics): Box {
+  const body = layoutSequence(bodyLatex, fontSize * metrics.sqrtBodyScale, displayMode, metrics);
+  const radicalWidth = fontSize * metrics.sqrtRadicalWidth;
+  const top = fontSize * metrics.sqrtTopGap;
+  const rule = Math.max(0.6, fontSize * metrics.sqrtRuleThickness);
   const height = Math.max(body.height + top + rule, fontSize * 1.35);
   const baseline = top + rule + body.baseline;
   return {
@@ -262,8 +365,8 @@ function layoutSqrt(bodyLatex: string, fontSize: number, displayMode: boolean): 
     height,
     baseline,
     nodes: [
-      glyph("√", 0, baseline, fontSize * 1.16, { italic: false }),
-      { type: "rule", x: radicalWidth * 0.72, y: top, width: body.width + fontSize * 0.12, height: rule },
+      glyph("√", 0, baseline, fontSize * metrics.sqrtGlyphScale, { italic: false }),
+      { type: "rule", x: radicalWidth * metrics.sqrtRuleStart, y: top, width: body.width + fontSize * metrics.sqrtOverbarExtra, height: rule },
       ...translateNodes(body.nodes, radicalWidth, top + rule)
     ]
   };
@@ -292,6 +395,13 @@ function readCommand(input: string, start: number): { name: string; end: number 
   const match = input.slice(start).match(/^\\[a-zA-Z]+|^\\./);
   if (!match) return { name: input[start], end: start };
   return { name: match[0], end: start + match[0].length - 1 };
+}
+
+function skipIgnoredCommandSpaces(input: string, commandName: string, commandEnd: number): number {
+  if (!/^\\[a-zA-Z]+$/.test(commandName)) return commandEnd;
+  let index = commandEnd;
+  while (input[index + 1] === " ") index += 1;
+  return index;
 }
 
 function readArgument(input: string, start: number): { value: string; end: number } {
@@ -350,19 +460,23 @@ function shouldItalicize(text: string): boolean {
   return /^[A-Za-zα-ωΑ-Ω]$/.test(text);
 }
 
-function isOperatorText(text: string): boolean {
-  return text.trim().length === 0 || /^[=+\-×≤≥→⇒∈·,(){}\[\]|0-9]+$/.test(text);
+function normalizeMathGlyph(text: string): string {
+  return text === "-" ? "−" : text;
 }
 
-function operatorLeftMargin(text: string, fontSize: number): number {
-  if (isRelationOperator(text)) return fontSize * 0.24;
-  if (isBinaryOperator(text)) return fontSize * 0.18;
+function isOperatorText(text: string): boolean {
+  return text.trim().length === 0 || /^[=+\-−×≤≥→⇒∈·,(){}\[\]|0-9]+$/.test(text);
+}
+
+function operatorLeftMargin(text: string, fontSize: number, metrics: NativeMathMetrics): number {
+  if (isRelationOperator(text)) return fontSize * metrics.relationMargin;
+  if (isBinaryOperator(text)) return fontSize * metrics.binaryMargin;
   return 0;
 }
 
-function operatorRightMargin(text: string, fontSize: number): number {
-  if (isRelationOperator(text)) return fontSize * 0.24;
-  if (isBinaryOperator(text)) return fontSize * 0.18;
+function operatorRightMargin(text: string, fontSize: number, metrics: NativeMathMetrics): number {
+  if (isRelationOperator(text)) return fontSize * metrics.relationMargin;
+  if (isBinaryOperator(text)) return fontSize * metrics.binaryMargin;
   return 0;
 }
 
@@ -371,7 +485,7 @@ function isRelationOperator(text: string): boolean {
 }
 
 function isBinaryOperator(text: string): boolean {
-  return text === "+" || text === "-" || text === "×" || text === "·";
+  return text === "+" || text === "-" || text === "−" || text === "×" || text === "·";
 }
 
 function unsupported(command: string): string {

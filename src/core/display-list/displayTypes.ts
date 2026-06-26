@@ -1,4 +1,5 @@
 import type { PageConfig } from "../layout/pageConfig";
+import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { DocumentTheme } from "../theme/themeTypes";
 
 export type DisplayTextRun = {
@@ -32,6 +33,7 @@ export type DisplayObject =
       baseline?: number;
       fontSize: number;
       color: string;
+      nativeMetrics?: NativeMathMetrics;
     }
   | {
       type: "rect";

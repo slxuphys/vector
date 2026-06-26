@@ -8,6 +8,7 @@ import type { PageConfig } from "../layout/pageConfig";
 import { normalizeAst } from "../markdown/normalizeAst";
 import { parseMarkdown } from "../markdown/parseMarkdown";
 import { defaultTheme } from "../theme/defaultTheme";
+import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
 import type { EngineOptions, MathRendererName } from "./workerProtocol";
@@ -21,6 +22,7 @@ export type PreparedLayout = {
   page: PageConfig;
   theme: DocumentTheme;
   mathRenderer: MathRendererName;
+  nativeMathMetrics?: NativeMathMetrics;
   parseMs: number;
   totalStart: number;
 };
@@ -51,8 +53,9 @@ export function prepareMarkdownLayout(markdown: string, options: EngineOptions =
   const page = createPageConfig(options.pageSize ?? "letter", options.margin ?? 72);
   const theme: DocumentTheme = { ...defaultTheme, ...(options.theme ?? {}) };
   const mathRenderer = options.mathRenderer ?? "katex-raster";
+  const nativeMathMetrics = options.nativeMathMetrics;
 
-  return { blocks, page, theme, mathRenderer, parseMs, totalStart };
+  return { blocks, page, theme, mathRenderer, nativeMathMetrics, parseMs, totalStart };
 }
 
 export function finishMarkdownLayout(
@@ -60,7 +63,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 
@@ -77,5 +80,5 @@ export function finishMarkdownLayout(
 }
 
 export function collectPreparedMathRequests(prepared: PreparedLayout) {
-  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer);
+  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics);
 }

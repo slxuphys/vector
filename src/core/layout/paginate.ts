@@ -7,7 +7,7 @@ import { breakRunsIntoLines } from "./lineBreaking";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
 import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
-import { layoutNativeMath } from "../renderers/math/nativeMath";
+import { layoutNativeMath, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMetrics";
 
 type Cursor = {
@@ -23,7 +23,8 @@ export function paginate(
   page: PageConfig,
   theme: DocumentTheme,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster"
+  mathRenderer: MathRendererName = "katex-raster",
+  nativeMathMetrics?: NativeMathMetrics
 ): DisplayPage[] {
   const pages: DisplayPage[] = [];
   const newPage = (): Cursor => {
@@ -67,19 +68,19 @@ export function paginate(
       const fontSize = headingSize(block.level, theme.fontSize);
       const before = block.level === 1 ? 4 : 10;
       const after = block.level <= 2 ? 10 : 7;
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer);
+      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics);
       ensure(before + lines.length * fontSize * 1.2 + after);
       cursor.y += before;
-      drawLines(cursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer);
+      drawLines(cursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer, nativeMathMetrics);
       cursor.y += after;
       continue;
     }
 
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer);
+      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics);
       ensure(lines.length * fontSize * theme.lineHeight + 10);
-      drawLines(cursor, lines, fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements, mathRenderer);
+      drawLines(cursor, lines, fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements, mathRenderer, nativeMathMetrics);
       cursor.y += 10;
       continue;
     }
@@ -93,14 +94,14 @@ export function paginate(
             ? `${index + 1}.`
             : "•";
         const markerWidth = 28;
-        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements, mathRenderer);
+        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics);
         ensure(lines.length * fontSize * theme.lineHeight + 4);
         cursor.page.objects.push(textObject(marker, cursor.x, cursor.y + fontSize, fontSize, theme, { color: theme.mutedText }));
         drawLines(cursor, lines, fontSize, theme, {
           color: theme.text,
           lineHeight: theme.lineHeight,
           xOffset: markerWidth
-        }, mathMeasurements, mathRenderer);
+        }, mathMeasurements, mathRenderer, nativeMathMetrics);
         cursor.y += 4;
       }
       cursor.y += 6;
@@ -140,9 +141,9 @@ export function paginate(
     }
 
     if (block.type === "math") {
-      const fontSize = theme.fontSize * 1.05;
+      const fontSize = theme.fontSize;
       const text = block.text.replace(/\s+/g, " ").trim();
-      const measured = getMeasuredMath(mathMeasurements, text, true, fontSize, mathRenderer);
+      const measured = getMeasuredMath(mathMeasurements, text, true, fontSize, mathRenderer, nativeMathMetrics);
       const width = Math.min(cursor.contentWidth, measured?.width ?? Math.max(cursor.contentWidth * 0.35, measureText(text, {
         fontSize,
         fontFamily: theme.fontFamily,
@@ -160,7 +161,8 @@ export function paginate(
         height,
         fontSize,
         color: theme.text,
-        mathRenderer
+        mathRenderer,
+        nativeMathMetrics
       });
       cursor.page.objects.push(mathObject);
       cursor.y += height + 12;
@@ -192,7 +194,8 @@ function drawLines(
   theme: DocumentTheme,
   options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number },
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster"
+  mathRenderer: MathRendererName = "katex-raster",
+  nativeMathMetrics?: NativeMathMetrics
 ) {
   for (const line of lines) {
     let x = cursor.x + (options.xOffset ?? 0);
@@ -200,7 +203,7 @@ function drawLines(
     for (const run of line.runs) {
       if (run.math) {
         const latex = run.text.trim();
-        const measured = getMeasuredMath(mathMeasurements, latex, false, fontSize, mathRenderer);
+        const measured = getMeasuredMath(mathMeasurements, latex, false, fontSize, mathRenderer, nativeMathMetrics);
         const width = measured?.width ?? measureInlineMathBoxWidth(latex, fontSize, theme);
         const advance = measured?.advance ?? measureInlineMathAdvance(latex, fontSize, theme);
         const height = measured?.height ?? fontSize * options.lineHeight;
@@ -219,7 +222,8 @@ function drawLines(
           advance,
           fontSize,
           color: run.link ? theme.link : options.color,
-          mathRenderer
+          mathRenderer,
+          nativeMathMetrics
         }));
         x += advance;
         continue;
@@ -323,6 +327,7 @@ function createMathObject(options: {
   fontSize: number;
   color: string;
   mathRenderer: MathRendererName;
+  nativeMathMetrics?: NativeMathMetrics;
 }): Extract<DisplayObject, { type: "math" }> {
   if (isMathJaxRenderer(options.mathRenderer)) {
     const artifact = getCachedMathJaxSvgArtifact(options.latex, options.displayMode, options.fontSize, options.color);
@@ -348,7 +353,7 @@ function createMathObject(options: {
   }
 
   if (options.mathRenderer === "native") {
-    const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize);
+    const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize, options.nativeMathMetrics);
     const y = options.displayMode ? options.y : options.y + options.fontSize - layout.baseline;
     return {
       type: "math",
@@ -364,7 +369,8 @@ function createMathObject(options: {
       advance: options.advance ?? layout.advance,
       baseline: layout.baseline,
       fontSize: options.fontSize,
-      color: options.color
+      color: options.color,
+      nativeMetrics: options.nativeMathMetrics
     };
   }
 

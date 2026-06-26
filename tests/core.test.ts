@@ -5,7 +5,7 @@ import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
 import { renderKatex } from "../src/core/renderers/math/renderKatex";
-import { layoutNativeMath } from "../src/core/renderers/math/nativeMath";
+import { defaultNativeMathMetrics, layoutNativeMath } from "../src/core/renderers/math/nativeMath";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 
 describe("markdown parser", () => {
@@ -160,36 +160,161 @@ describe("document engine", () => {
     }
   });
 
-  it("adds native spacing around calculation operators", () => {
+  it("uses native glyph gap for compact calculation spacing by default", () => {
     const layout = layoutNativeMath("E=mc^2", false, 12);
+    const tightLayout = layoutNativeMath("E=mc^2", false, 12, {
+      ...defaultNativeMathMetrics,
+      inlineGlyphGap: 0
+    });
     const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const tightGlyphs = tightLayout.nodes.filter((node) => node.type === "glyph");
     const e = glyphs.find((node) => node.text === "E");
     const equals = glyphs.find((node) => node.text === "=");
     const m = glyphs.find((node) => node.text === "m");
+    const tightE = tightGlyphs.find((node) => node.text === "E");
+    const tightEquals = tightGlyphs.find((node) => node.text === "=");
+    const tightM = tightGlyphs.find((node) => node.text === "m");
 
     expect(e?.type).toBe("glyph");
     expect(equals?.type).toBe("glyph");
     expect(m?.type).toBe("glyph");
-    if (e?.type === "glyph" && equals?.type === "glyph" && m?.type === "glyph") {
-      expect(equals.x - e.x).toBeGreaterThan(8);
-      expect(m.x - equals.x).toBeGreaterThan(8);
+    expect(tightE?.type).toBe("glyph");
+    expect(tightEquals?.type).toBe("glyph");
+    expect(tightM?.type).toBe("glyph");
+    if (
+      e?.type === "glyph" &&
+      equals?.type === "glyph" &&
+      m?.type === "glyph" &&
+      tightE?.type === "glyph" &&
+      tightEquals?.type === "glyph" &&
+      tightM?.type === "glyph"
+    ) {
+      expect(equals.x - e.x).toBeGreaterThan(tightEquals.x - tightE.x);
+      expect(m.x - equals.x).toBeGreaterThan(tightM.x - tightEquals.x);
     }
   });
 
-  it("keeps native inline fraction axis near the math baseline", () => {
-    const layout = layoutNativeMath("\\frac{a}{b}", false, 12);
+  it("positions native inline fraction axis from the configured math baseline", () => {
+    const fontSize = 12;
+    const layout = layoutNativeMath("\\frac{a}{b}", false, fontSize);
     const rule = layout.nodes.find((node) => node.type === "rule");
 
     expect(rule?.type).toBe("rule");
     if (rule?.type === "rule") {
       const ruleCenter = rule.y + rule.height / 2;
-      expect(Math.abs(ruleCenter - layout.baseline)).toBeLessThan(2);
+      expect(layout.baseline - ruleCenter).toBeCloseTo(
+        fontSize * defaultNativeMathMetrics.inlineFractionAxisOffset,
+        5
+      );
     }
+  });
+
+  it("does not let inline fraction axis offset move the parent math baseline", () => {
+    const defaultLayout = layoutNativeMath("x + \\frac{a}{b} = y", false, 12);
+    const tunedLayout = layoutNativeMath("x + \\frac{a}{b} = y", false, 12, {
+      ...defaultNativeMathMetrics,
+      inlineFractionAxisOffset: defaultNativeMathMetrics.inlineFractionAxisOffset + 0.16
+    });
+    const defaultX = defaultLayout.nodes.find((node) => node.type === "glyph" && node.text === "x");
+    const tunedX = tunedLayout.nodes.find((node) => node.type === "glyph" && node.text === "x");
+
+    expect(defaultLayout.baseline).toBeCloseTo(tunedLayout.baseline, 5);
+    expect(defaultX?.type).toBe("glyph");
+    expect(tunedX?.type).toBe("glyph");
+    if (defaultX?.type === "glyph" && tunedX?.type === "glyph") {
+      expect(defaultX.y).toBeCloseTo(tunedX.y, 5);
+    }
+  });
+
+  it("keeps normal glyphs on the same baseline when inline math contains a fraction", () => {
+    const standalone = layoutNativeMath("x", false, 12);
+    const mixed = layoutNativeMath("x + \\frac{a}{b} = y", false, 12);
+    const standaloneX = standalone.nodes.find((node) => node.type === "glyph" && node.text === "x");
+    const mixedX = mixed.nodes.find((node) => node.type === "glyph" && node.text === "x");
+
+    expect(standalone.baseline).toBeCloseTo(mixed.baseline, 5);
+    expect(standaloneX?.type).toBe("glyph");
+    expect(mixedX?.type).toBe("glyph");
+    if (standaloneX?.type === "glyph" && mixedX?.type === "glyph") {
+      expect(standaloneX.y).toBeCloseTo(mixedX.y, 5);
+    }
+  });
+
+  it("renders native upright operator-like commands", () => {
+    const layout = layoutNativeMath("\\nabla + \\Gamma + \\Delta = \\Omega", false, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+
+    expect(text).toContain("∇");
+    expect(text).toContain("Γ");
+    expect(text).toContain("Δ");
+    expect(text).toContain("Ω");
+    expect(text).not.toContain("⟦Gamma⟧");
+    expect(glyphs.find((node) => node.text === "∇")?.italic).toBe(false);
+    expect(glyphs.find((node) => node.text === "Γ")?.italic).toBe(false);
+    expect(glyphs.find((node) => node.text === "Δ")?.italic).toBe(false);
+    expect(glyphs.find((node) => node.text === "Ω")?.italic).toBe(false);
   });
 
   it("normalizes meaningless inline math spaces for measurement keys", () => {
     expect(normalizeMathLatex("E=   mc^2")).toBe("E=mc^2");
     expect(mathMeasureKey("E=mc^2", false, 12)).toBe(mathMeasureKey("E=   mc^2", false, 12));
+  });
+
+  it("includes native math metrics in native measurement keys", () => {
+    expect(mathMeasureKey("E=mc^2", false, 12, "native", defaultNativeMathMetrics)).not.toBe(
+      mathMeasureKey("E=mc^2", false, 12, "native", {
+        ...defaultNativeMathMetrics,
+        inlineGlyphGap: defaultNativeMathMetrics.inlineGlyphGap + 0.05
+      })
+    );
+  });
+
+  it("keeps simple native inline and display glyph spacing consistent", () => {
+    const inline = layoutNativeMath("E=md", false, 12);
+    const display = layoutNativeMath("E=md", true, 12);
+    const inlineGlyphs = inline.nodes.filter((node) => node.type === "glyph");
+    const displayGlyphs = display.nodes.filter((node) => node.type === "glyph");
+    const inlineM = inlineGlyphs.find((node) => node.text === "m");
+    const inlineD = inlineGlyphs.find((node) => node.text === "d");
+    const displayM = displayGlyphs.find((node) => node.text === "m");
+    const displayD = displayGlyphs.find((node) => node.text === "d");
+
+    expect(inlineM?.type).toBe("glyph");
+    expect(inlineD?.type).toBe("glyph");
+    expect(displayM?.type).toBe("glyph");
+    expect(displayD?.type).toBe("glyph");
+    if (inlineM?.type === "glyph" && inlineD?.type === "glyph" && displayM?.type === "glyph" && displayD?.type === "glyph") {
+      expect(inlineD.x - inlineM.x).toBeCloseTo(displayD.x - displayM.x, 5);
+    }
+  });
+
+  it("uses a real math minus glyph in native math", () => {
+    const layout = layoutNativeMath("a-b", false, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toContain("−");
+    expect(glyphs.map((node) => node.text)).not.toContain("-");
+  });
+
+  it("ignores spaces after native backslash commands", () => {
+    const spaced = layoutNativeMath("\\alpha x", false, 12);
+    const compact = layoutNativeMath("\\alpha{}x", false, 12);
+    const glyphs = spaced.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toEqual(["α", "x"]);
+    expect(spaced.width).toBeCloseTo(compact.width, 5);
+  });
+
+  it("ignores literal spaces in native math but keeps explicit spacing commands", () => {
+    const spaced = layoutNativeMath("x y", false, 12);
+    const compact = layoutNativeMath("xy", false, 12);
+    const explicit = layoutNativeMath("x\\quad y", false, 12);
+    const glyphs = spaced.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toEqual(["x", "y"]);
+    expect(spaced.width).toBeCloseTo(compact.width, 5);
+    expect(explicit.width).toBeGreaterThan(compact.width);
   });
 
 });

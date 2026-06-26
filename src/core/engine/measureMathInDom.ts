@@ -64,7 +64,7 @@ async function measureNativeMath(requests: MathMeasureRequest[]): Promise<Record
   const measurements: Record<string, MathMeasurement> = {};
   for (const request of requests) {
     await waitForKatexFonts(request.fontSize);
-    const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize);
+    const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize, request.nativeMetrics);
     measurements[request.key] = {
       width: layout.width,
       height: layout.height,
