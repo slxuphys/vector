@@ -41,6 +41,7 @@ export function renderKatexForeignObject(options: {
 <style>
 html,body{margin:0;padding:0;background:transparent;}
 .svg-md-katex{box-sizing:border-box;width:${options.width}px;height:${options.height}px;display:flex;align-items:${alignItems};justify-content:${justifyContent};overflow:hidden;color:${options.color};font-size:${options.fontSize}px;line-height:normal;}
+.svg-md-katex .katex{font-size:1em!important;}
 .svg-md-katex .katex-display{margin:0;}
 </style>
 ` : "";

@@ -218,6 +218,7 @@ function getRoot(): HTMLDivElement {
 
   const style = document.createElement("style");
   style.textContent = `${katexCssWithInlineFonts}
+.svg-md-katex-pdf-measure .katex{font-size:1em!important;}
 .svg-md-katex-pdf-measure .katex-display{margin:0;}
 `;
   root.appendChild(style);

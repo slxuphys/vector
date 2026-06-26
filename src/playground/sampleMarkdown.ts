@@ -198,7 +198,41 @@ ${chapter < 10 ? "<!-- pagebreak -->" : ""}
 
 export const longSampleMarkdown = longSections.join("\n");
 
+const hundredPageSections = Array.from({ length: 100 }, (_, index) => {
+  const page = index + 1;
+  const suite = mathSuites[index % mathSuites.length];
+  return `# Hundred Page Stress ${page}
+
+This synthetic page is designed to test scrolling, virtualized rendering, full-document layout, and PDF export across a larger Markdown document. It intentionally repeats a predictable structure while rotating through different math expressions.
+
+## Inline Checks
+
+Page ${page} includes inline math such as $E = mc^2$, $x_${page}^2 + y_${page}^2 = r^2$, $\\lambda_1 \\le \\lambda_2$, and $\\vec{v}_${page}$ inside ordinary prose. The text around the formulas should stay close and share a stable baseline.
+
+## Rotating Math Suite
+
+${suite}
+
+## Table
+
+| Page | Renderer focus | Expected behavior |
+| --- | --- | --- |
+| ${page} | Layout | Page objects stay stable |
+| ${page} | Preview | Only nearby SVG pages render |
+| ${page} | PDF | Export uses current display list |
+
+## Paragraph
+
+The rest of this page is plain prose so the stress test is not only equations. A large document needs predictable typography, stable scrolling, and quick edits even when most pages are off screen. This section gives the line breaker and paginator enough ordinary text to exercise common note-taking and report-writing workflows.
+
+${page < 100 ? "<!-- pagebreak -->" : ""}
+`;
+});
+
+export const hundredPageSampleMarkdown = hundredPageSections.join("\n");
+
 export const playgroundSamples = {
   short: sampleMarkdown,
-  long: longSampleMarkdown
+  long: longSampleMarkdown,
+  hundred: hundredPageSampleMarkdown
 } as const;

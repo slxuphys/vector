@@ -28,6 +28,16 @@ test("switches to the long example", async ({ page }) => {
   await expect.poll(async () => page.locator("svg.svg-md-page-svg").count()).toBeLessThan(10);
 });
 
+test("switches to the 100 page stress example", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Example").selectOption("hundred");
+  await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 30000 });
+  await expect.poll(async () => {
+    return page.locator(".svg-md-preview").evaluate((element) => Number(element.getAttribute("data-page-count")));
+  }, { timeout: 30000 }).toBeGreaterThanOrEqual(100);
+  await expect.poll(async () => page.locator("svg.svg-md-page-svg").count()).toBeLessThan(10);
+});
+
 test("switches main text to TeX font", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Font").selectOption("tex");

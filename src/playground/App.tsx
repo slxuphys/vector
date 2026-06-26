@@ -40,6 +40,7 @@ export function App() {
             <select value={sample} onChange={(event) => setSample(event.target.value as keyof typeof playgroundSamples)}>
               <option value="short">Short</option>
               <option value="long">Long</option>
+              <option value="hundred">100 pages</option>
             </select>
           </label>
           <label>

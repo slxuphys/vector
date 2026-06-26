@@ -54,8 +54,27 @@ export function selectPdfTextFont(object: TextObject, fonts: PdfFontSet): PDFFon
   return family.regular;
 }
 
+export function selectPdfTextFontFallbacks(object: TextObject, fonts: PdfFontSet): PDFFont[] {
+  const selected = selectPdfTextFont(object, fonts);
+  const fallbacks = [selected];
+
+  if (fonts.tex) {
+    const texFont = selectTexTextFont(object, fonts.tex);
+    if (texFont !== selected) fallbacks.push(texFont);
+  }
+
+  return fallbacks;
+}
+
 function isTexFont(fontFamily: string): boolean {
   return fontFamily.includes("KaTeX_Main");
+}
+
+function selectTexTextFont(object: TextObject, fonts: NonNullable<PdfFontSet["tex"]>): PDFFont {
+  if (object.bold && object.italic) return fonts.boldItalic;
+  if (object.bold) return fonts.bold;
+  if (object.italic) return fonts.italic;
+  return fonts.regular;
 }
 
 async function loadTexFonts(pdf: PDFDocument): Promise<PdfFontSet["tex"]> {

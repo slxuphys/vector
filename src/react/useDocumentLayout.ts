@@ -111,9 +111,24 @@ async function layoutWithPremeasuredMath(
   measurements: MathMeasurementMap;
   result?: { layout: PagedDisplayList; stats: PreviewStats };
 }> {
+  await waitForTextFonts(options);
   const prepared = prepareMarkdownLayout(markdown, options);
   const requests = collectPreparedMathRequests(prepared);
   const measurements = await measureMathInDom(requests, prepared.mathRenderer);
   const result = deferFinish ? undefined : finishMarkdownLayout(prepared, measurements);
   return { prepared, measurements, result };
+}
+
+async function waitForTextFonts(options: EngineOptions): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  const fontFamily = options.theme?.fontFamily;
+  if (!fontFamily?.includes("KaTeX_Main")) return;
+  await Promise.race([
+    Promise.allSettled([
+      document.fonts.load(`12px "KaTeX_Main"`),
+      document.fonts.load(`700 28px "KaTeX_Main"`),
+      document.fonts.load(`700 22px "KaTeX_Main"`)
+    ]),
+    new Promise((resolve) => window.setTimeout(resolve, 150))
+  ]);
 }

@@ -149,6 +149,7 @@ export function paginate(
         italic: true
       }) * 1.15));
       const height = measured?.height ?? fontSize * 3.2;
+      ensure(height + 10);
       const mathObject = createMathObject({
         latex: text,
         displayMode: true,
@@ -160,7 +161,6 @@ export function paginate(
         color: theme.text,
         mathRenderer
       });
-      ensure(height + 10);
       cursor.page.objects.push(mathObject);
       cursor.y += height + 12;
       continue;

@@ -221,3 +221,60 @@ button:disabled {
     border-bottom: 1px solid #cbd5df;
   }
 }
+
+@media print {
+  @page {
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root,
+  .app,
+  .svg-md-shell,
+  .svg-md-workspace,
+  .svg-md-preview-pane {
+    width: auto;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    background: #ffffff;
+  }
+
+  body {
+    color: #172033;
+  }
+
+  .app-header,
+  .svg-md-toolbar,
+  .svg-md-editor,
+  .svg-md-page-placeholder,
+  .svg-md-error {
+    display: none;
+  }
+
+  .svg-md-workspace {
+    display: block;
+  }
+
+  .svg-md-preview-pane {
+    display: block;
+  }
+
+  .svg-md-preview {
+    display: block;
+    padding: 0;
+  }
+
+  .svg-md-page {
+    margin: 0;
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .svg-md-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

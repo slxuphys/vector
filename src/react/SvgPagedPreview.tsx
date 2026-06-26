@@ -8,6 +8,7 @@ export type SvgPagedPreviewProps = {
   zoom?: number | "fit-width";
   currentPage?: number;
   overscanPages?: number;
+  renderAllPages?: boolean;
   timing?: CompletedPreviewUpdateTiming;
 };
 
@@ -16,11 +17,12 @@ export function SvgPagedPreview({
   zoom = 1,
   currentPage,
   overscanPages = 2,
+  renderAllPages = false,
   timing
 }: SvgPagedPreviewProps) {
   const numericZoom = zoom === "fit-width" ? 1 : zoom;
-  const start = currentPage === undefined ? 0 : Math.max(0, currentPage - overscanPages);
-  const end = currentPage === undefined
+  const start = renderAllPages || currentPage === undefined ? 0 : Math.max(0, currentPage - overscanPages);
+  const end = renderAllPages || currentPage === undefined
     ? layout.pages.length
     : Math.min(layout.pages.length, currentPage + overscanPages + 1);
   const renderIdRef = useRef(0);

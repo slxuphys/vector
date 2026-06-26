@@ -1,7 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import type { PagedDisplayList } from "../../display-list/displayTypes";
 import { now } from "../../utils/timing";
-import { loadPdfFonts, selectPdfTextFont } from "./pdfFonts";
+import { loadPdfFonts, selectPdfTextFontFallbacks } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
 import { drawPdfKatexDomGlyphs } from "./pdfKatexDom";
@@ -50,7 +50,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     for (const object of displayPage.objects) {
       if (object.type === "text") {
         objectCounts.text += 1;
-        drawPdfText(page, object, selectPdfTextFont(object, fonts), displayPage.height);
+        drawPdfText(page, object, selectPdfTextFontFallbacks(object, fonts), displayPage.height);
       } else if (object.type === "math") {
         objectCounts.math += 1;
         let drewArtifact = false;

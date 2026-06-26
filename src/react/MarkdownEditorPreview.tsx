@@ -25,6 +25,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
   const [currentPage, setCurrentPage] = useState(0);
   const [pdfPending, setPdfPending] = useState(false);
   const [experimentalVectorMath, setExperimentalVectorMath] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const previewUpdateRef = useRef<number | undefined>(undefined);
@@ -116,6 +117,22 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
     };
   }, [experimentalVectorMath, layoutState.layout, usingMathJax, usingKatexGlyph]);
 
+  useEffect(() => {
+    const printQuery = window.matchMedia("print");
+    const handleBeforePrint = () => setPrinting(true);
+    const handleAfterPrint = () => setPrinting(false);
+    const handlePrintQuery = (event: MediaQueryListEvent) => setPrinting(event.matches);
+
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("afterprint", handleAfterPrint);
+    printQuery.addEventListener("change", handlePrintQuery);
+    return () => {
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("afterprint", handleAfterPrint);
+      printQuery.removeEventListener("change", handlePrintQuery);
+    };
+  }, []);
+
   const handleDownloadPdf = () => {
     const layout = layoutState.layout;
     if (!layout || pdfPending) return;
@@ -168,9 +185,10 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {} }: Ma
           {layoutState.layout ? (
             <SvgPagedPreview
               layout={layoutState.layout}
-              zoom={zoom}
+              zoom={printing ? 1 : zoom}
               currentPage={currentPage}
               overscanPages={2}
+              renderAllPages={printing}
               timing={layoutState.timing}
             />
           ) : null}

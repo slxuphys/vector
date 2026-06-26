@@ -104,6 +104,7 @@ function getRoot(): HTMLDivElement {
 
   const style = document.createElement("style");
   style.textContent = `${katexCssWithInlineFonts}
+.svg-md-katex-measure .katex{font-size:1em!important;}
 .svg-md-katex-measure .katex-display{margin:0;}
 .svg-md-katex-measure .svg-md-baseline-marker{display:inline-block;width:0;height:0;padding:0;margin:0;border:0;vertical-align:baseline;}
 `;

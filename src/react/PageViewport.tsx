@@ -12,6 +12,7 @@ export function PageViewport({ page, zoom }: PageViewportProps) {
     const rendered = renderPageToSvg(page, { className: "svg-md-page-svg" });
     return rendered;
   }, [page]);
+
   return (
     <div
       className="svg-md-page"
