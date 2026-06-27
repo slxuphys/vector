@@ -167,6 +167,12 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
   {
     title: "Operators",
     controls: [
+      { key: "displayLargeOperatorSuperscriptBaseline", label: "Large op sup baseline", min: -1.4, max: -0.2, step: 0.01 },
+      { key: "displayLargeOperatorSubscriptBaseline", label: "Large op sub baseline", min: 0.2, max: 1.2, step: 0.01 },
+      { key: "displayLargeOperatorSuperscriptGap", label: "Large op sup gap", min: 0, max: 1, step: 0.01 },
+      { key: "displayLargeOperatorSubscriptGap", label: "Large op sub gap", min: 0, max: 1, step: 0.01 },
+      { key: "displayLimitOperatorSuperscriptBaseline", label: "Limit op sup baseline", min: -1.4, max: -0.2, step: 0.01 },
+      { key: "displayLimitOperatorSubscriptBaseline", label: "Limit op sub baseline", min: 0.2, max: 1.2, step: 0.01 },
       { key: "relationMargin", label: "Relation margin", min: 0, max: 0.5, step: 0.01 },
       { key: "binaryMargin", label: "Binary margin", min: 0, max: 0.5, step: 0.01 }
     ]
