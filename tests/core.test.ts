@@ -414,6 +414,25 @@ describe("document engine", () => {
     }
   });
 
+  it("centers native display lim subscripts below the operator", () => {
+    const layout = layoutNativeMath("\\lim_{x\\to0} f(x)", true, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const lim = glyphs.find((node) => node.text === "lim");
+    const subX = glyphs.find((node) => node.text === "x");
+    const f = glyphs.find((node) => node.text === "f");
+
+    expect(lim?.type).toBe("glyph");
+    expect(subX?.type).toBe("glyph");
+    expect(f?.type).toBe("glyph");
+    if (lim?.type === "glyph" && subX?.type === "glyph" && f?.type === "glyph") {
+      expect(subX.y).toBeGreaterThan(lim.y);
+      expect(subX.x).toBeGreaterThanOrEqual(lim.x - lim.fontSize * 0.4);
+      expect(subX.x).toBeLessThanOrEqual(lim.x + lim.fontSize * 1.4);
+      expect(f.x).toBeGreaterThan(lim.x);
+      expect(f.x).toBeGreaterThan(subX.x);
+    }
+  });
+
   it("allows native display sum and product limit placement to be tuned", () => {
     const normal = layoutNativeMath("\\sum_i^n", true, 12);
     const tuned = layoutNativeMath("\\sum_i^n", true, 12, {
@@ -644,6 +663,21 @@ describe("document engine", () => {
       expect(tallPaths[1].strokeWidth).toBeCloseTo(simplePaths[1].strokeWidth, 5);
       expect(tallPaths[2].strokeWidth).toBeCloseTo(simplePaths[2].strokeWidth, 5);
     }
+  });
+
+  it("renders native accents from actual body boxes", () => {
+    const accented = layoutNativeMath("\\hat{x} + \\bar{x} + \\vec{x} + \\dot{x} + \\ddot{x}", false, 12);
+    const simple = layoutNativeMath("\\hat{x}", false, 12);
+    const tall = layoutNativeMath("\\hat{x^2}", false, 12);
+    const paths = accented.nodes.filter((node) => node.type === "path");
+    const rules = accented.nodes.filter((node) => node.type === "rule");
+    const glyphs = accented.nodes.filter((node) => node.type === "glyph");
+
+    expect(paths.length).toBeGreaterThan(0);
+    expect(rules.length).toBeGreaterThan(0);
+    expect(glyphs.map((node) => node.text)).not.toContain("⟦hat⟧");
+    expect(glyphs.map((node) => node.text)).not.toContain("⟦vec⟧");
+    expect(tall.height).toBeGreaterThan(simple.height);
   });
 
 });

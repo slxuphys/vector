@@ -65,7 +65,6 @@ export type NativeMathMetrics = {
   sqrtRadicalWidth: number;
   sqrtTopGap: number;
   sqrtRuleThickness: number;
-  sqrtGlyphScale: number;
   sqrtRuleStart: number;
   sqrtOverbarExtra: number;
   displayLargeOperatorSuperscriptBaseline: number;
@@ -98,9 +97,8 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   inlineFractionAxisOffset: 0.3,
   sqrtBodyScale: 1,
   sqrtRadicalWidth: 0.8,
-  sqrtTopGap: 0.12,
+  sqrtTopGap: 0.08,
   sqrtRuleThickness: 0.045,
-  sqrtGlyphScale: 1.16,
   sqrtRuleStart: 0.98,
   sqrtOverbarExtra: 0.12,
   displayLargeOperatorSuperscriptBaseline: -1.24,
@@ -122,8 +120,6 @@ type GlyphStyle = {
 const regularMathFontFamily = "KaTeX_Main, Times New Roman, serif";
 const italicMathFontFamily = "KaTeX_Math, KaTeX_Main, Times New Roman, serif";
 const largeOperatorFontFamily = "KaTeX_Size2, KaTeX_Size1, KaTeX_Main, Times New Roman, serif";
-const displayLargeOperatorTop = 1.25;
-const displayLargeOperatorBottom = 0.45;
 
 let measureCanvas: HTMLCanvasElement | undefined;
 let measureContext: CanvasRenderingContext2D | undefined | null;
@@ -197,6 +193,8 @@ const uprightCommandGlyphs = new Set([
 ]);
 
 const displayLargeOperatorCommands = new Set(["\\int", "\\sum", "\\prod"]);
+const displayLimitOperatorCommands = new Set(["\\sum", "\\prod", "\\lim"]);
+const accentCommands = new Set(["\\bar", "\\hat", "\\tilde", "\\vec", "\\dot", "\\ddot"]);
 
 export function layoutNativeMath(
   latex: string,
@@ -261,8 +259,8 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
   const nodes: NativeNode[] = [];
   let x = 0;
   let lastAtom: LastAtom | undefined;
-  let maxTop = fontSize * 0.9;
-  let maxBottom = fontSize * 0.3;
+  let maxTop = 0;
+  let maxBottom = 0;
   const glyphGap = fontSize * (displayMode ? metrics.displayGlyphGap : metrics.inlineGlyphGap);
 
   for (let index = 0; index < input.length; index += 1) {
@@ -275,7 +273,7 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
       const yShift = scriptBaseline - scriptBox.baseline;
       const anchor = getScriptAnchor(char, x, scriptBox.width, fontSize, metrics, lastAtom);
       nodes.push(...translateNodes(scriptBox.nodes, anchor, yShift));
-      const neededAdvance = getScriptAdvance(x, anchor, scriptBox.width, fontSize, displayMode, metrics, lastAtom);
+      const neededAdvance = getScriptAdvance(x, anchor, scriptBox.width, lastAtom);
       x += Math.max(0, neededAdvance - (lastAtom?.scriptAdvance ?? 0));
       if (lastAtom) lastAtom.scriptAdvance = Math.max(lastAtom.scriptAdvance, neededAdvance);
       else lastAtom = { x: anchor, width: scriptBox.width, scriptAdvance: 0 };
@@ -317,12 +315,27 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
         continue;
       }
 
+      if (accentCommands.has(command.name)) {
+        const body = readArgument(input, command.end + 1);
+        const accent = layoutAccent(command.name, body.value, fontSize, displayMode, metrics);
+        nodes.push(...translateNodes(accent.nodes, x, -accent.baseline));
+        lastAtom = { x, width: accent.width, scriptAdvance: 0 };
+        x += accent.width + glyphGap;
+        maxTop = Math.max(maxTop, accent.ascent);
+        maxBottom = Math.max(maxBottom, accent.descent);
+        index = body.end;
+        continue;
+      }
+
       if (command.name === "\\mathbf") {
         const body = readArgument(input, command.end + 1);
         const text = body.value.replace(/[{}]/g, "");
         const style = { bold: true, italic: false };
         nodes.push(glyph(text, x, 0, fontSize, style));
         const width = measureGlyphWidth(text, fontSize, style);
+        const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
+        maxTop = Math.max(maxTop, verticalMetrics.ascent);
+        maxBottom = Math.max(maxBottom, verticalMetrics.descent);
         lastAtom = { x, width, scriptAdvance: 0 };
         x += width + glyphGap;
         index = body.end;
@@ -334,6 +347,9 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
         const style = { color: "#b42318", italic: false };
         nodes.push(glyph(marker, x, 0, fontSize * 0.86, style));
         const width = measureGlyphWidth(marker, fontSize * 0.86, style);
+        const verticalMetrics = measureGlyphVerticalMetrics(marker, fontSize * 0.86, style);
+        maxTop = Math.max(maxTop, verticalMetrics.ascent);
+        maxBottom = Math.max(maxBottom, verticalMetrics.descent);
         lastAtom = { x, width, scriptAdvance: 0 };
         x += width + glyphGap;
         index = command.end;
@@ -344,7 +360,7 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
       const isUnsupported = !commandGlyphs[command.name];
       const isDisplayLargeOperator = displayMode && displayLargeOperatorCommands.has(command.name);
       const isDisplayIntegralOperator = isDisplayLargeOperator && command.name === "\\int";
-      const isDisplayLimitOperator = isDisplayLargeOperator && command.name !== "\\int";
+      const isDisplayLimitOperator = displayMode && displayLimitOperatorCommands.has(command.name);
       const glyphFontSize = fontSize;
       const style = {
         fontFamily: isDisplayLargeOperator ? largeOperatorFontFamily : undefined,
@@ -354,6 +370,7 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
       x += operatorLeftMargin(text, fontSize, metrics);
       nodes.push(glyph(text, x, 0, glyphFontSize, style));
       const width = measureGlyphLayoutWidth(text, glyphFontSize, style, isDisplayLimitOperator);
+      const verticalMetrics = measureGlyphVerticalMetrics(text, glyphFontSize, style);
       lastAtom = {
         x,
         width,
@@ -362,8 +379,8 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
         displayLimitOperator: isDisplayLimitOperator
       };
       x += width + operatorRightMargin(text, fontSize, metrics) + glyphGap;
-      maxTop = Math.max(maxTop, glyphFontSize * (isDisplayLargeOperator ? displayLargeOperatorTop : 0.9));
-      maxBottom = Math.max(maxBottom, glyphFontSize * (isDisplayLargeOperator ? displayLargeOperatorBottom : 0.3));
+      maxTop = Math.max(maxTop, verticalMetrics.ascent);
+      maxBottom = Math.max(maxBottom, verticalMetrics.descent);
       index = skipIgnoredCommandSpaces(input, command.name, command.end);
       continue;
     }
@@ -375,11 +392,18 @@ function layoutSequence(input: string, fontSize: number, displayMode: boolean, m
     x += operatorLeftMargin(text, fontSize, metrics);
     nodes.push(glyph(text, x, 0, fontSize, style));
     const width = measureGlyphWidth(text, fontSize, style);
+    const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
     lastAtom = { x, width, scriptAdvance: 0 };
     x += width + operatorRightMargin(text, fontSize, metrics) + glyphGap;
+    maxTop = Math.max(maxTop, verticalMetrics.ascent);
+    maxBottom = Math.max(maxBottom, verticalMetrics.descent);
   }
 
-  const baseline = displayMode ? maxTop : fontSize * metrics.inlineBaseline;
+  if (maxTop === 0 && maxBottom === 0) {
+    maxTop = fontSize * 0.9;
+    maxBottom = fontSize * 0.3;
+  }
+  const baseline = maxTop;
   const height = Math.max(maxTop + maxBottom, baseline + maxBottom);
   return {
     width: x,
@@ -440,9 +464,6 @@ function getScriptAdvance(
   cursorX: number,
   scriptX: number,
   scriptWidth: number,
-  fontSize: number,
-  displayMode: boolean,
-  metrics: NativeMathMetrics,
   lastAtom: LastAtom | undefined
 ): number {
   if (!lastAtom) return Math.max(0, scriptX + scriptWidth - cursorX);
@@ -493,20 +514,21 @@ function layoutFraction(
 
 function layoutSqrt(bodyLatex: string, fontSize: number, displayMode: boolean, metrics: NativeMathMetrics): Box {
   const body = layoutSequence(bodyLatex, fontSize * metrics.sqrtBodyScale, displayMode, metrics);
-  const radicalWidth = fontSize * metrics.sqrtRadicalWidth;
-  const top = Math.max(fontSize * metrics.sqrtTopGap, body.ascent * metrics.sqrtTopGap);
+  const radicalHeight = Math.max(fontSize * 1.35, body.height);
+  const radicalWidth = Math.max(fontSize * metrics.sqrtRadicalWidth, radicalHeight * metrics.sqrtRadicalWidth * 0.55);
+  const barBodyGap = fontSize * metrics.sqrtTopGap;
   const rule = Math.max(0.6, Math.max(fontSize, body.height) * metrics.sqrtRuleThickness);
   const radicalStroke = Math.max(0.6, fontSize * metrics.sqrtRuleThickness);
-  const ruleY = top;
-  const bodyY = ruleY + rule;
+  const ruleY = 0;
+  const bodyY = ruleY + rule + barBodyGap;
   const height = Math.max(bodyY + body.height, fontSize * 1.35);
   const baseline = bodyY + body.baseline;
   const ascent = baseline;
   const descent = Math.max(0, height - baseline);
   const ruleX = radicalWidth * metrics.sqrtRuleStart;
   const radicalBottom = Math.min(height - rule * 0.5, bodyY + body.height - rule * 0.5);
-  const radicalKneeY = radicalBottom - fontSize * 0.12;
-  const tickY = Math.max(ruleY + rule / 2, baseline - fontSize * 0.22);
+  const radicalKneeY = radicalBottom - radicalHeight * 0.09;
+  const tickY = Math.max(ruleY + rule / 2, radicalBottom - radicalHeight * 0.42);
   return {
     width: radicalWidth + body.width + fontSize * 0.18,
     height,
@@ -515,13 +537,84 @@ function layoutSqrt(bodyLatex: string, fontSize: number, displayMode: boolean, m
     descent,
     nodes: [
       ...radicalSegments([
-        [0, tickY + fontSize * 0.2],
+        [0, tickY + radicalHeight * 0.15],
         [radicalWidth * 0.16, tickY],
         [radicalWidth * 0.56, radicalKneeY],
         [ruleX, ruleY + rule / 2]
       ], radicalStroke),
       { type: "rule", x: ruleX, y: ruleY, width: body.width + fontSize * metrics.sqrtOverbarExtra, height: rule },
       ...translateNodes(body.nodes, radicalWidth, bodyY)
+    ]
+  };
+}
+
+function layoutAccent(
+  command: string,
+  bodyLatex: string,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics
+): Box {
+  const body = layoutSequence(bodyLatex, fontSize, displayMode, metrics);
+  const stroke = Math.max(0.55, fontSize * 0.045);
+  const gap = Math.max(0.5, body.height * 0.08);
+  const accentHeight = Math.max(fontSize * 0.22, body.height * 0.18);
+  const bodyY = accentHeight + gap;
+  const baseline = bodyY + body.baseline;
+  const width = Math.max(body.width, fontSize * 0.42);
+  const bodyX = (width - body.width) / 2;
+  const accentWidth = Math.min(width, Math.max(fontSize * 0.24, body.width * 0.58));
+  const accentX = (width - accentWidth) / 2;
+  const centerX = width / 2;
+  const accentY = accentHeight * 0.52;
+  const nodes: NativeNode[] = [];
+
+  if (command === "\\bar") {
+    nodes.push({ type: "rule", x: accentX, y: accentY, width: accentWidth, height: stroke });
+  } else if (command === "\\hat") {
+    nodes.push(radicalPath([
+      [accentX, accentY + accentHeight * 0.35],
+      [centerX, accentY - accentHeight * 0.25],
+      [accentX + accentWidth, accentY + accentHeight * 0.35]
+    ], stroke));
+  } else if (command === "\\tilde") {
+    const tildeX = accentX - accentWidth * 0.08;
+    nodes.push(radicalPath([
+      [tildeX, accentY],
+      [tildeX + accentWidth * 0.28, accentY - accentHeight * 0.32],
+      [tildeX + accentWidth * 0.58, accentY + accentHeight * 0.28],
+      [tildeX + accentWidth, accentY]
+    ], stroke));
+  } else if (command === "\\vec") {
+    const y = accentY;
+    nodes.push(radicalPath([
+      [accentX, y],
+      [accentX + accentWidth, y]
+    ], stroke));
+    nodes.push(radicalPath([
+      [accentX + accentWidth - accentHeight * 0.34, y - accentHeight * 0.22],
+      [accentX + accentWidth, y],
+      [accentX + accentWidth - accentHeight * 0.34, y + accentHeight * 0.22]
+    ], stroke));
+  } else if (command === "\\dot" || command === "\\ddot") {
+    const dotSize = Math.max(1.1, fontSize * 0.11);
+    const firstX = command === "\\ddot" ? centerX - dotSize * 1.3 : centerX - dotSize / 2;
+    const secondX = centerX + dotSize * 0.8;
+    nodes.push({ type: "rule", x: firstX, y: accentY - dotSize / 2, width: dotSize, height: dotSize });
+    if (command === "\\ddot") {
+      nodes.push({ type: "rule", x: secondX, y: accentY - dotSize / 2, width: dotSize, height: dotSize });
+    }
+  }
+
+  return {
+    width,
+    height: bodyY + body.height,
+    baseline,
+    ascent: baseline,
+    descent: Math.max(0, body.height - body.baseline),
+    nodes: [
+      ...nodes,
+      ...translateNodes(body.nodes, bodyX, bodyY)
     ]
   };
 }
@@ -685,6 +778,20 @@ function measureGlyphLayoutWidth(
   const canvasMetrics = measureGlyphCanvasMetrics(text, fontSize, style);
   if (!canvasMetrics) return advanceWidth;
   return Math.max(advanceWidth, canvasMetrics.actualRight);
+}
+
+function measureGlyphVerticalMetrics(
+  text: string,
+  fontSize: number,
+  style: GlyphStyle
+): { ascent: number; descent: number } {
+  const canvasMetrics = measureGlyphCanvasMetrics(text, fontSize, style);
+  if (!canvasMetrics) return { ascent: fontSize * 0.9, descent: fontSize * 0.3 };
+
+  return {
+    ascent: canvasMetrics.actualAscent || fontSize * 0.9,
+    descent: canvasMetrics.actualDescent || fontSize * 0.3
+  };
 }
 
 function measureGlyphWidthInCanvas(text: string, fontSize: number, style: GlyphStyle): number | undefined {

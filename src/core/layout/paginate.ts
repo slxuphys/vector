@@ -354,7 +354,7 @@ function createMathObject(options: {
 
   if (options.mathRenderer === "native") {
     const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize, options.nativeMathMetrics);
-    const y = options.displayMode ? options.y : options.y + options.fontSize - layout.baseline;
+    const y = options.displayMode ? options.y : options.y;
     return {
       type: "math",
       renderer: options.mathRenderer,

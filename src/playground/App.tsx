@@ -157,9 +157,8 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
     controls: [
       { key: "sqrtBodyScale", label: "Body scale", min: 0.5, max: 1.2, step: 0.01 },
       { key: "sqrtRadicalWidth", label: "Radical width", min: 0.3, max: 1.2, step: 0.01 },
-      { key: "sqrtTopGap", label: "Top gap", min: 0, max: 0.4, step: 0.01 },
+      { key: "sqrtTopGap", label: "Bar-body gap", min: 0, max: 0.3, step: 0.005 },
       { key: "sqrtRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005 },
-      { key: "sqrtGlyphScale", label: "Glyph scale", min: 0.7, max: 1.8, step: 0.01 },
       { key: "sqrtRuleStart", label: "Rule start", min: 0.2, max: 1.1, step: 0.01 },
       { key: "sqrtOverbarExtra", label: "Overbar extra", min: 0, max: 0.5, step: 0.01 }
     ]
