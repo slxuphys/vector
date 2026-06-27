@@ -1,5 +1,6 @@
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { escapeXml } from "../../utils/sanitize";
+import { getNativeGlyphMetrics, type NativeFontRole } from "./nativeFontMetrics";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -121,8 +122,6 @@ const regularMathFontFamily = "KaTeX_Main, Times New Roman, serif";
 const italicMathFontFamily = "KaTeX_Math, KaTeX_Main, Times New Roman, serif";
 const largeOperatorFontFamily = "KaTeX_Size2, KaTeX_Size1, KaTeX_Main, Times New Roman, serif";
 
-let measureCanvas: HTMLCanvasElement | undefined;
-let measureContext: CanvasRenderingContext2D | undefined | null;
 const glyphWidthCache = new Map<string, number>();
 
 const commandGlyphs: Record<string, string> = {
@@ -711,7 +710,7 @@ function logNativeMathParse(
           italic: node.italic,
           bold: node.bold
         };
-        const canvasMetrics = measureGlyphCanvasMetrics(node.text, node.fontSize, style);
+        const fontMetrics = measureGlyphFontMetrics(node.text, node.fontSize, style);
         return {
           type: node.type,
           text: node.text,
@@ -725,11 +724,11 @@ function logNativeMathParse(
             style,
             node.fontFamily === largeOperatorFontFamily && (node.text === "∑" || node.text === "∏")
           )),
-          actualLeft: canvasMetrics ? roundNumber(canvasMetrics.actualLeft) : undefined,
-          actualRight: canvasMetrics ? roundNumber(canvasMetrics.actualRight) : undefined,
-          actualAscent: canvasMetrics ? roundNumber(canvasMetrics.actualAscent) : undefined,
-          actualDescent: canvasMetrics ? roundNumber(canvasMetrics.actualDescent) : undefined,
-          actualWidth: canvasMetrics ? roundNumber(canvasMetrics.actualWidth) : undefined,
+          actualLeft: fontMetrics ? roundNumber(fontMetrics.actualLeft) : undefined,
+          actualRight: fontMetrics ? roundNumber(fontMetrics.actualRight) : undefined,
+          actualAscent: fontMetrics ? roundNumber(fontMetrics.actualAscent) : undefined,
+          actualDescent: fontMetrics ? roundNumber(fontMetrics.actualDescent) : undefined,
+          actualWidth: fontMetrics ? roundNumber(fontMetrics.actualWidth) : undefined,
           layoutHeight: roundNumber(node.fontSize * 1.2),
           fontFamily: node.fontFamily,
           italic: node.italic,
@@ -761,9 +760,12 @@ function measureGlyphWidth(text: string, fontSize: number, style: GlyphStyle = {
   const cached = glyphWidthCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
-  const measured = measureGlyphWidthInCanvas(text, fontSize, style) ?? estimateWidth(text, fontSize);
-  glyphWidthCache.set(cacheKey, measured);
-  return measured;
+  const fontMetrics = measureGlyphFontMetrics(text, fontSize, style);
+  if (fontMetrics) {
+    glyphWidthCache.set(cacheKey, fontMetrics.advanceWidth);
+    return fontMetrics.advanceWidth;
+  }
+  return estimateWidth(text, fontSize);
 }
 
 function measureGlyphLayoutWidth(
@@ -775,9 +777,9 @@ function measureGlyphLayoutWidth(
   const advanceWidth = measureGlyphWidth(text, fontSize, style);
   if (!useInkRightEdge) return advanceWidth;
 
-  const canvasMetrics = measureGlyphCanvasMetrics(text, fontSize, style);
-  if (!canvasMetrics) return advanceWidth;
-  return Math.max(advanceWidth, canvasMetrics.actualRight);
+  const fontMetrics = measureGlyphFontMetrics(text, fontSize, style);
+  if (!fontMetrics) return advanceWidth;
+  return Math.max(advanceWidth, fontMetrics.actualRight);
 }
 
 function measureGlyphVerticalMetrics(
@@ -785,29 +787,16 @@ function measureGlyphVerticalMetrics(
   fontSize: number,
   style: GlyphStyle
 ): { ascent: number; descent: number } {
-  const canvasMetrics = measureGlyphCanvasMetrics(text, fontSize, style);
-  if (!canvasMetrics) return { ascent: fontSize * 0.9, descent: fontSize * 0.3 };
+  const fontMetrics = measureGlyphFontMetrics(text, fontSize, style);
+  if (!fontMetrics) return { ascent: fontSize * 0.9, descent: fontSize * 0.3 };
 
   return {
-    ascent: canvasMetrics.actualAscent || fontSize * 0.9,
-    descent: canvasMetrics.actualDescent || fontSize * 0.3
+    ascent: fontMetrics.actualAscent || fontSize * 0.9,
+    descent: fontMetrics.actualDescent || fontSize * 0.3
   };
 }
 
-function measureGlyphWidthInCanvas(text: string, fontSize: number, style: GlyphStyle): number | undefined {
-  if (typeof document === "undefined") return undefined;
-  if (!measureCanvas) measureCanvas = document.createElement("canvas");
-  if (!measureContext) measureContext = measureCanvas.getContext("2d");
-  if (!measureContext) return undefined;
-
-  const fontStyle = style.italic ? "italic" : "normal";
-  const fontWeight = style.bold ? "700" : "400";
-  const family = style.fontFamily ?? (style.italic ? italicMathFontFamily : regularMathFontFamily);
-  measureContext.font = `${fontStyle} ${fontWeight} ${fontSize}px ${family}`;
-  return measureContext.measureText(text).width;
-}
-
-function measureGlyphCanvasMetrics(
+function measureGlyphFontMetrics(
   text: string,
   fontSize: number,
   style: GlyphStyle
@@ -817,24 +806,20 @@ function measureGlyphCanvasMetrics(
   actualAscent: number;
   actualDescent: number;
   actualWidth: number;
+  advanceWidth: number;
 } | undefined {
-  if (typeof document === "undefined") return undefined;
-  if (!measureCanvas) measureCanvas = document.createElement("canvas");
-  if (!measureContext) measureContext = measureCanvas.getContext("2d");
-  if (!measureContext) return undefined;
+  return getNativeGlyphMetrics(selectNativeFontRole(style), text, fontSize);
+}
 
-  const fontStyle = style.italic ? "italic" : "normal";
-  const fontWeight = style.bold ? "700" : "400";
-  const family = style.fontFamily ?? (style.italic ? italicMathFontFamily : regularMathFontFamily);
-  measureContext.font = `${fontStyle} ${fontWeight} ${fontSize}px ${family}`;
-  const metrics = measureContext.measureText(text);
-  return {
-    actualLeft: metrics.actualBoundingBoxLeft,
-    actualRight: metrics.actualBoundingBoxRight,
-    actualAscent: metrics.actualBoundingBoxAscent,
-    actualDescent: metrics.actualBoundingBoxDescent,
-    actualWidth: metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight
-  };
+function selectNativeFontRole(style: GlyphStyle): NativeFontRole {
+  if (style.fontFamily?.includes("KaTeX_Size4")) return "size4";
+  if (style.fontFamily?.includes("KaTeX_Size3")) return "size3";
+  if (style.fontFamily?.includes("KaTeX_Size2")) return "size2";
+  if (style.fontFamily?.includes("KaTeX_Size1")) return "size1";
+  if (style.bold && style.italic) return "mainBoldItalic";
+  if (style.bold) return "mainBold";
+  if (style.italic) return "mathItalic";
+  return "mainRegular";
 }
 
 function estimateWidth(text: string, fontSize: number): number {

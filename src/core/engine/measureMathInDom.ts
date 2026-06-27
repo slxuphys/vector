@@ -4,6 +4,7 @@ import { renderMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
 import { layoutNativeMath } from "../renderers/math/nativeMath";
+import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
 
 let root: HTMLDivElement | undefined;
 const loadedFontSizes = new Set<number>();
@@ -62,8 +63,8 @@ export async function measureMathInDom(
 
 async function measureNativeMath(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {
   const measurements: Record<string, MathMeasurement> = {};
+  await loadNativeMathFonts();
   for (const request of requests) {
-    await waitForKatexFonts(request.fontSize);
     const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize, request.nativeMetrics);
     measurements[request.key] = {
       width: layout.width,

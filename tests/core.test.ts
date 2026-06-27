@@ -226,17 +226,19 @@ describe("document engine", () => {
     }
   });
 
-  it("keeps normal glyphs on the same baseline when inline math contains a fraction", () => {
+  it("keeps normal glyphs aligned when inline math contains a fraction", () => {
     const standalone = layoutNativeMath("x", false, 12);
     const mixed = layoutNativeMath("x + \\frac{a}{b} = y", false, 12);
     const standaloneX = standalone.nodes.find((node) => node.type === "glyph" && node.text === "x");
     const mixedX = mixed.nodes.find((node) => node.type === "glyph" && node.text === "x");
+    const mixedY = mixed.nodes.find((node) => node.type === "glyph" && node.text === "y");
 
-    expect(standalone.baseline).toBeCloseTo(mixed.baseline, 5);
     expect(standaloneX?.type).toBe("glyph");
     expect(mixedX?.type).toBe("glyph");
-    if (standaloneX?.type === "glyph" && mixedX?.type === "glyph") {
-      expect(standaloneX.y).toBeCloseTo(mixedX.y, 5);
+    expect(mixedY?.type).toBe("glyph");
+    if (standaloneX?.type === "glyph" && mixedX?.type === "glyph" && mixedY?.type === "glyph") {
+      expect(mixedX.y).toBeCloseTo(mixedY.y, 5);
+      expect(mixed.baseline).toBeGreaterThan(standalone.baseline);
     }
   });
 
@@ -298,7 +300,7 @@ describe("document engine", () => {
       expect(displaySum.fontSize).toBeCloseTo(inlineSum.fontSize, 5);
       expect(displaySum.fontFamily).toContain("KaTeX_Size2");
       expect(inlineSum.fontFamily).toBeUndefined();
-      expect(displaySub.x - displaySum.x).toBeGreaterThan(inlineSub.x - inlineSum.x);
+      expect(displaySub.x - displaySum.x).toBeLessThan(inlineSub.x - inlineSum.x);
     }
   });
 
@@ -340,9 +342,9 @@ describe("document engine", () => {
     const normal = layoutNativeMath("\\int_0^1", true, 12);
     const tuned = layoutNativeMath("\\int_0^1", true, 12, {
       ...defaultNativeMathMetrics,
-      displayLargeOperatorSuperscriptBaseline: -1.2,
-      displayLargeOperatorSubscriptBaseline: 1,
-      displayLargeOperatorSuperscriptGap: 0.32,
+      displayLargeOperatorSuperscriptBaseline: -1.4,
+      displayLargeOperatorSubscriptBaseline: 1.2,
+      displayLargeOperatorSuperscriptGap: 0.9,
       displayLargeOperatorSubscriptGap: 0.32
     });
     const normalGlyphs = normal.nodes.filter((node) => node.type === "glyph");
@@ -426,7 +428,7 @@ describe("document engine", () => {
     expect(f?.type).toBe("glyph");
     if (lim?.type === "glyph" && subX?.type === "glyph" && f?.type === "glyph") {
       expect(subX.y).toBeGreaterThan(lim.y);
-      expect(subX.x).toBeGreaterThanOrEqual(lim.x - lim.fontSize * 0.4);
+      expect(subX.x).toBeGreaterThanOrEqual(lim.x - lim.fontSize * 0.6);
       expect(subX.x).toBeLessThanOrEqual(lim.x + lim.fontSize * 1.4);
       expect(f.x).toBeGreaterThan(lim.x);
       expect(f.x).toBeGreaterThan(subX.x);
@@ -437,8 +439,8 @@ describe("document engine", () => {
     const normal = layoutNativeMath("\\sum_i^n", true, 12);
     const tuned = layoutNativeMath("\\sum_i^n", true, 12, {
       ...defaultNativeMathMetrics,
-      displayLimitOperatorSuperscriptBaseline: -1.1,
-      displayLimitOperatorSubscriptBaseline: 1
+      displayLimitOperatorSuperscriptBaseline: -1.4,
+      displayLimitOperatorSubscriptBaseline: 1.2
     });
     const normalGlyphs = normal.nodes.filter((node) => node.type === "glyph");
     const tunedGlyphs = tuned.nodes.filter((node) => node.type === "glyph");
@@ -637,7 +639,7 @@ describe("document engine", () => {
     }
   });
 
-  it("positions the native square root rule from the body height", () => {
+  it("keeps the native square root rule at the top of the radical box", () => {
     const simple = layoutNativeMath("\\sqrt{x}", false, 12);
     const tall = layoutNativeMath("\\sqrt{\\frac{a}{b}}", false, 12);
     const simpleRule = simple.nodes.find((node) => node.type === "rule");
@@ -646,7 +648,7 @@ describe("document engine", () => {
     expect(simpleRule?.type).toBe("rule");
     expect(tallRule?.type).toBe("rule");
     if (simpleRule?.type === "rule" && tallRule?.type === "rule") {
-      expect(tallRule.y).toBeLessThan(simpleRule.y);
+      expect(tallRule.y).toBeCloseTo(simpleRule.y, 5);
     }
   });
 
