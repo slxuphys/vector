@@ -8,6 +8,7 @@ import katexSize1RegularUrl from "katex/dist/fonts/KaTeX_Size1-Regular.ttf?url";
 import katexSize2RegularUrl from "katex/dist/fonts/KaTeX_Size2-Regular.ttf?url";
 import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
 import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
+import fontMetricsData from "katex/src/fontMetricsData.js";
 
 export type NativeFontRole =
   | "mainRegular"
@@ -28,6 +29,17 @@ export type NativeGlyphMetrics = {
   actualDescent: number;
   actualWidth: number;
 };
+
+type KatexMetricFontName =
+  | "Main-Regular"
+  | "Main-Bold"
+  | "Main-Italic"
+  | "Main-BoldItalic"
+  | "Math-Italic"
+  | "Size1-Regular"
+  | "Size2-Regular"
+  | "Size3-Regular"
+  | "Size4-Regular";
 
 type FontkitGlyph = {
   advanceWidth: number;
@@ -58,6 +70,18 @@ const fontUrls: Record<NativeFontRole, string> = {
   size2: katexSize2RegularUrl,
   size3: katexSize3RegularUrl,
   size4: katexSize4RegularUrl
+};
+
+const katexMetricFonts: Record<NativeFontRole, KatexMetricFontName> = {
+  mainRegular: "Main-Regular",
+  mainBold: "Main-Bold",
+  mainItalic: "Main-Italic",
+  mainBoldItalic: "Main-BoldItalic",
+  mathItalic: "Math-Italic",
+  size1: "Size1-Regular",
+  size2: "Size2-Regular",
+  size3: "Size3-Regular",
+  size4: "Size4-Regular"
 };
 
 const fontCache = new Map<NativeFontRole, FontkitFont>();
@@ -112,6 +136,18 @@ export function getNativeGlyphMetrics(
   };
   glyphMetricsCache.set(cacheKey, metrics);
   return metrics;
+}
+
+export function getNativeGlyphSkew(role: NativeFontRole, text: string, fontSize: number): number {
+  const chars = Array.from(text);
+  if (chars.length !== 1) return 0;
+
+  const fontName = katexMetricFonts[role];
+  const codePoint = chars[0].codePointAt(0);
+  if (codePoint === undefined) return 0;
+
+  const metric = fontMetricsData[fontName]?.[codePoint];
+  return (metric?.[3] ?? 0) * fontSize;
 }
 
 async function loadNativeFont(role: NativeFontRole): Promise<void> {

@@ -816,4 +816,19 @@ describe("document engine", () => {
     expect(tall.height).toBeGreaterThan(simple.height);
   });
 
+  it("uses KaTeX skew metrics to shift native accents over italic bases", () => {
+    const skewed = layoutNativeMath("\\hat{F}", false, 12);
+    const unskewed = layoutNativeMath("\\hat{i}", false, 12);
+    const skewedHat = skewed.nodes.find((node) => node.type === "path");
+    const unskewedHat = unskewed.nodes.find((node) => node.type === "path");
+
+    expect(skewedHat?.type).toBe("path");
+    expect(unskewedHat?.type).toBe("path");
+    if (skewedHat?.type === "path" && unskewedHat?.type === "path") {
+      const skewedPeakOffset = skewedHat.x + skewedHat.points[1][0] - skewed.width / 2;
+      const unskewedPeakOffset = unskewedHat.x + unskewedHat.points[1][0] - unskewed.width / 2;
+      expect(skewedPeakOffset).toBeGreaterThan(unskewedPeakOffset + 0.5);
+    }
+  });
+
 });

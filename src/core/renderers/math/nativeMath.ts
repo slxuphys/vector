@@ -1,6 +1,6 @@
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { escapeXml } from "../../utils/sanitize";
-import { getNativeGlyphMetrics, type NativeFontRole } from "./nativeFontMetrics";
+import { getNativeGlyphMetrics, getNativeGlyphSkew, type NativeFontRole } from "./nativeFontMetrics";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -764,8 +764,9 @@ function layoutAccent(
   const width = Math.max(body.width, fontSize * 0.42);
   const bodyX = (width - body.width) / 2;
   const accentWidth = Math.min(width, Math.max(fontSize * 0.24, body.width * 0.58));
-  const accentX = (width - accentWidth) / 2;
-  const centerX = width / 2;
+  const accentSkew = getAccentSkew(bodyLatex, fontSize);
+  const centerX = width / 2 + accentSkew;
+  const accentX = centerX - accentWidth / 2;
   const accentY = accentHeight * 0.52;
   const nodes: NativeNode[] = [];
   let accentTop = accentY;
@@ -829,6 +830,25 @@ function layoutAccent(
       ...translateNodes(body.nodes, bodyX, bodyY)
     ]
   };
+}
+
+function getAccentSkew(bodyLatex: string, fontSize: number): number {
+  const glyphText = getSingleAccentBaseGlyph(bodyLatex);
+  if (!glyphText) return 0;
+
+  const style = { italic: shouldItalicize(glyphText) };
+  return getNativeGlyphSkew(selectNativeFontRole(style), glyphText, fontSize);
+}
+
+function getSingleAccentBaseGlyph(bodyLatex: string): string | undefined {
+  const trimmed = bodyLatex.trim();
+  if (!trimmed) return undefined;
+  if (Array.from(trimmed).length === 1) return normalizeMathGlyph(trimmed);
+  if (!trimmed.startsWith("\\")) return undefined;
+
+  const command = readCommand(trimmed, 0);
+  if (command.end !== trimmed.length - 1) return undefined;
+  return commandGlyphs[command.name];
 }
 
 function radicalSegments(points: Array<[number, number]>, strokeWidth: number): NativePath[] {
