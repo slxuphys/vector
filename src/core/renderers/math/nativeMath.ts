@@ -1,6 +1,11 @@
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { escapeXml } from "../../utils/sanitize";
-import { getNativeGlyphMetrics, getNativeGlyphSkew, type NativeFontRole } from "./nativeFontMetrics";
+import {
+  getNativeGlyphMetrics,
+  getNativeGlyphSkew,
+  getNativeGlyphTexMetrics,
+  type NativeFontRole
+} from "./nativeFontMetrics";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -68,6 +73,7 @@ export type NativeMathMetrics = {
   sqrtRuleThickness: number;
   sqrtRuleStart: number;
   sqrtOverbarExtra: number;
+  accentGap: number;
   displayLargeOperatorSuperscriptBaseline: number;
   displayLargeOperatorSubscriptBaseline: number;
   displayLargeOperatorSuperscriptGap: number;
@@ -103,6 +109,7 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   sqrtRuleThickness: 0.045,
   sqrtRuleStart: 0.98,
   sqrtOverbarExtra: 0.12,
+  accentGap: 0.08,
   displayLargeOperatorSuperscriptBaseline: -1.24,
   displayLargeOperatorSubscriptBaseline: 0.97,
   displayLargeOperatorSuperscriptGap: 0.79,
@@ -757,42 +764,48 @@ function layoutAccent(
   const body = layoutSequence(bodyLatex, fontSize, displayMode, metrics);
   const stroke = Math.max(0.55, fontSize * 0.045);
   const bodyInkHeight = Math.max(fontSize * 0.5, body.inkBottom - body.inkTop);
-  const gap = Math.max(stroke, bodyInkHeight * 0.08);
-  const accentHeight = Math.max(stroke * 2, bodyInkHeight * 0.18);
-  const bodyY = accentHeight + gap - body.inkTop;
-  const baseline = bodyY + body.baseline;
   const width = Math.max(body.width, fontSize * 0.42);
   const bodyX = (width - body.width) / 2;
-  const accentWidth = Math.min(width, Math.max(fontSize * 0.24, body.width * 0.58));
   const accentSkew = getAccentSkew(bodyLatex, fontSize);
   const centerX = width / 2 + accentSkew;
-  const accentX = centerX - accentWidth / 2;
-  const accentY = accentHeight * 0.52;
   const nodes: NativeNode[] = [];
-  let accentTop = accentY;
-  let accentBottom = accentY + stroke;
 
-  if (command === "\\bar") {
-    nodes.push({ type: "rule", x: accentX, y: accentY, width: accentWidth, height: stroke });
-  } else if (command === "\\hat") {
-    nodes.push(radicalPath([
-      [accentX, accentY + accentHeight * 0.35],
-      [centerX, accentY - accentHeight * 0.25],
-      [accentX + accentWidth, accentY + accentHeight * 0.35]
-    ], stroke));
-    accentTop = accentY - accentHeight * 0.25 - stroke;
-    accentBottom = accentY + accentHeight * 0.35 + stroke;
-  } else if (command === "\\tilde") {
-    const tildeX = accentX - accentWidth * 0.08;
-    nodes.push(radicalPath([
-      [tildeX, accentY],
-      [tildeX + accentWidth * 0.28, accentY - accentHeight * 0.32],
-      [tildeX + accentWidth * 0.58, accentY + accentHeight * 0.28],
-      [tildeX + accentWidth, accentY]
-    ], stroke));
-    accentTop = accentY - accentHeight * 0.32 - stroke;
-    accentBottom = accentY + accentHeight * 0.28 + stroke;
-  } else if (command === "\\vec") {
+  const accentText = accentGlyphForCommand(command);
+  if (accentText) {
+    const accentStyle = { italic: false };
+    const accentWidth = measureGlyphWidth(accentText, fontSize, accentStyle);
+    const accentVertical = measureGlyphVerticalMetrics(accentText, fontSize, accentStyle);
+    const accentBaseline = -accentVertical.inkTopOffset;
+    const accentInkBottom = accentBaseline + accentVertical.inkBottomOffset;
+    const gap = Math.max(0, fontSize * metrics.accentGap);
+    const bodyY = accentInkBottom + gap - body.inkTop;
+    const baseline = bodyY + body.baseline;
+    const accentX = centerX - accentWidth / 2;
+    nodes.push(glyph(accentText, accentX, accentBaseline, fontSize, accentStyle));
+
+    return {
+      width,
+      height: Math.max(bodyY + body.height, bodyY + body.inkBottom, accentInkBottom),
+      baseline,
+      ascent: baseline,
+      descent: Math.max(0, body.height - body.baseline),
+      inkTop: Math.min(0, bodyY + body.inkTop),
+      inkBottom: Math.max(accentInkBottom, bodyY + body.inkBottom),
+      nodes: [
+        ...nodes,
+        ...translateNodes(body.nodes, bodyX, bodyY)
+      ]
+    };
+  }
+
+  if (command === "\\vec") {
+    const gap = Math.max(stroke, bodyInkHeight * 0.08);
+    const accentHeight = Math.max(stroke * 2, bodyInkHeight * 0.18);
+    const bodyY = accentHeight + gap - body.inkTop;
+    const baseline = bodyY + body.baseline;
+    const accentWidth = Math.min(width, Math.max(fontSize * 0.24, body.width * 0.58));
+    const accentX = centerX - accentWidth / 2;
+    const accentY = accentHeight * 0.52;
     const y = accentY;
     nodes.push(radicalPath([
       [accentX, y],
@@ -803,33 +816,32 @@ function layoutAccent(
       [accentX + accentWidth, y],
       [accentX + accentWidth - accentHeight * 0.34, y + accentHeight * 0.22]
     ], stroke));
-    accentTop = y - accentHeight * 0.22 - stroke;
-    accentBottom = y + accentHeight * 0.22 + stroke;
-  } else if (command === "\\dot" || command === "\\ddot") {
-    const dotSize = Math.max(1.1, fontSize * 0.11);
-    const firstX = command === "\\ddot" ? centerX - dotSize * 1.3 : centerX - dotSize / 2;
-    const secondX = centerX + dotSize * 0.8;
-    nodes.push({ type: "rule", x: firstX, y: accentY - dotSize / 2, width: dotSize, height: dotSize });
-    accentTop = accentY - dotSize / 2;
-    accentBottom = accentY + dotSize / 2;
-    if (command === "\\ddot") {
-      nodes.push({ type: "rule", x: secondX, y: accentY - dotSize / 2, width: dotSize, height: dotSize });
-    }
+
+    return {
+      width,
+      height: Math.max(bodyY + body.height, bodyY + body.inkBottom),
+      baseline,
+      ascent: baseline,
+      descent: Math.max(0, body.height - body.baseline),
+      inkTop: Math.min(y - accentHeight * 0.22 - stroke, bodyY + body.inkTop),
+      inkBottom: Math.max(y + accentHeight * 0.22 + stroke, bodyY + body.inkBottom),
+      nodes: [
+        ...nodes,
+        ...translateNodes(body.nodes, bodyX, bodyY)
+      ]
+    };
   }
 
-  return {
-    width,
-    height: Math.max(bodyY + body.height, bodyY + body.inkBottom),
-    baseline,
-    ascent: baseline,
-    descent: Math.max(0, body.height - body.baseline),
-    inkTop: Math.min(accentTop, bodyY + body.inkTop),
-    inkBottom: Math.max(accentBottom, bodyY + body.inkBottom),
-    nodes: [
-      ...nodes,
-      ...translateNodes(body.nodes, bodyX, bodyY)
-    ]
-  };
+  return body;
+}
+
+function accentGlyphForCommand(command: string): string | undefined {
+  if (command === "\\bar") return "ˉ";
+  if (command === "\\hat") return "^";
+  if (command === "\\tilde") return "~";
+  if (command === "\\dot") return "˙";
+  if (command === "\\ddot") return "¨";
+  return undefined;
 }
 
 function getAccentSkew(bodyLatex: string, fontSize: number): number {
@@ -1049,6 +1061,13 @@ function measureGlyphWidth(text: string, fontSize: number, style: GlyphStyle = {
     glyphWidthCache.set(cacheKey, fontMetrics.advanceWidth);
     return fontMetrics.advanceWidth;
   }
+
+  const texMetrics = getNativeGlyphTexMetrics(selectNativeFontRole(style), text, fontSize);
+  if (texMetrics) {
+    glyphWidthCache.set(cacheKey, texMetrics.advanceWidth);
+    return texMetrics.advanceWidth;
+  }
+
   return estimateWidth(text, fontSize);
 }
 
@@ -1070,19 +1089,34 @@ function measureGlyphVerticalMetrics(
   text: string,
   fontSize: number,
   style: GlyphStyle
-): { ascent: number; descent: number } {
+): { ascent: number; descent: number; inkTopOffset: number; inkBottomOffset: number } {
   const fontMetrics = measureGlyphFontMetrics(text, fontSize, style);
-  if (!fontMetrics) {
-    if (style.fontFamily?.includes("KaTeX_Size2")) {
-      return { ascent: fontSize, descent: fontSize * 0.5 };
-    }
-    return { ascent: fontSize * 0.9, descent: fontSize * 0.3 };
+  if (fontMetrics) {
+    const ascent = Number.isFinite(fontMetrics.actualAscent) ? fontMetrics.actualAscent : fontSize * 0.9;
+    const descent = Number.isFinite(fontMetrics.actualDescent) ? fontMetrics.actualDescent : fontSize * 0.3;
+    return {
+      ascent,
+      descent,
+      inkTopOffset: Number.isFinite(fontMetrics.actualTopOffset) ? fontMetrics.actualTopOffset : -ascent,
+      inkBottomOffset: Number.isFinite(fontMetrics.actualBottomOffset) ? fontMetrics.actualBottomOffset : descent
+    };
   }
 
-  return {
-    ascent: Number.isFinite(fontMetrics.actualAscent) ? fontMetrics.actualAscent : fontSize * 0.9,
-    descent: Number.isFinite(fontMetrics.actualDescent) ? fontMetrics.actualDescent : fontSize * 0.3
-  };
+  const texMetrics = getNativeGlyphTexMetrics(selectNativeFontRole(style), text, fontSize);
+  if (texMetrics) {
+    const accentBottomLift = accentGlyphBottomLift(text, fontSize);
+    return {
+      ascent: texMetrics.actualAscent,
+      descent: texMetrics.actualDescent,
+      inkTopOffset: -texMetrics.actualAscent,
+      inkBottomOffset: accentBottomLift ?? texMetrics.actualDescent
+    };
+  }
+
+  if (style.fontFamily?.includes("KaTeX_Size2")) {
+    return { ascent: fontSize, descent: fontSize * 0.5, inkTopOffset: -fontSize, inkBottomOffset: fontSize * 0.5 };
+  }
+  return { ascent: fontSize * 0.9, descent: fontSize * 0.3, inkTopOffset: -fontSize * 0.9, inkBottomOffset: fontSize * 0.3 };
 }
 
 function measureGlyphFontMetrics(
@@ -1094,10 +1128,24 @@ function measureGlyphFontMetrics(
   actualRight: number;
   actualAscent: number;
   actualDescent: number;
+  actualTopOffset: number;
+  actualBottomOffset: number;
   actualWidth: number;
   advanceWidth: number;
 } | undefined {
   return getNativeGlyphMetrics(selectNativeFontRole(style), text, fontSize);
+}
+
+function accentGlyphBottomLift(text: string, fontSize: number): number | undefined {
+  const bottomByGlyph: Record<string, number> = {
+    "^": -0.531,
+    "~": -0.215,
+    "ˉ": -0.544,
+    "˙": -0.549,
+    "¨": -0.554
+  };
+  const bottom = bottomByGlyph[text];
+  return bottom === undefined ? undefined : bottom * fontSize;
 }
 
 function selectNativeFontRole(style: GlyphStyle): NativeFontRole {

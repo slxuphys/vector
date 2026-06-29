@@ -27,7 +27,15 @@ export type NativeGlyphMetrics = {
   actualRight: number;
   actualAscent: number;
   actualDescent: number;
+  actualTopOffset: number;
+  actualBottomOffset: number;
   actualWidth: number;
+};
+
+export type NativeGlyphTexMetrics = {
+  advanceWidth: number;
+  actualAscent: number;
+  actualDescent: number;
 };
 
 type KatexMetricFontName =
@@ -132,6 +140,8 @@ export function getNativeGlyphMetrics(
     actualRight: Math.max(0, maxX * scale),
     actualAscent: Math.max(0, maxY * scale),
     actualDescent: Math.max(0, -minY * scale),
+    actualTopOffset: -maxY * scale,
+    actualBottomOffset: -minY * scale,
     actualWidth: Math.max(0, (maxX - minX) * scale)
   };
   glyphMetricsCache.set(cacheKey, metrics);
@@ -148,6 +158,36 @@ export function getNativeGlyphSkew(role: NativeFontRole, text: string, fontSize:
 
   const metric = fontMetricsData[fontName]?.[codePoint];
   return (metric?.[3] ?? 0) * fontSize;
+}
+
+export function getNativeGlyphTexMetrics(
+  role: NativeFontRole,
+  text: string,
+  fontSize: number
+): NativeGlyphTexMetrics | undefined {
+  const fontName = katexMetricFonts[role];
+  const chars = Array.from(text);
+  if (chars.length === 0) return undefined;
+
+  let width = 0;
+  let ascent = 0;
+  let descent = 0;
+  for (const char of chars) {
+    const codePoint = char.codePointAt(0);
+    if (codePoint === undefined) return undefined;
+
+    const metric = fontMetricsData[fontName]?.[codePoint];
+    if (!metric) return undefined;
+    descent = Math.max(descent, metric[0] * fontSize);
+    ascent = Math.max(ascent, metric[1] * fontSize);
+    width += metric[4] * fontSize;
+  }
+
+  return {
+    advanceWidth: width,
+    actualAscent: ascent,
+    actualDescent: descent
+  };
 }
 
 async function loadNativeFont(role: NativeFontRole): Promise<void> {

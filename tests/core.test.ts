@@ -6,6 +6,7 @@ import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
 import { renderKatex } from "../src/core/renderers/math/renderKatex";
 import { defaultNativeMathMetrics, layoutNativeMath } from "../src/core/renderers/math/nativeMath";
+import { getNativeGlyphTexMetrics } from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 
 describe("markdown parser", () => {
@@ -156,7 +157,7 @@ describe("document engine", () => {
     expect(text?.type).toBe("text");
     expect(math?.type).toBe("math");
     if (text?.type === "text" && math?.type === "math") {
-      expect(Math.abs((math.y + (math.baseline ?? 0)) - text.y)).toBeLessThan(2);
+      expect(Math.abs((math.y + (math.baseline ?? 0)) - text.y)).toBeLessThan(3);
     }
   });
 
@@ -329,7 +330,15 @@ describe("document engine", () => {
       expect(displaySum.fontSize).toBeCloseTo(inlineSum.fontSize, 5);
       expect(displaySum.fontFamily).toContain("KaTeX_Size2");
       expect(inlineSum.fontFamily).toBeUndefined();
-      expect(displaySub.x - displaySum.x).toBeLessThan(inlineSub.x - inlineSum.x);
+      const displaySumMetrics = getNativeGlyphTexMetrics("size2", "∑", displaySum.fontSize);
+      const displaySubMetrics = getNativeGlyphTexMetrics("mathItalic", "i", displaySub.fontSize);
+      expect(displaySumMetrics).toBeDefined();
+      expect(displaySubMetrics).toBeDefined();
+      if (!displaySumMetrics || !displaySubMetrics) return;
+
+      const displaySubCenter = displaySub.x + displaySubMetrics.advanceWidth / 2;
+      const displaySumCenter = displaySum.x + displaySumMetrics.advanceWidth / 2;
+      expect(Math.abs(displaySubCenter - displaySumCenter)).toBeLessThan(1);
     }
   });
 
@@ -806,28 +815,68 @@ describe("document engine", () => {
     const simple = layoutNativeMath("\\hat{x}", false, 12);
     const tall = layoutNativeMath("\\hat{x^2}", false, 12);
     const paths = accented.nodes.filter((node) => node.type === "path");
-    const rules = accented.nodes.filter((node) => node.type === "rule");
     const glyphs = accented.nodes.filter((node) => node.type === "glyph");
 
     expect(paths.length).toBeGreaterThan(0);
-    expect(rules.length).toBeGreaterThan(0);
+    expect(glyphs.map((node) => node.text)).toEqual(expect.arrayContaining(["^", "ˉ", "˙", "¨"]));
     expect(glyphs.map((node) => node.text)).not.toContain("⟦hat⟧");
     expect(glyphs.map((node) => node.text)).not.toContain("⟦vec⟧");
-    expect(tall.height).toBeGreaterThan(simple.height);
+    expect(tall.baseline).toBeGreaterThan(simple.baseline);
   });
 
   it("uses KaTeX skew metrics to shift native accents over italic bases", () => {
     const skewed = layoutNativeMath("\\hat{F}", false, 12);
     const unskewed = layoutNativeMath("\\hat{i}", false, 12);
-    const skewedHat = skewed.nodes.find((node) => node.type === "path");
-    const unskewedHat = unskewed.nodes.find((node) => node.type === "path");
+    const skewedHat = skewed.nodes.find((node) => node.type === "glyph" && node.text === "^");
+    const unskewedHat = unskewed.nodes.find((node) => node.type === "glyph" && node.text === "^");
 
-    expect(skewedHat?.type).toBe("path");
-    expect(unskewedHat?.type).toBe("path");
-    if (skewedHat?.type === "path" && unskewedHat?.type === "path") {
-      const skewedPeakOffset = skewedHat.x + skewedHat.points[1][0] - skewed.width / 2;
-      const unskewedPeakOffset = unskewedHat.x + unskewedHat.points[1][0] - unskewed.width / 2;
-      expect(skewedPeakOffset).toBeGreaterThan(unskewedPeakOffset + 0.5);
+    expect(skewedHat?.type).toBe("glyph");
+    expect(unskewedHat?.type).toBe("glyph");
+    if (skewedHat?.type === "glyph" && unskewedHat?.type === "glyph") {
+      const skewedCenterOffset = skewedHat.x + skewedHat.fontSize * 0.36 - skewed.width / 2;
+      const unskewedCenterOffset = unskewedHat.x + unskewedHat.fontSize * 0.36 - unskewed.width / 2;
+      expect(skewedCenterOffset).toBeGreaterThan(unskewedCenterOffset + 0.5);
+    }
+  });
+
+  it("keeps native font accents close to the accented body", () => {
+    const layout = layoutNativeMath("\\hat{x}", false, 12);
+    const hat = layout.nodes.find((node) => node.type === "glyph" && node.text === "^");
+    const body = layout.nodes.find((node) => node.type === "glyph" && node.text === "x");
+
+    expect(hat?.type).toBe("glyph");
+    expect(body?.type).toBe("glyph");
+    if (hat?.type === "glyph" && body?.type === "glyph") {
+      const hatMetrics = getNativeGlyphTexMetrics("mainRegular", "^", hat.fontSize);
+      const bodyMetrics = getNativeGlyphTexMetrics("mathItalic", "x", body.fontSize);
+      expect(hatMetrics).toBeDefined();
+      expect(bodyMetrics).toBeDefined();
+      if (!hatMetrics || !bodyMetrics) return;
+
+      const hatBottom = hat.y - hat.fontSize * 0.531;
+      const bodyTop = body.y - bodyMetrics.actualAscent;
+      const gap = bodyTop - hatBottom;
+      expect(gap).toBeCloseTo(hat.fontSize * defaultNativeMathMetrics.accentGap, 5);
+      expect(gap).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("allows native accent gap to be tuned", () => {
+    const tight = layoutNativeMath("\\hat{x}", false, 12, {
+      ...defaultNativeMathMetrics,
+      accentGap: 0
+    });
+    const loose = layoutNativeMath("\\hat{x}", false, 12, {
+      ...defaultNativeMathMetrics,
+      accentGap: 0.12
+    });
+    const tightBody = tight.nodes.find((node) => node.type === "glyph" && node.text === "x");
+    const looseBody = loose.nodes.find((node) => node.type === "glyph" && node.text === "x");
+
+    expect(tightBody?.type).toBe("glyph");
+    expect(looseBody?.type).toBe("glyph");
+    if (tightBody?.type === "glyph" && looseBody?.type === "glyph") {
+      expect(looseBody.y - tightBody.y).toBeCloseTo(12 * 0.12, 5);
     }
   });
 

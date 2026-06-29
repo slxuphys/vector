@@ -164,6 +164,12 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
     ]
   },
   {
+    title: "Accents",
+    controls: [
+      { key: "accentGap", label: "Accent gap", min: 0, max: 0.25, step: 0.005 }
+    ]
+  },
+  {
     title: "Operators",
     controls: [
       { key: "displayLargeOperatorSuperscriptBaseline", label: "Large op sup baseline", min: -1.4, max: -0.2, step: 0.01 },
