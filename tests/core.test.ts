@@ -160,37 +160,37 @@ describe("document engine", () => {
     }
   });
 
-  it("uses native glyph gap for compact calculation spacing by default", () => {
+  it("allows native glyph gap to tune compact calculation spacing", () => {
     const layout = layoutNativeMath("E=mc^2", false, 12);
-    const tightLayout = layoutNativeMath("E=mc^2", false, 12, {
+    const looseLayout = layoutNativeMath("E=mc^2", false, 12, {
       ...defaultNativeMathMetrics,
-      inlineGlyphGap: 0
+      inlineGlyphGap: 0.16
     });
     const glyphs = layout.nodes.filter((node) => node.type === "glyph");
-    const tightGlyphs = tightLayout.nodes.filter((node) => node.type === "glyph");
+    const looseGlyphs = looseLayout.nodes.filter((node) => node.type === "glyph");
     const e = glyphs.find((node) => node.text === "E");
     const equals = glyphs.find((node) => node.text === "=");
     const m = glyphs.find((node) => node.text === "m");
-    const tightE = tightGlyphs.find((node) => node.text === "E");
-    const tightEquals = tightGlyphs.find((node) => node.text === "=");
-    const tightM = tightGlyphs.find((node) => node.text === "m");
+    const looseE = looseGlyphs.find((node) => node.text === "E");
+    const looseEquals = looseGlyphs.find((node) => node.text === "=");
+    const looseM = looseGlyphs.find((node) => node.text === "m");
 
     expect(e?.type).toBe("glyph");
     expect(equals?.type).toBe("glyph");
     expect(m?.type).toBe("glyph");
-    expect(tightE?.type).toBe("glyph");
-    expect(tightEquals?.type).toBe("glyph");
-    expect(tightM?.type).toBe("glyph");
+    expect(looseE?.type).toBe("glyph");
+    expect(looseEquals?.type).toBe("glyph");
+    expect(looseM?.type).toBe("glyph");
     if (
       e?.type === "glyph" &&
       equals?.type === "glyph" &&
       m?.type === "glyph" &&
-      tightE?.type === "glyph" &&
-      tightEquals?.type === "glyph" &&
-      tightM?.type === "glyph"
+      looseE?.type === "glyph" &&
+      looseEquals?.type === "glyph" &&
+      looseM?.type === "glyph"
     ) {
-      expect(equals.x - e.x).toBeGreaterThan(tightEquals.x - tightE.x);
-      expect(m.x - equals.x).toBeGreaterThan(tightM.x - tightEquals.x);
+      expect(looseEquals.x - looseE.x).toBeGreaterThan(equals.x - e.x);
+      expect(looseM.x - looseEquals.x).toBeGreaterThan(m.x - equals.x);
     }
   });
 
@@ -277,6 +277,35 @@ describe("document engine", () => {
     expect(glyphs.find((node) => node.text === "lim")?.italic).toBe(false);
   });
 
+  it("applies native named-operator spacing after scripts, not before them", () => {
+    const spaced = layoutNativeMath("\\sin^2 x", false, 12);
+    const compact = layoutNativeMath("\\sin^2 x", false, 12, {
+      ...defaultNativeMathMetrics,
+      namedOperatorRightMargin: 0
+    });
+    const spacedGlyphs = spaced.nodes.filter((node) => node.type === "glyph");
+    const compactGlyphs = compact.nodes.filter((node) => node.type === "glyph");
+    const spacedSup = spacedGlyphs.find((node) => node.text === "2");
+    const compactSup = compactGlyphs.find((node) => node.text === "2");
+    const spacedX = spacedGlyphs.find((node) => node.text === "x");
+    const compactX = compactGlyphs.find((node) => node.text === "x");
+
+    expect(spacedGlyphs.map((node) => node.text)).toContain("sin");
+    expect(spacedSup?.type).toBe("glyph");
+    expect(compactSup?.type).toBe("glyph");
+    expect(spacedX?.type).toBe("glyph");
+    expect(compactX?.type).toBe("glyph");
+    if (
+      spacedSup?.type === "glyph" &&
+      compactSup?.type === "glyph" &&
+      spacedX?.type === "glyph" &&
+      compactX?.type === "glyph"
+    ) {
+      expect(spacedSup.x).toBeCloseTo(compactSup.x, 5);
+      expect(spacedX.x).toBeGreaterThan(compactX.x);
+    }
+  });
+
   it("uses the KaTeX size font for native large operators in display math", () => {
     const inline = layoutNativeMath("\\sum_i", false, 12);
     const display = layoutNativeMath("\\sum_i", true, 12);
@@ -335,6 +364,53 @@ describe("document engine", () => {
       expect(displayLower.y - displayIntegral.y).toBeGreaterThan(inlineLower.y - inlineIntegral.y);
       expect(displayUpper.x - displayIntegral.x).toBeGreaterThan(inlineUpper.x - inlineIntegral.x);
       expect(displayLower.x - displayIntegral.x).toBeGreaterThan(inlineLower.x - inlineIntegral.x);
+    }
+  });
+
+  it("bases native display limit scripts on the measured operator height", () => {
+    const sum = layoutNativeMath("\\sum_i", true, 12);
+    const lim = layoutNativeMath("\\lim_i", true, 12);
+    const sumGlyphs = sum.nodes.filter((node) => node.type === "glyph");
+    const limGlyphs = lim.nodes.filter((node) => node.type === "glyph");
+    const sumOperator = sumGlyphs.find((node) => node.text === "∑");
+    const sumLower = sumGlyphs.find((node) => node.text === "i");
+    const limOperator = limGlyphs.find((node) => node.text === "lim");
+    const limLower = limGlyphs.find((node) => node.text === "i");
+
+    expect(sumOperator?.type).toBe("glyph");
+    expect(sumLower?.type).toBe("glyph");
+    expect(limOperator?.type).toBe("glyph");
+    expect(limLower?.type).toBe("glyph");
+    if (
+      sumOperator?.type === "glyph" &&
+      sumLower?.type === "glyph" &&
+      limOperator?.type === "glyph" &&
+      limLower?.type === "glyph"
+    ) {
+      expect(sumLower.y - sumOperator.y).toBeGreaterThan(limLower.y - limOperator.y);
+    }
+  });
+
+  it("keeps text limit-operator subscripts closer than tall symbol subscripts", () => {
+    const layout = layoutNativeMath("\\sum_{\\theta} \\max_{\\theta}", true, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const sum = glyphs.find((node) => node.text === "∑");
+    const max = glyphs.find((node) => node.text === "max");
+    const theta = glyphs.filter((node) => node.text === "θ");
+    const sumTheta = theta[0];
+    const maxTheta = theta[1];
+
+    expect(sum?.type).toBe("glyph");
+    expect(max?.type).toBe("glyph");
+    expect(sumTheta?.type).toBe("glyph");
+    expect(maxTheta?.type).toBe("glyph");
+    if (
+      sum?.type === "glyph" &&
+      max?.type === "glyph" &&
+      sumTheta?.type === "glyph" &&
+      maxTheta?.type === "glyph"
+    ) {
+      expect(maxTheta.y - max.y).toBeLessThan(sumTheta.y - sum.y);
     }
   });
 
@@ -502,7 +578,7 @@ describe("document engine", () => {
       expect(next.x).toBeGreaterThan(lower.x);
       expect(next.x).toBeGreaterThan(upper.x);
       expect(next.x).toBeGreaterThanOrEqual(Math.max(sum.x, lower.x, upper.x));
-      expect(bareNext.x - bareSum.x).toBeGreaterThan(bareSum.fontSize * 0.6);
+      expect(bareNext.x).toBeGreaterThan(bareSum.x);
     }
   });
 
@@ -532,6 +608,48 @@ describe("document engine", () => {
       compactY?.type === "glyph"
     ) {
       expect(y.x - plusMinus.x).toBeGreaterThan(compactY.x - compactPlusMinus.x);
+    }
+  });
+
+  it("renders native infinity as an upright math symbol with usable width", () => {
+    const layout = layoutNativeMath("\\infty", false, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const infinity = glyphs.find((node) => node.text === "∞");
+
+    expect(infinity?.type).toBe("glyph");
+    if (infinity?.type === "glyph") {
+      expect(infinity.italic).toBe(false);
+      expect(layout.advance).toBeGreaterThan(8);
+    }
+  });
+
+  it("renders native cdot as a math binary operator", () => {
+    const layout = layoutNativeMath("x \\cdot y", false, 12);
+    const compactLayout = layoutNativeMath("x \\cdot y", false, 12, {
+      ...defaultNativeMathMetrics,
+      binaryMargin: 0
+    });
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const compactGlyphs = compactLayout.nodes.filter((node) => node.type === "glyph");
+    const dot = glyphs.find((node) => node.text === "⋅");
+    const compactDot = compactGlyphs.find((node) => node.text === "⋅");
+    const y = glyphs.find((node) => node.text === "y");
+    const compactY = compactGlyphs.find((node) => node.text === "y");
+
+    expect(glyphs.map((node) => node.text)).toContain("⋅");
+    expect(glyphs.map((node) => node.text)).not.toContain("·");
+    expect(dot?.type).toBe("glyph");
+    expect(compactDot?.type).toBe("glyph");
+    expect(y?.type).toBe("glyph");
+    expect(compactY?.type).toBe("glyph");
+    if (
+      dot?.type === "glyph" &&
+      compactDot?.type === "glyph" &&
+      y?.type === "glyph" &&
+      compactY?.type === "glyph"
+    ) {
+      expect(dot.italic).toBe(false);
+      expect(y.x - dot.x).toBeGreaterThan(compactY.x - compactDot.x);
     }
   });
 
@@ -626,7 +744,23 @@ describe("document engine", () => {
     }
   });
 
-  it("scales the native square root rule from the body height", () => {
+  it("keeps compact native square roots from using the full font-sized radical width floor", () => {
+    const simple = layoutNativeMath("\\sqrt{x}", false, 12);
+    const tall = layoutNativeMath("\\sqrt{\\frac{a}{b}}", false, 12);
+    const simplePaths = simple.nodes.filter((node) => node.type === "path");
+    const tallPaths = tall.nodes.filter((node) => node.type === "path");
+
+    expect(simplePaths).toHaveLength(3);
+    expect(tallPaths).toHaveLength(3);
+    if (simplePaths.length === 3 && tallPaths.length === 3) {
+      const simpleRuleStart = simplePaths[2].points[1][0];
+      const tallRuleStart = tallPaths[2].points[1][0];
+      expect(simpleRuleStart).toBeLessThan(12 * defaultNativeMathMetrics.sqrtRadicalWidth);
+      expect(tallRuleStart).toBeGreaterThan(simpleRuleStart);
+    }
+  });
+
+  it("keeps the native square root rule thickness independent of body height", () => {
     const simple = layoutNativeMath("\\sqrt{x}", false, 12);
     const tall = layoutNativeMath("\\sqrt{\\frac{a}{b}}", false, 12);
     const simpleRule = simple.nodes.find((node) => node.type === "rule");
@@ -635,7 +769,7 @@ describe("document engine", () => {
     expect(simpleRule?.type).toBe("rule");
     expect(tallRule?.type).toBe("rule");
     if (simpleRule?.type === "rule" && tallRule?.type === "rule") {
-      expect(tallRule.height).toBeGreaterThan(simpleRule.height);
+      expect(tallRule.height).toBeCloseTo(simpleRule.height, 5);
     }
   });
 

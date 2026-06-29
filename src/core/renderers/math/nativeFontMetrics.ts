@@ -62,6 +62,7 @@ const fontUrls: Record<NativeFontRole, string> = {
 
 const fontCache = new Map<NativeFontRole, FontkitFont>();
 const loadPromises = new Map<NativeFontRole, Promise<void>>();
+const glyphMetricsCache = new Map<string, NativeGlyphMetrics>();
 
 export async function loadNativeMathFonts(): Promise<void> {
   await Promise.all(Object.keys(fontUrls).map((role) => loadNativeFont(role as NativeFontRole)));
@@ -72,6 +73,10 @@ export function getNativeGlyphMetrics(
   text: string,
   fontSize: number
 ): NativeGlyphMetrics | undefined {
+  const cacheKey = `${role}:${fontSize}:${text}`;
+  const cached = glyphMetricsCache.get(cacheKey);
+  if (cached) return cached;
+
   const font = fontCache.get(role);
   if (!font) return undefined;
 
@@ -97,7 +102,7 @@ export function getNativeGlyphMetrics(
     return undefined;
   }
 
-  return {
+  const metrics = {
     advanceWidth: advance * scale,
     actualLeft: Math.max(0, -minX * scale),
     actualRight: Math.max(0, maxX * scale),
@@ -105,6 +110,8 @@ export function getNativeGlyphMetrics(
     actualDescent: Math.max(0, -minY * scale),
     actualWidth: Math.max(0, (maxX - minX) * scale)
   };
+  glyphMetricsCache.set(cacheKey, metrics);
+  return metrics;
 }
 
 async function loadNativeFont(role: NativeFontRole): Promise<void> {
