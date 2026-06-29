@@ -10,6 +10,7 @@ import katexSize1RegularUrl from "katex/dist/fonts/KaTeX_Size1-Regular.ttf?url";
 import katexSize2RegularUrl from "katex/dist/fonts/KaTeX_Size2-Regular.ttf?url";
 import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
 import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
+import { openMathFontUrl } from "../math/openMathFont";
 
 type TextObject = Extract<DisplayObject, { type: "text" }>;
 
@@ -19,6 +20,7 @@ export type PdfFontSet = {
   italic: PDFFont;
   boldItalic: PDFFont;
   mono: PDFFont;
+  openMath?: PDFFont;
   tex?: {
     regular: PDFFont;
     bold: PDFFont;
@@ -41,8 +43,11 @@ export async function loadPdfFonts(pdf: PDFDocument): Promise<PdfFontSet> {
   const boldItalic = await pdf.embedFont(StandardFonts.HelveticaBoldOblique);
   const mono = await pdf.embedFont(StandardFonts.Courier);
 
-  const tex = await loadTexFonts(pdf);
-  return { regular, bold, italic, boldItalic, mono, tex };
+  const [tex, openMath] = await Promise.all([
+    loadTexFonts(pdf),
+    loadOpenMathFont(pdf)
+  ]);
+  return { regular, bold, italic, boldItalic, mono, tex, openMath };
 }
 
 export function selectPdfTextFont(object: TextObject, fonts: PdfFontSet): PDFFont {
@@ -92,6 +97,15 @@ async function loadTexFonts(pdf: PDFDocument): Promise<PdfFontSet["tex"]> {
       embedCustomFont(pdf, katexSize4RegularUrl)
     ]);
     return { regular, bold, italic, boldItalic, mathItalic, size1, size2, size3, size4 };
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadOpenMathFont(pdf: PDFDocument): Promise<PDFFont | undefined> {
+  try {
+    pdf.registerFontkit(fontkit);
+    return await embedCustomFont(pdf, openMathFontUrl);
   } catch {
     return undefined;
   }

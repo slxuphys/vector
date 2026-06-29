@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MarkdownEditorPreview } from "../react/MarkdownEditorPreview";
 import { darkTheme, defaultTheme } from "../core/theme/defaultTheme";
 import type { MathRendererName } from "../core/engine/workerProtocol";
 import {
   defaultNativeMathMetrics,
+  defaultOpenMathMetrics,
+  getDefaultOpenMathMetrics,
   isNativeMathRenderer,
   type NativeMathMetrics
 } from "../core/renderers/math/nativeMath";
+import { loadNativeMathFonts } from "../core/renderers/math/nativeFontMetrics";
 import { playgroundSamples } from "./sampleMarkdown";
 
 export function App() {
@@ -17,6 +20,10 @@ export function App() {
   const [margin, setMargin] = useState(64);
   const [dark, setDark] = useState(false);
   const [nativeMetrics, setNativeMetrics] = useState<NativeMathMetrics>(defaultNativeMathMetrics);
+  const [openMathMetrics, setOpenMathMetrics] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
+  const [openMathDefaults, setOpenMathDefaults] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
+  const activeNativeMetrics = mathRenderer === "native-openmath" ? openMathMetrics : nativeMetrics;
+  const activeNativeDefaults = mathRenderer === "native-openmath" ? openMathDefaults : defaultNativeMathMetrics;
   const options = useMemo(
     () => {
       const theme = dark ? darkTheme : defaultTheme;
@@ -30,15 +37,39 @@ export function App() {
               fontFamily: "KaTeX_Main, 'Times New Roman', serif"
             }
           : theme,
-        nativeMathMetrics: nativeMetrics,
+        nativeMathMetrics: activeNativeMetrics,
         useWorker: false
       };
     },
-    [pageSize, margin, dark, font, mathRenderer, nativeMetrics]
+    [pageSize, margin, dark, font, mathRenderer, activeNativeMetrics]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    loadNativeMathFonts().then(() => {
+      if (cancelled) return;
+      const nextDefaults = getDefaultOpenMathMetrics();
+      setOpenMathDefaults(nextDefaults);
+      setOpenMathMetrics((current) => (
+        current === defaultOpenMathMetrics ? nextDefaults : current
+      ));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const updateNativeMetric = (key: keyof NativeMathMetrics, value: number) => {
+    if (mathRenderer === "native-openmath") {
+      setOpenMathMetrics((current) => ({ ...current, [key]: value }));
+      return;
+    }
     setNativeMetrics((current) => ({ ...current, [key]: value }));
+  };
+
+  const resetNativeMetrics = () => {
+    if (mathRenderer === "native-openmath") setOpenMathMetrics(openMathDefaults);
+    else setNativeMetrics(defaultNativeMathMetrics);
   };
 
   return (
@@ -105,10 +136,12 @@ export function App() {
         options={options}
         sidePanel={(
           <NativeMathTuner
-            metrics={nativeMetrics}
+            mode={mathRenderer === "native-openmath" ? "openmath" : "katex"}
+            metrics={activeNativeMetrics}
+            defaults={activeNativeDefaults}
             disabled={!isNativeMathRenderer(mathRenderer)}
             onChange={updateNativeMetric}
-            onReset={() => setNativeMetrics(defaultNativeMathMetrics)}
+            onReset={resetNativeMetrics}
           />
         )}
       />
@@ -122,6 +155,7 @@ type MetricControl = {
   min: number;
   max: number;
   step: number;
+  openMath?: "font" | "engine" | "hidden";
 };
 
 const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
@@ -131,59 +165,67 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
       { key: "inlinePadding", label: "Inline padding", min: 0, max: 0.4, step: 0.01 },
       { key: "displayPadding", label: "Display padding", min: 0, max: 0.6, step: 0.01 },
       { key: "inlineBaseline", label: "Inline baseline", min: 0.55, max: 1.15, step: 0.01 },
-      { key: "inlineGlyphGap", label: "Inline glyph gap", min: 0, max: 0.16, step: 0.005 },
-      { key: "displayGlyphGap", label: "Display glyph gap", min: 0, max: 0.16, step: 0.005 }
+      { key: "inlineGlyphGap", label: "Inline raw glyph gap", min: 0, max: 0.16, step: 0.005 },
+      { key: "displayGlyphGap", label: "Display raw glyph gap", min: 0, max: 0.16, step: 0.005 }
     ]
   },
   {
     title: "Scripts",
     controls: [
-      { key: "scriptScale", label: "Script scale", min: 0.45, max: 0.9, step: 0.01 },
-      { key: "superscriptBaseline", label: "Sup baseline", min: -0.8, max: -0.05, step: 0.01 },
-      { key: "subscriptBaseline", label: "Sub baseline", min: 0.05, max: 0.7, step: 0.01 },
-      { key: "scriptGap", label: "Script gap", min: 0, max: 0.24, step: 0.005 }
+      { key: "scriptScale", label: "Script scale", min: 0.45, max: 0.9, step: 0.01, openMath: "font" },
+      { key: "superscriptBaseline", label: "Sup baseline", min: -0.8, max: -0.05, step: 0.01, openMath: "font" },
+      { key: "subscriptBaseline", label: "Sub baseline", min: 0.05, max: 0.7, step: 0.01, openMath: "font" },
+      { key: "scriptGap", label: "Script gap", min: 0, max: 0.24, step: 0.005, openMath: "font" }
     ]
   },
   {
     title: "Fractions",
     controls: [
-      { key: "inlineFractionScale", label: "Inline child scale", min: 0.45, max: 1, step: 0.01 },
-      { key: "displayFractionScale", label: "Display child scale", min: 0.55, max: 1.1, step: 0.01 },
-      { key: "fractionGap", label: "Vertical gap", min: 0.05, max: 0.5, step: 0.01 },
-      { key: "fractionRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005 },
+      { key: "inlineFractionScale", label: "Inline child scale", min: 0.45, max: 1, step: 0.01, openMath: "font" },
+      { key: "displayFractionScale", label: "Display child scale", min: 0.55, max: 1.1, step: 0.01, openMath: "font" },
+      { key: "fractionAxisOffset", label: "Axis offset", min: -0.1, max: 0.5, step: 0.01, openMath: "font" },
+      { key: "fractionNumeratorShiftUp", label: "Num shift", min: 0.2, max: 1.5, step: 0.01, openMath: "font" },
+      { key: "fractionNumeratorDisplayShiftUp", label: "Display num shift", min: 0.2, max: 2, step: 0.01, openMath: "font" },
+      { key: "fractionDenominatorShiftDown", label: "Den shift", min: 0.2, max: 1.5, step: 0.01, openMath: "font" },
+      { key: "fractionDenominatorDisplayShiftDown", label: "Display den shift", min: 0.2, max: 2, step: 0.01, openMath: "font" },
+      { key: "fractionNumeratorGap", label: "Num gap", min: 0, max: 0.6, step: 0.01, openMath: "font" },
+      { key: "fractionNumeratorDisplayGap", label: "Display num gap", min: 0, max: 0.8, step: 0.01, openMath: "font" },
+      { key: "fractionDenominatorGap", label: "Den gap", min: 0, max: 0.6, step: 0.01, openMath: "font" },
+      { key: "fractionDenominatorDisplayGap", label: "Display den gap", min: 0, max: 0.8, step: 0.01, openMath: "font" },
+      { key: "fractionRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005, openMath: "font" },
       { key: "fractionSidePadding", label: "Side padding", min: 0, max: 1.2, step: 0.01 },
-      { key: "fractionRuleInset", label: "Rule inset", min: 0, max: 0.5, step: 0.01 },
-      { key: "displayFractionDenominatorBaseline", label: "Display denom baseline", min: 0, max: 1, step: 0.01 },
-      { key: "inlineFractionAxisOffset", label: "Inline axis offset", min: -0.2, max: 0.3, step: 0.01 }
+      { key: "fractionRuleInset", label: "Rule inset", min: 0, max: 0.5, step: 0.01 }
     ]
   },
   {
     title: "Roots",
     controls: [
-      { key: "sqrtBodyScale", label: "Body scale", min: 0.5, max: 1.2, step: 0.01 },
-      { key: "sqrtRadicalWidth", label: "Radical width", min: 0.3, max: 1.2, step: 0.01 },
-      { key: "sqrtTopGap", label: "Bar-body gap", min: 0, max: 0.3, step: 0.005 },
-      { key: "sqrtRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005 },
-      { key: "sqrtRuleStart", label: "Rule start", min: 0.2, max: 1.1, step: 0.01 },
-      { key: "sqrtOverbarExtra", label: "Overbar extra", min: 0, max: 0.5, step: 0.01 }
+      { key: "sqrtBodyScale", label: "Body scale", min: 0.5, max: 1.2, step: 0.01, openMath: "hidden" },
+      { key: "sqrtRadicalWidth", label: "Radical width", min: 0.3, max: 1.2, step: 0.01, openMath: "hidden" },
+      { key: "sqrtTopGap", label: "Bar-body gap", min: 0, max: 0.3, step: 0.005, openMath: "font" },
+      { key: "sqrtRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005, openMath: "font" },
+      { key: "sqrtRuleStart", label: "Rule start", min: 0.2, max: 1.1, step: 0.01, openMath: "hidden" },
+      { key: "sqrtOverbarExtra", label: "Overbar extra", min: 0, max: 0.5, step: 0.01, openMath: "font" }
     ]
   },
   {
     title: "Accents",
     controls: [
-      { key: "accentGap", label: "Accent gap", min: 0, max: 0.25, step: 0.005 }
+      { key: "accentGap", label: "Accent gap", min: 0, max: 0.25, step: 0.005, openMath: "font" }
     ]
   },
   {
     title: "Operators",
     controls: [
-      { key: "displayLargeOperatorSuperscriptBaseline", label: "Large op sup baseline", min: -1.4, max: -0.2, step: 0.01 },
-      { key: "displayLargeOperatorSubscriptBaseline", label: "Large op sub baseline", min: 0.2, max: 1.2, step: 0.01 },
-      { key: "displayLargeOperatorSuperscriptGap", label: "Large op sup gap", min: 0, max: 1, step: 0.01 },
-      { key: "displayLargeOperatorSubscriptGap", label: "Large op sub gap", min: 0, max: 1, step: 0.01 },
-      { key: "displayLimitOperatorSuperscriptBaseline", label: "Limit op sup baseline", min: -1.4, max: -0.2, step: 0.01 },
-      { key: "displayLimitOperatorSubscriptBaseline", label: "Limit op sub baseline", min: 0.2, max: 1.2, step: 0.01 },
-      { key: "namedOperatorRightMargin", label: "Named op right margin", min: 0, max: 0.5, step: 0.01 },
+      { key: "displayLargeOperatorSuperscriptBaseline", label: "Large op sup baseline", min: -1.4, max: -0.2, step: 0.01, openMath: "font" },
+      { key: "displayLargeOperatorSubscriptBaseline", label: "Large op sub baseline", min: 0.2, max: 1.2, step: 0.01, openMath: "font" },
+      { key: "displayLargeOperatorSuperscriptGap", label: "Large op sup gap", min: 0, max: 1, step: 0.01, openMath: "font" },
+      { key: "displayLargeOperatorSubscriptGap", label: "Large op sub gap", min: 0, max: 1, step: 0.01, openMath: "font" },
+      { key: "displayLimitOperatorSuperscriptBaseline", label: "Limit op sup baseline", min: -1.4, max: -0.2, step: 0.01, openMath: "font" },
+      { key: "displayLimitOperatorSubscriptBaseline", label: "Limit op sub baseline", min: 0.2, max: 1.2, step: 0.01, openMath: "font" },
+      { key: "displayLimitOperatorSuperscriptGap", label: "Limit op sup gap", min: 0, max: 1, step: 0.01, openMath: "font" },
+      { key: "displayLimitOperatorSubscriptGap", label: "Limit op sub gap", min: 0, max: 1, step: 0.01, openMath: "font" },
+      { key: "thinMathSpace", label: "Thin math space", min: 0, max: 0.5, step: 0.01 },
       { key: "relationMargin", label: "Relation margin", min: 0, max: 0.5, step: 0.01 },
       { key: "binaryMargin", label: "Binary margin", min: 0, max: 0.5, step: 0.01 }
     ]
@@ -191,34 +233,76 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
 ];
 
 function NativeMathTuner({
+  mode,
   metrics,
+  defaults,
   disabled,
   onChange,
   onReset
 }: {
+  mode: "katex" | "openmath";
   metrics: NativeMathMetrics;
+  defaults: NativeMathMetrics;
   disabled?: boolean;
   onChange: (key: keyof NativeMathMetrics, value: number) => void;
   onReset: () => void;
 }) {
+  const [showFontDerived, setShowFontDerived] = useState(false);
+  const hideFontDerived = mode === "openmath" && !showFontDerived;
+
   return (
     <div className={disabled ? "native-tuner native-tuner-disabled" : "native-tuner"}>
       <div className="native-tuner-header">
         <h2>Native Math</h2>
         <button type="button" disabled={disabled} onClick={onReset}>Reset</button>
       </div>
-      {metricGroups.map((group) => (
-        <section key={group.title} className="native-tuner-group">
-          <h3>{group.title}</h3>
-          {group.controls.map((control) => {
-            const changed = Math.abs(metrics[control.key] - defaultNativeMathMetrics[control.key]) > 0.0005;
+      <p className="native-tuner-note">
+        {mode === "openmath"
+          ? "Most quiet controls use OpenType MATH/font-derived defaults; bordered controls are still engine-tuned."
+          : "KaTeX-font native mode uses engine defaults tuned in this playground."}
+      </p>
+      {mode === "openmath" ? (
+        <label className="native-tuner-toggle">
+          <input
+            type="checkbox"
+            disabled={disabled}
+            checked={showFontDerived}
+            onChange={(event) => setShowFontDerived(event.target.checked)}
+          />
+          Reveal font-derived sliders
+        </label>
+      ) : null}
+      {metricGroups.map((group) => {
+        const controls = group.controls.filter((control) => {
+          if (mode !== "openmath") return true;
+          if (control.openMath === "hidden") return false;
+          return !(hideFontDerived && control.openMath === "font");
+        });
+
+        if (!controls.length) {
+          return null;
+        }
+
+        return (
+          <section key={group.title} className="native-tuner-group">
+            <h3>{group.title}</h3>
+            {controls.map((control) => {
+            const changed = Math.abs(metrics[control.key] - defaults[control.key]) > 0.0005;
+            const source = mode === "openmath" ? control.openMath : undefined;
             return (
               <label
                 key={control.key}
-                className={changed ? "native-metric-control native-metric-control-changed" : "native-metric-control"}
+                className={[
+                  "native-metric-control",
+                  changed ? "native-metric-control-changed" : "",
+                  mode === "openmath" && source !== "font" ? "native-metric-control-engine" : ""
+                ].filter(Boolean).join(" ")}
               >
                 <span>
                   {control.label}
+                  {source === "engine" ? (
+                    <b className="native-metric-badge native-metric-badge-engine" title="Default supplied by the layout engine">engine</b>
+                  ) : null}
                   {changed ? <i aria-label="Changed from default" title="Changed from default" /> : null}
                 </span>
                 <input
@@ -242,15 +326,16 @@ function NativeMathTuner({
                 <button
                   type="button"
                   disabled={disabled}
-                  onClick={() => onChange(control.key, defaultNativeMathMetrics[control.key])}
+                  onClick={() => onChange(control.key, defaults[control.key])}
                 >
                   Reset
                 </button>
               </label>
             );
-          })}
-        </section>
-      ))}
+            })}
+          </section>
+        );
+      })}
     </div>
   );
 }

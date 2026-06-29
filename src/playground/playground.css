@@ -198,6 +198,22 @@ button:disabled {
   font-size: 15px;
 }
 
+.native-tuner-note {
+  margin: -4px 0 12px;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.native-tuner-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  color: #344054;
+  font-size: 12px;
+}
+
 .native-tuner h3 {
   margin-bottom: 8px;
   font-size: 13px;
@@ -218,6 +234,13 @@ button:disabled {
   font-size: 12px;
 }
 
+.native-metric-control-engine {
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  padding: 8px;
+  background: #fcfcfd;
+}
+
 .native-metric-control span {
   grid-column: 1 / -1;
   display: inline-flex;
@@ -230,6 +253,20 @@ button:disabled {
   height: 7px;
   border-radius: 50%;
   background: #0b6bcb;
+}
+
+.native-metric-badge {
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.native-metric-badge-engine {
+  background: #ecfdf3;
+  color: #067647;
 }
 
 .native-metric-control-changed span {

@@ -1,0 +1,202 @@
+import type { NativeFontRole } from "./nativeFontMetrics";
+import { openMathFontFaceCss, openMathFontStack } from "./openMathFont";
+
+export type NativeMathFontProfileName = "katex" | "openmath";
+
+export type NativeGlyphStyle = {
+  fontFamily?: string;
+  italic?: boolean;
+  bold?: boolean;
+};
+
+export type NativeMathProfile = {
+  name: NativeMathFontProfileName;
+  svgFontFaceCss: string;
+  layoutFontFamily?: string;
+  largeOperatorFontFamily: string;
+  renderFontFamily: (italic: boolean) => string;
+  mapGlyph: (text: string, options?: { upright?: boolean }) => string;
+  mapBoldGlyph: (text: string) => { text: string; bold: boolean };
+  shouldItalicize: (rawText: string, mappedText: string, options?: { upright?: boolean }) => boolean;
+};
+
+const regularMathFontFamily = "KaTeX_Main, Times New Roman, serif";
+const italicMathFontFamily = "KaTeX_Math, KaTeX_Main, Times New Roman, serif";
+const largeOperatorFontFamily = "KaTeX_Size2, KaTeX_Size1, KaTeX_Main, Times New Roman, serif";
+
+export const katexNativeMathProfile: NativeMathProfile = {
+  name: "katex",
+  svgFontFaceCss: "",
+  largeOperatorFontFamily,
+  renderFontFamily: (italic) => italic ? italicMathFontFamily : regularMathFontFamily,
+  mapGlyph: (text) => text,
+  mapBoldGlyph: (text) => ({ text, bold: true }),
+  shouldItalicize: (rawText, mappedText, options) => !options?.upright && shouldItalicizeMathText(rawText) && !isOperatorText(mappedText)
+};
+
+export const openTypeNativeMathProfile: NativeMathProfile = {
+  name: "openmath",
+  svgFontFaceCss: openMathFontFaceCss(),
+  layoutFontFamily: openMathFontStack,
+  largeOperatorFontFamily: openMathFontStack,
+  renderFontFamily: () => openMathFontStack,
+  mapGlyph: (text, options) => options?.upright ? text : Array.from(text).map((char) => openMathItalicGlyph(char)).join(""),
+  mapBoldGlyph: (text) => ({ text: Array.from(text).map((char) => openMathBoldGlyph(char)).join(""), bold: false }),
+  shouldItalicize: () => false
+};
+
+export function getNativeMathProfile(name: NativeMathFontProfileName): NativeMathProfile {
+  return name === "openmath" ? openTypeNativeMathProfile : katexNativeMathProfile;
+}
+
+export function isOpenMathFontFamily(fontFamily: string | undefined): boolean {
+  return Boolean(fontFamily?.includes("Latin Modern Math"));
+}
+
+export function selectNativeFontRole(style: NativeGlyphStyle): NativeFontRole {
+  if (isOpenMathFontFamily(style.fontFamily)) return "openMath";
+  if (style.fontFamily?.includes("KaTeX_Size4")) return "size4";
+  if (style.fontFamily?.includes("KaTeX_Size3")) return "size3";
+  if (style.fontFamily?.includes("KaTeX_Size2")) return "size2";
+  if (style.fontFamily?.includes("KaTeX_Size1")) return "size1";
+  if (style.bold && style.italic) return "mainBoldItalic";
+  if (style.bold) return "mainBold";
+  if (style.italic) return "mathItalic";
+  return "mainRegular";
+}
+
+export function shouldItalicizeMathText(text: string): boolean {
+  if (isOperatorText(text) || isBinaryOperator(text) || isRelationOperator(text)) return false;
+  return /^[A-Za-zα-ωΑ-Ω]$/.test(text);
+}
+
+export function isOperatorText(text: string): boolean {
+  return isRelationOperator(text) || isBinaryOperator(text) || /^[∫∑∏∇∂∞]$/.test(text);
+}
+
+export function isRelationOperator(text: string): boolean {
+  return ["=", "≤", "≥", "<", ">", "→", "⇒", "∈"].includes(text);
+}
+
+export function isBinaryOperator(text: string): boolean {
+  return ["+", "−", "±", "×", "⋅"].includes(text);
+}
+
+function openMathItalicGlyph(char: string): string {
+  const codePoint = char.codePointAt(0);
+  if (codePoint === undefined) return char;
+
+  if (codePoint >= 0x41 && codePoint <= 0x5a) {
+    return String.fromCodePoint(0x1d434 + codePoint - 0x41);
+  }
+  if (codePoint >= 0x61 && codePoint <= 0x7a) {
+    if (char === "h") return "\u210e";
+    return String.fromCodePoint(0x1d44e + codePoint - 0x61);
+  }
+  const greekItalic = openMathGreekItalicGlyph(char);
+  if (greekItalic) return greekItalic;
+  return char;
+}
+
+function openMathGreekItalicGlyph(char: string): string | undefined {
+  const lowercaseGreek: Record<string, string> = {
+    "α": "𝛼",
+    "β": "𝛽",
+    "γ": "𝛾",
+    "δ": "𝛿",
+    "ϵ": "𝜖",
+    "ε": "𝜀",
+    "ζ": "𝜁",
+    "η": "𝜂",
+    "θ": "𝜃",
+    "ι": "𝜄",
+    "κ": "𝜅",
+    "λ": "𝜆",
+    "μ": "𝜇",
+    "ν": "𝜈",
+    "ξ": "𝜉",
+    "π": "𝜋",
+    "ρ": "𝜌",
+    "σ": "𝜎",
+    "τ": "𝜏",
+    "υ": "𝜐",
+    "φ": "𝜑",
+    "χ": "𝜒",
+    "ψ": "𝜓",
+    "ω": "𝜔"
+  };
+  return lowercaseGreek[char];
+}
+
+function openMathBoldGlyph(char: string): string {
+  const codePoint = char.codePointAt(0);
+  if (codePoint === undefined) return char;
+
+  if (codePoint >= 0x41 && codePoint <= 0x5a) {
+    return String.fromCodePoint(0x1d400 + codePoint - 0x41);
+  }
+  if (codePoint >= 0x61 && codePoint <= 0x7a) {
+    return String.fromCodePoint(0x1d41a + codePoint - 0x61);
+  }
+  if (codePoint >= 0x30 && codePoint <= 0x39) {
+    return String.fromCodePoint(0x1d7ce + codePoint - 0x30);
+  }
+  const greekBold = openMathGreekBoldGlyph(char);
+  if (greekBold) return greekBold;
+  return char;
+}
+
+function openMathGreekBoldGlyph(char: string): string | undefined {
+  const greek: Record<string, string> = {
+    "Α": "𝚨",
+    "Β": "𝚩",
+    "Γ": "𝚪",
+    "Δ": "𝚫",
+    "Ε": "𝚬",
+    "Ζ": "𝚭",
+    "Η": "𝚮",
+    "Θ": "𝚯",
+    "Ι": "𝚰",
+    "Κ": "𝚱",
+    "Λ": "𝚲",
+    "Μ": "𝚳",
+    "Ν": "𝚴",
+    "Ξ": "𝚵",
+    "Ο": "𝚶",
+    "Π": "𝚷",
+    "Ρ": "𝚸",
+    "Σ": "𝚺",
+    "Τ": "𝚻",
+    "Υ": "𝚼",
+    "Φ": "𝚽",
+    "Χ": "𝚾",
+    "Ψ": "𝚿",
+    "Ω": "𝛀",
+    "α": "𝛂",
+    "β": "𝛃",
+    "γ": "𝛄",
+    "δ": "𝛅",
+    "ϵ": "𝛜",
+    "ε": "𝛆",
+    "ζ": "𝛇",
+    "η": "𝛈",
+    "θ": "𝛉",
+    "ι": "𝛊",
+    "κ": "𝛋",
+    "λ": "𝛌",
+    "μ": "𝛍",
+    "ν": "𝛎",
+    "ξ": "𝛏",
+    "π": "𝛑",
+    "ρ": "𝛒",
+    "σ": "𝛔",
+    "τ": "𝛕",
+    "υ": "𝛖",
+    "φ": "𝛗",
+    "χ": "𝛘",
+    "ψ": "𝛙",
+    "ω": "𝛚",
+    "∂": "𝛛"
+  };
+  return greek[char];
+}

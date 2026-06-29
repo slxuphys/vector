@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { createDocumentEngine } from "../src/core/engine/createDocumentEngine";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
 import { renderKatex } from "../src/core/renderers/math/renderKatex";
-import { defaultNativeMathMetrics, layoutNativeMath } from "../src/core/renderers/math/nativeMath";
-import { getNativeGlyphTexMetrics } from "../src/core/renderers/math/nativeFontMetrics";
+import {
+  defaultNativeMathMetrics,
+  defaultOpenMathMetrics,
+  getDefaultOpenMathMetrics,
+  layoutNativeMath,
+  openMathMetricsFromConstants
+} from "../src/core/renderers/math/nativeMath";
+import { getNativeGlyphMetrics, getNativeGlyphTexMetrics, loadNativeFontFromBytes } from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 
 describe("markdown parser", () => {
@@ -132,13 +139,158 @@ describe("document engine", () => {
       expect(math.nativeMetrics).toBeDefined();
     }
     expect(svg).toContain("svg-md-native-math");
+    expect(svg).toContain("Latin Modern Math");
     expect(svg).not.toContain("foreignObject");
     expect(svg).not.toContain("katex-html");
+  });
+
+  it("uses a less hand-tuned default metric profile for native OpenMath", () => {
+    expect(defaultOpenMathMetrics.relationMargin).toBeLessThan(defaultNativeMathMetrics.relationMargin);
+    expect(defaultOpenMathMetrics.binaryMargin).toBeLessThan(defaultNativeMathMetrics.binaryMargin);
+    expect(defaultOpenMathMetrics.accentGap).toBeLessThan(defaultNativeMathMetrics.accentGap);
+  });
+
+  it("derives native OpenMath defaults from OpenType MATH constants", () => {
+    const constants = {
+      unitsPerEm: 1000,
+      scriptPercentScaleDown: 70,
+      scriptScriptPercentScaleDown: 50,
+      displayOperatorMinHeight: 1800,
+      axisHeight: 250,
+      subscriptShiftDown: 180,
+      superscriptShiftUp: 420,
+      subSuperscriptGapMin: 40,
+      spaceAfterScript: 50,
+      upperLimitGapMin: 110,
+      upperLimitBaselineRiseMin: 680,
+      lowerLimitGapMin: 120,
+      lowerLimitBaselineDropMin: 620,
+      fractionNumeratorShiftUp: 460,
+      fractionNumeratorDisplayStyleShiftUp: 700,
+      fractionDenominatorShiftDown: 470,
+      fractionDenominatorDisplayStyleShiftDown: 700,
+      fractionNumeratorGapMin: 70,
+      fractionNumDisplayStyleGapMin: 150,
+      fractionRuleThickness: 60,
+      fractionDenominatorGapMin: 80,
+      fractionDenomDisplayStyleGapMin: 150,
+      overbarVerticalGap: 90,
+      overbarRuleThickness: 60,
+      radicalVerticalGap: 100,
+      radicalDisplayStyleVerticalGap: 160,
+      radicalRuleThickness: 60,
+      radicalExtraAscender: 70
+    };
+    const metrics = openMathMetricsFromConstants(constants);
+
+    expect(metrics.scriptScale).toBeCloseTo(constants.scriptPercentScaleDown / 100, 5);
+    expect(metrics.fractionRuleThickness).toBeCloseTo(
+      constants.fractionRuleThickness / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.fractionAxisOffset).toBeCloseTo(constants.axisHeight / constants.unitsPerEm, 5);
+    expect(metrics.fractionNumeratorShiftUp).toBeCloseTo(
+      constants.fractionNumeratorShiftUp / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.fractionNumeratorDisplayGap).toBeCloseTo(
+      constants.fractionNumDisplayStyleGapMin / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.fractionDenominatorDisplayShiftDown).toBeCloseTo(
+      constants.fractionDenominatorDisplayStyleShiftDown / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.displayLargeOperatorSuperscriptBaseline).toBeCloseTo(
+      -constants.superscriptShiftUp / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.displayLargeOperatorSubscriptBaseline).toBeCloseTo(
+      constants.subscriptShiftDown / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.displayLargeOperatorSuperscriptGap).toBeCloseTo(
+      constants.spaceAfterScript / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.displayLargeOperatorSubscriptGap).toBeCloseTo(
+      constants.spaceAfterScript / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.displayLimitOperatorSuperscriptGap).toBeCloseTo(
+      constants.upperLimitGapMin / constants.unitsPerEm,
+      5
+    );
+    expect(metrics.displayLimitOperatorSubscriptGap).toBeCloseTo(
+      constants.lowerLimitGapMin / constants.unitsPerEm,
+      5
+    );
+    expect(metrics).not.toEqual(defaultOpenMathMetrics);
+  });
+
+  it("uses mathematical italic glyphs for OpenMath variables", () => {
+    const layout = layoutNativeMath("a + A", false, 12, defaultOpenMathMetrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toEqual(["𝑎", "+", "𝐴"]);
+    expect(glyphs.find((node) => node.text === "𝑎")?.italic).toBe(false);
+    expect(glyphs.find((node) => node.text === "𝐴")?.italic).toBe(false);
+  });
+
+  it("uses mathematical italic glyphs for OpenMath lowercase Greek variables", () => {
+    const layout = layoutNativeMath("\\alpha + \\theta + \\lambda + \\Gamma", false, 12, defaultOpenMathMetrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toEqual(["𝛼", "+", "𝜃", "+", "𝜆", "+", "Γ"]);
+    expect(glyphs.every((node) => node.italic === false)).toBe(true);
+  });
+
+  it("maps OpenMath mathbf to mathematical bold glyphs instead of CSS bold", () => {
+    const layout = layoutNativeMath("\\mathbf{B} + \\mathbf{x} + \\mathbf{123}", false, 12, defaultOpenMathMetrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toEqual(["𝐁", "+", "𝐱", "+", "𝟏𝟐𝟑"]);
+    expect(glyphs.every((node) => node.bold !== true)).toBe(true);
+  });
+
+  it("uses TeX-style atom spacing for binary operators", () => {
+    const binary = layoutNativeMath("x+y", false, 12, defaultNativeMathMetrics, "katex");
+    const unary = layoutNativeMath("+x", false, 12, defaultNativeMathMetrics, "katex");
+    const binaryGlyphs = binary.nodes.filter((node) => node.type === "glyph");
+    const unaryGlyphs = unary.nodes.filter((node) => node.type === "glyph");
+    const binaryGap = binaryGlyphs[2].x - binaryGlyphs[1].x;
+    const unaryGap = unaryGlyphs[1].x - unaryGlyphs[0].x;
+
+    expect(binaryGlyphs.map((node) => node.text)).toEqual(["x", "+", "y"]);
+    expect(unaryGlyphs.map((node) => node.text)).toEqual(["+", "x"]);
+    expect(binaryGap - unaryGap).toBeGreaterThan(12 * defaultNativeMathMetrics.binaryMargin * 0.8);
+  });
+
+  it("does not add ink-edge gap after display named operators when thin space is zero", () => {
+    const metrics = { ...defaultOpenMathMetrics, thinMathSpace: 0 };
+    const layout = layoutNativeMath("\\max x \\sin x", true, 12, metrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const max = glyphs.find((node) => node.text === "max");
+    const firstX = glyphs.find((node) => node.text === "𝑥");
+
+    expect(max?.type).toBe("glyph");
+    expect(firstX?.type).toBe("glyph");
+    if (max?.type === "glyph" && firstX?.type === "glyph") {
+      expect(firstX.x - max.x).toBeLessThan(20);
+    }
   });
 
   it("exports native math with the native PDF path", async () => {
     const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native" });
     const { layout } = await engine.layout("Native $\\sqrt{x^2 + y^2} = r$ and $$\n\\frac{1}{3}\n$$");
+    const bytes = await renderToPdf(layout);
+
+    expect(bytes.length).toBeGreaterThan(1000);
+  });
+
+  it("exports native OpenMath math-italic glyphs with the OpenMath PDF font", async () => {
+    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const { layout } = await engine.layout("OpenMath $x^2 + \\alpha = y$ and $\\sin x$ and $\\mathbf{B}$");
     const bytes = await renderToPdf(layout);
 
     expect(bytes.length).toBeGreaterThan(1000);
@@ -221,7 +373,7 @@ describe("document engine", () => {
     if (rule?.type === "rule") {
       const ruleCenter = rule.y + rule.height / 2;
       expect(layout.baseline - ruleCenter).toBeCloseTo(
-        fontSize * defaultNativeMathMetrics.inlineFractionAxisOffset,
+        fontSize * defaultNativeMathMetrics.fractionAxisOffset,
         5
       );
     }
@@ -231,7 +383,7 @@ describe("document engine", () => {
     const defaultLayout = layoutNativeMath("x + \\frac{a}{b} = y", false, 12);
     const tunedLayout = layoutNativeMath("x + \\frac{a}{b} = y", false, 12, {
       ...defaultNativeMathMetrics,
-      inlineFractionAxisOffset: defaultNativeMathMetrics.inlineFractionAxisOffset + 0.16
+      fractionAxisOffset: defaultNativeMathMetrics.fractionAxisOffset + 0.16
     });
     const defaultX = defaultLayout.nodes.find((node) => node.type === "glyph" && node.text === "x");
     const tunedX = tunedLayout.nodes.find((node) => node.type === "glyph" && node.text === "x");
@@ -241,6 +393,45 @@ describe("document engine", () => {
     expect(tunedX?.type).toBe("glyph");
     if (defaultX?.type === "glyph" && tunedX?.type === "glyph") {
       expect(defaultX.y).toBeCloseTo(tunedX.y, 5);
+    }
+  });
+
+  it("allows native fraction numerator and denominator shifts to be tuned around the fixed axis", () => {
+    const normal = layoutNativeMath("\\frac{a}{b}", false, 12);
+    const shifted = layoutNativeMath("\\frac{a}{b}", false, 12, {
+      ...defaultNativeMathMetrics,
+      fractionNumeratorShiftUp: defaultNativeMathMetrics.fractionNumeratorShiftUp + 0.2,
+      fractionDenominatorShiftDown: defaultNativeMathMetrics.fractionDenominatorShiftDown + 0.2
+    });
+    const normalRule = normal.nodes.find((node) => node.type === "rule");
+    const shiftedRule = shifted.nodes.find((node) => node.type === "rule");
+    const normalGlyphs = normal.nodes.filter((node) => node.type === "glyph");
+    const shiftedGlyphs = shifted.nodes.filter((node) => node.type === "glyph");
+    const normalNumerator = normalGlyphs.find((node) => node.text === "a");
+    const shiftedNumerator = shiftedGlyphs.find((node) => node.text === "a");
+    const normalDenominator = normalGlyphs.find((node) => node.text === "b");
+    const shiftedDenominator = shiftedGlyphs.find((node) => node.text === "b");
+
+    expect(normalRule?.type).toBe("rule");
+    expect(shiftedRule?.type).toBe("rule");
+    expect(normalNumerator?.type).toBe("glyph");
+    expect(shiftedNumerator?.type).toBe("glyph");
+    expect(normalDenominator?.type).toBe("glyph");
+    expect(shiftedDenominator?.type).toBe("glyph");
+    if (
+      normalRule?.type === "rule" &&
+      shiftedRule?.type === "rule" &&
+      normalNumerator?.type === "glyph" &&
+      shiftedNumerator?.type === "glyph" &&
+      normalDenominator?.type === "glyph" &&
+      shiftedDenominator?.type === "glyph"
+    ) {
+      expect(normal.baseline - (normalRule.y + normalRule.height / 2)).toBeCloseTo(
+        shifted.baseline - (shiftedRule.y + shiftedRule.height / 2),
+        5
+      );
+      expect(shiftedNumerator.y - shifted.baseline).toBeLessThan(normalNumerator.y - normal.baseline);
+      expect(shiftedDenominator.y - shifted.baseline).toBeGreaterThan(normalDenominator.y - normal.baseline);
     }
   });
 
@@ -295,11 +486,25 @@ describe("document engine", () => {
     expect(glyphs.find((node) => node.text === "lim")?.italic).toBe(false);
   });
 
+  it("renders named math functions upright in native and OpenMath modes", () => {
+    const native = layoutNativeMath("\\arg \\max \\sin \\exp \\log x", false, 12);
+    const openMath = layoutNativeMath("\\arg \\max \\sin \\exp \\log x", false, 12, defaultOpenMathMetrics, "openmath");
+    const nativeGlyphs = native.nodes.filter((node) => node.type === "glyph");
+    const openMathGlyphs = openMath.nodes.filter((node) => node.type === "glyph");
+
+    for (const name of ["arg", "max", "sin", "exp", "log"]) {
+      expect(nativeGlyphs.find((node) => node.text === name)?.italic).toBe(false);
+      expect(openMathGlyphs.find((node) => node.text === name)?.italic).toBe(false);
+      expect(openMathGlyphs.map((node) => node.text)).toContain(name);
+    }
+    expect(openMathGlyphs.map((node) => node.text)).toContain("𝑥");
+  });
+
   it("applies native named-operator spacing after scripts, not before them", () => {
     const spaced = layoutNativeMath("\\sin^2 x", false, 12);
     const compact = layoutNativeMath("\\sin^2 x", false, 12, {
       ...defaultNativeMathMetrics,
-      namedOperatorRightMargin: 0
+      thinMathSpace: 0
     });
     const spacedGlyphs = spaced.nodes.filter((node) => node.type === "glyph");
     const compactGlyphs = compact.nodes.filter((node) => node.type === "glyph");
@@ -359,6 +564,69 @@ describe("document engine", () => {
     }
   });
 
+  it("uses OpenType MATH variants for OpenMath display large operators", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const layout = layoutNativeMath(
+      "\\int_0^1 x + \\sum_i^n z + \\prod_i^n y",
+      true,
+      12,
+      getDefaultOpenMathMetrics(),
+      "openmath"
+    );
+    const operatorPaths = layout.nodes.filter((node) => node.type === "glyphPath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const lowerZero = glyphs.find((node) => node.text === "0");
+    const upperOne = glyphs.find((node) => node.text === "1");
+    const nextX = glyphs.find((node) => node.text === "𝑥");
+
+    expect(operatorPaths.length).toBeGreaterThanOrEqual(3);
+    expect(glyphs.map((node) => node.text)).not.toContain("∫");
+    expect(glyphs.map((node) => node.text)).not.toContain("∑");
+    expect(glyphs.map((node) => node.text)).not.toContain("∏");
+    expect(lowerZero?.type).toBe("glyph");
+    expect(upperOne?.type).toBe("glyph");
+    expect(nextX?.type).toBe("glyph");
+    if (lowerZero?.type === "glyph" && upperOne?.type === "glyph" && nextX?.type === "glyph") {
+      expect(upperOne.y).toBeLessThan(lowerZero.y);
+      expect(nextX.x).toBeGreaterThanOrEqual(operatorPaths[0].x + operatorPaths[0].width);
+    }
+  });
+
+  it("keeps OpenMath display integral glyph paths on the math baseline", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const layout = layoutNativeMath(
+      "\\int^x_y \\sqrt{\\frac{a}{b}}",
+      true,
+      12,
+      getDefaultOpenMathMetrics(),
+      "openmath"
+    );
+    const integral = layout.nodes.find((node) => node.type === "glyphPath");
+
+    expect(integral?.type).toBe("glyphPath");
+    if (integral?.type === "glyphPath") {
+      expect(integral.y).toBeCloseTo(layout.baseline, 5);
+      expect(integral.y + integral.inkBottomOffset).toBeLessThanOrEqual(layout.height);
+    }
+  });
+
+  it("tucks OpenMath display integral side scripts into the operator width", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const layout = layoutNativeMath("\\int^x_y z", true, 12, getDefaultOpenMathMetrics(), "openmath");
+    const integral = layout.nodes.find((node) => node.type === "glyphPath");
+    const subscript = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑦");
+    const next = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑧");
+
+    expect(integral?.type).toBe("glyphPath");
+    expect(subscript?.type).toBe("glyph");
+    expect(next?.type).toBe("glyph");
+    if (integral?.type === "glyphPath" && subscript?.type === "glyph" && next?.type === "glyph") {
+      expect(subscript.x).toBeGreaterThan(integral.x + integral.width * 0.45);
+      expect(subscript.x).toBeLessThan(integral.x + integral.width);
+      expect(next.x).toBeGreaterThanOrEqual(integral.x + integral.width);
+    }
+  });
+
   it("positions native display large-operator scripts around the taller operator", () => {
     const inline = layoutNativeMath("\\int_0^1", false, 12);
     const display = layoutNativeMath("\\int_0^1", true, 12);
@@ -388,8 +656,10 @@ describe("document engine", () => {
       expect(displayIntegral.fontFamily).toContain("KaTeX_Size2");
       expect(displayUpper.y - displayIntegral.y).toBeLessThan(inlineUpper.y - inlineIntegral.y);
       expect(displayLower.y - displayIntegral.y).toBeGreaterThan(inlineLower.y - inlineIntegral.y);
-      expect(displayUpper.x - displayIntegral.x).toBeGreaterThan(inlineUpper.x - inlineIntegral.x);
-      expect(displayLower.x - displayIntegral.x).toBeGreaterThan(inlineLower.x - inlineIntegral.x);
+      expect(displayUpper.x).toBeGreaterThanOrEqual(displayIntegral.x);
+      expect(displayLower.x).toBeGreaterThanOrEqual(displayIntegral.x);
+      expect(displayUpper.x - displayIntegral.x).toBeLessThan(displayIntegral.fontSize * 2);
+      expect(displayLower.x - displayIntegral.x).toBeLessThan(displayIntegral.fontSize * 2);
     }
   });
 
@@ -884,6 +1154,82 @@ describe("document engine", () => {
       const gap = bodyTop - hatBottom;
       expect(gap).toBeCloseTo(hat.fontSize * defaultNativeMathMetrics.accentGap, 5);
       expect(gap).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("uses OpenMath font bbox bottoms for accent placement", () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const metrics = getDefaultOpenMathMetrics();
+    const layout = layoutNativeMath("\\hat x", true, 12, metrics, "openmath");
+    const hat = layout.nodes.find((node) => node.type === "glyphPath");
+    const body = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑥");
+
+    expect(layout.nodes.some((node) => node.type === "glyph" && node.text === "^")).toBe(false);
+    expect(hat?.type).toBe("glyphPath");
+    expect(body?.type).toBe("glyph");
+    if (hat?.type === "glyphPath" && body?.type === "glyph") {
+      const bodyMetrics = getNativeGlyphMetrics("openMath", "𝑥", body.fontSize);
+      expect(bodyMetrics).toBeDefined();
+      if (!bodyMetrics) return;
+
+      const hatBottom = hat.y + hat.inkBottomOffset;
+      const bodyTop = body.y + bodyMetrics.actualTopOffset;
+      const gap = bodyTop - hatBottom;
+      expect(gap).toBeCloseTo(body.fontSize * metrics.accentGap, 5);
+      expect(gap).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("uses OpenType MATH horizontal accent variants for OpenMath hats", () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const simple = layoutNativeMath("\\hat x", false, 12, getDefaultOpenMathMetrics(), "openmath");
+    const wide = layoutNativeMath("\\hat{x+y}", false, 12, getDefaultOpenMathMetrics(), "openmath");
+    const simpleHat = simple.nodes.find((node) => node.type === "glyphPath");
+    const wideHat = wide.nodes.find((node) => node.type === "glyphPath");
+
+    expect(simpleHat?.type).toBe("glyphPath");
+    expect(wideHat?.type).toBe("glyphPath");
+    if (simpleHat?.type === "glyphPath" && wideHat?.type === "glyphPath") {
+      expect(simpleHat.width).toBeLessThan(5);
+      expect(wideHat.width).toBeGreaterThan(simpleHat.width);
+    }
+  });
+
+  it("uses OpenType MATH horizontal accent variants for OpenMath vectors", () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const simple = layoutNativeMath("\\vec x", false, 12, getDefaultOpenMathMetrics(), "openmath");
+    const wide = layoutNativeMath("\\vec{x+y}", false, 12, getDefaultOpenMathMetrics(), "openmath");
+    const simpleVector = simple.nodes.find((node) => node.type === "glyphPath");
+    const wideVector = wide.nodes.find((node) => node.type === "glyphPath");
+
+    expect(simpleVector?.type).toBe("glyphPath");
+    expect(wideVector?.type).toBe("glyphPath");
+    if (simpleVector?.type === "glyphPath" && wideVector?.type === "glyphPath") {
+      expect(simpleVector.width).toBeGreaterThan(4);
+      expect(wideVector.width).toBeGreaterThan(simpleVector.width);
+    }
+  });
+
+  it("uses the Latin Modern Math macron glyph for OpenMath bars", () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const metrics = getDefaultOpenMathMetrics();
+    const layout = layoutNativeMath("\\bar{x}", false, 12, metrics, "openmath");
+    const bar = layout.nodes.find((node) => node.type === "glyph" && node.text === "¯");
+    const body = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑥");
+
+    expect(layout.nodes.some((node) => node.type === "glyph" && node.text === "ˉ")).toBe(false);
+    expect(bar?.type).toBe("glyph");
+    expect(body?.type).toBe("glyph");
+    if (bar?.type === "glyph" && body?.type === "glyph") {
+      const barMetrics = getNativeGlyphMetrics("openMath", "¯", bar.fontSize);
+      const bodyMetrics = getNativeGlyphMetrics("openMath", "𝑥", body.fontSize);
+      expect(barMetrics).toBeDefined();
+      expect(bodyMetrics).toBeDefined();
+      if (!barMetrics || !bodyMetrics) return;
+
+      const barBottom = bar.y + barMetrics.actualBottomOffset;
+      const bodyTop = body.y + bodyMetrics.actualTopOffset;
+      expect(bodyTop - barBottom).toBeCloseTo(bar.fontSize * metrics.accentGap, 5);
     }
   });
 
