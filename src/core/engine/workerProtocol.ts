@@ -13,7 +13,13 @@ export type EngineOptions = {
   nativeMathMetrics?: NativeMathMetrics;
 };
 
-export type MathRendererName = "katex-raster" | "katex-glyph" | "mathjax-vector" | "mathjax-glyph" | "native";
+export type MathRendererName =
+  | "katex-raster"
+  | "katex-glyph"
+  | "mathjax-vector"
+  | "mathjax-glyph"
+  | "native"
+  | "native-openmath";
 
 export type LayoutRequest = {
   id: number;

@@ -121,6 +121,10 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   binaryMargin: 0.22
 };
 
+export function isNativeMathRenderer(renderer: string | undefined): renderer is "native" | "native-openmath" {
+  return renderer === "native" || renderer === "native-openmath";
+}
+
 type GlyphStyle = {
   fontFamily?: string;
   italic?: boolean;

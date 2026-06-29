@@ -2,13 +2,17 @@ import { useMemo, useState } from "react";
 import { MarkdownEditorPreview } from "../react/MarkdownEditorPreview";
 import { darkTheme, defaultTheme } from "../core/theme/defaultTheme";
 import type { MathRendererName } from "../core/engine/workerProtocol";
-import { defaultNativeMathMetrics, type NativeMathMetrics } from "../core/renderers/math/nativeMath";
+import {
+  defaultNativeMathMetrics,
+  isNativeMathRenderer,
+  type NativeMathMetrics
+} from "../core/renderers/math/nativeMath";
 import { playgroundSamples } from "./sampleMarkdown";
 
 export function App() {
   const [sample, setSample] = useState<keyof typeof playgroundSamples>("mathHeavy");
   const [font, setFont] = useState<"sans" | "tex">("sans");
-  const [mathRenderer, setMathRenderer] = useState<MathRendererName>("native");
+  const [mathRenderer, setMathRenderer] = useState<MathRendererName>("native-openmath");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
   const [dark, setDark] = useState(false);
@@ -62,6 +66,7 @@ export function App() {
               <option value="mathjax-vector">MathJax vector</option>
               <option value="mathjax-glyph">MathJax glyph</option>
               <option value="native">Native engine</option>
+              <option value="native-openmath">Native + OpenMath</option>
             </select>
           </label>
           <label>
@@ -101,7 +106,7 @@ export function App() {
         sidePanel={(
           <NativeMathTuner
             metrics={nativeMetrics}
-            disabled={mathRenderer !== "native"}
+            disabled={!isNativeMathRenderer(mathRenderer)}
             onChange={updateNativeMetric}
             onReset={() => setNativeMetrics(defaultNativeMathMetrics)}
           />

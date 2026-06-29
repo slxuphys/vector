@@ -7,7 +7,7 @@ import { breakRunsIntoLines } from "./lineBreaking";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
 import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
-import { layoutNativeMath, type NativeMathMetrics } from "../renderers/math/nativeMath";
+import { defaultNativeMathMetrics, isNativeMathRenderer, layoutNativeMath, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMetrics";
 
 type Cursor = {
@@ -352,8 +352,9 @@ function createMathObject(options: {
     };
   }
 
-  if (options.mathRenderer === "native") {
-    const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize, options.nativeMathMetrics);
+  if (isNativeMathRenderer(options.mathRenderer)) {
+    const nativeMetrics = options.nativeMathMetrics ?? defaultNativeMathMetrics;
+    const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize, nativeMetrics);
     const y = options.displayMode ? options.y : options.y;
     return {
       type: "math",
@@ -370,7 +371,7 @@ function createMathObject(options: {
       baseline: layout.baseline,
       fontSize: options.fontSize,
       color: options.color,
-      nativeMetrics: options.nativeMathMetrics
+      nativeMetrics
     };
   }
 

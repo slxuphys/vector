@@ -1,6 +1,7 @@
 import type { PDFDocument, PDFImage, PDFPage } from "pdf-lib";
 import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
 import { now } from "../../utils/timing";
+import { isNativeMathRenderer } from "../math/nativeMath";
 import { svgToDataUrl } from "../math/renderKatex";
 
 export type PdfMathArtifactStats = {
@@ -107,7 +108,7 @@ export async function drawPdfMathArtifact(
 }
 
 function canRasterizeMathArtifact(object: Extract<DisplayObject, { type: "math" }>): boolean {
-  return object.renderer !== "native" && object.svg.trim().length > 0;
+  return !isNativeMathRenderer(object.renderer) && object.svg.trim().length > 0;
 }
 
 function mathArtifactCacheKey(object: Extract<DisplayObject, { type: "math" }>): string {

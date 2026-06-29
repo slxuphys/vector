@@ -1,7 +1,7 @@
 import type { LayoutBlock, InlineRun } from "./layoutBlocks";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
-import type { NativeMathMetrics } from "../renderers/math/nativeMath";
+import { isNativeMathRenderer, type NativeMathMetrics } from "../renderers/math/nativeMath";
 
 export type MathMeasureRequest = {
   key: string;
@@ -28,7 +28,7 @@ export function mathMeasureKey(
   renderer: MathRendererName = "katex-raster",
   nativeMetrics?: NativeMathMetrics
 ): string {
-  const metricsKey = renderer === "native" && nativeMetrics ? `:${nativeMetricsKey(nativeMetrics)}` : "";
+  const metricsKey = isNativeMathRenderer(renderer) && nativeMetrics ? `:${nativeMetricsKey(nativeMetrics)}` : "";
   return `${renderer}:${displayMode ? "display" : "inline"}:${round(fontSize)}:${normalizeMathLatex(latex)}${metricsKey}`;
 }
 

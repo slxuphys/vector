@@ -4,6 +4,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/workerProtocol";
+import { isNativeMathRenderer } from "../core/renderers/math/nativeMath";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
 import { SvgPagedPreview } from "./SvgPagedPreview";
@@ -36,7 +37,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
   const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
   const usingMathJaxGlyph = options.mathRenderer === "mathjax-glyph";
-  const usingNativeMath = options.mathRenderer === "native";
+  const usingNativeMath = isNativeMathRenderer(options.mathRenderer);
   const usingMathJax = usingMathJaxVector || usingMathJaxGlyph;
   const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
 

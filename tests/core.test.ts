@@ -119,6 +119,23 @@ describe("document engine", () => {
     expect(svg).not.toContain("katex-html");
   });
 
+  it("renders native OpenMath mode through the native display path", async () => {
+    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const { layout } = await engine.layout("OpenMath $\\sqrt{x^2 + y^2} = r$");
+    const math = layout.pages[0].objects.find((object) => object.type === "math");
+    const svg = renderPageToSvg(layout.pages[0]);
+
+    expect(math?.type).toBe("math");
+    if (math?.type === "math") {
+      expect(math.renderer).toBe("native-openmath");
+      expect(math.svg).toBe("");
+      expect(math.nativeMetrics).toBeDefined();
+    }
+    expect(svg).toContain("svg-md-native-math");
+    expect(svg).not.toContain("foreignObject");
+    expect(svg).not.toContain("katex-html");
+  });
+
   it("exports native math with the native PDF path", async () => {
     const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native" });
     const { layout } = await engine.layout("Native $\\sqrt{x^2 + y^2} = r$ and $$\n\\frac{1}{3}\n$$");
@@ -670,6 +687,15 @@ describe("document engine", () => {
   it("includes native math metrics in native measurement keys", () => {
     expect(mathMeasureKey("E=mc^2", false, 12, "native", defaultNativeMathMetrics)).not.toBe(
       mathMeasureKey("E=mc^2", false, 12, "native", {
+        ...defaultNativeMathMetrics,
+        inlineGlyphGap: defaultNativeMathMetrics.inlineGlyphGap + 0.05
+      })
+    );
+  });
+
+  it("includes native math metrics in native OpenMath measurement keys", () => {
+    expect(mathMeasureKey("E=mc^2", false, 12, "native-openmath", defaultNativeMathMetrics)).not.toBe(
+      mathMeasureKey("E=mc^2", false, 12, "native-openmath", {
         ...defaultNativeMathMetrics,
         inlineGlyphGap: defaultNativeMathMetrics.inlineGlyphGap + 0.05
       })

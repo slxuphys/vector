@@ -3,7 +3,7 @@ import type { MathRendererName } from "./workerProtocol";
 import { renderMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
-import { layoutNativeMath } from "../renderers/math/nativeMath";
+import { isNativeMathRenderer, layoutNativeMath } from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
 
 let root: HTMLDivElement | undefined;
@@ -14,7 +14,7 @@ export async function measureMathInDom(
   requests: MathMeasureRequest[],
   renderer: MathRendererName = "katex-raster"
 ): Promise<Record<string, MathMeasurement>> {
-  if (renderer === "native") return measureNativeMath(requests);
+  if (isNativeMathRenderer(renderer)) return measureNativeMath(requests);
   if (renderer === "mathjax-vector" || renderer === "mathjax-glyph") return measureMathJax(requests);
   if (typeof document === "undefined") return {};
 
