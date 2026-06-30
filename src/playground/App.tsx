@@ -10,11 +10,18 @@ import {
   type NativeMathMetrics
 } from "../core/renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../core/renderers/math/nativeFontMetrics";
+import {
+  latinModernRomanFontFaceCss,
+  latinModernRomanFontStack
+} from "../core/renderers/text/latinModernRomanFont";
 import { playgroundSamples } from "./sampleMarkdown";
+
+type PlaygroundFont = "sans" | "tex";
+type FontSelectValue = PlaygroundFont | "latin-modern";
 
 export function App() {
   const [sample, setSample] = useState<keyof typeof playgroundSamples>("mathHeavy");
-  const [font, setFont] = useState<"sans" | "tex">("sans");
+  const [font, setFont] = useState<PlaygroundFont>("sans");
   const [mathRenderer, setMathRenderer] = useState<MathRendererName>("native-openmath");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
@@ -24,6 +31,7 @@ export function App() {
   const [openMathDefaults, setOpenMathDefaults] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
   const activeNativeMetrics = mathRenderer === "native-openmath" ? openMathMetrics : nativeMetrics;
   const activeNativeDefaults = mathRenderer === "native-openmath" ? openMathDefaults : defaultNativeMathMetrics;
+  const effectiveFont: FontSelectValue = mathRenderer === "native-openmath" ? "latin-modern" : font;
   const options = useMemo(
     () => {
       const theme = dark ? darkTheme : defaultTheme;
@@ -31,7 +39,13 @@ export function App() {
         pageSize,
         margin,
         mathRenderer,
-        theme: font === "tex"
+        theme: mathRenderer === "native-openmath"
+          ? {
+              ...theme,
+              fontFamily: latinModernRomanFontStack,
+              fontFaceCss: latinModernRomanFontFaceCss()
+            }
+          : font === "tex"
           ? {
               ...theme,
               fontFamily: "KaTeX_Main, 'Times New Roman', serif"
@@ -102,9 +116,17 @@ export function App() {
           </label>
           <label>
             Font
-            <select value={font} onChange={(event) => setFont(event.target.value as "sans" | "tex")}>
+            <select
+              value={effectiveFont}
+              disabled={mathRenderer === "native-openmath"}
+              onChange={(event) => {
+                const value = event.target.value as FontSelectValue;
+                if (value !== "latin-modern") setFont(value);
+              }}
+            >
               <option value="sans">Sans</option>
               <option value="tex">TeX</option>
+              <option value="latin-modern">Latin Modern</option>
             </select>
           </label>
           <label>
@@ -203,6 +225,7 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
       { key: "sqrtBodyScale", label: "Body scale", min: 0.5, max: 1.2, step: 0.01, openMath: "hidden" },
       { key: "sqrtRadicalWidth", label: "Radical width", min: 0.3, max: 1.2, step: 0.01, openMath: "hidden" },
       { key: "sqrtTopGap", label: "Bar-body gap", min: 0, max: 0.3, step: 0.005, openMath: "font" },
+      { key: "displaySqrtTopGap", label: "Display bar-body gap", min: 0, max: 0.4, step: 0.005, openMath: "font" },
       { key: "sqrtRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005, openMath: "font" },
       { key: "sqrtRuleStart", label: "Rule start", min: 0.2, max: 1.1, step: 0.01, openMath: "hidden" },
       { key: "sqrtOverbarExtra", label: "Overbar extra", min: 0, max: 0.5, step: 0.01, openMath: "font" }

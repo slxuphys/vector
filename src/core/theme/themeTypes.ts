@@ -10,6 +10,7 @@ export type DocumentTheme = {
   link: string;
   fontFamily: string;
   monoFontFamily: string;
+  fontFaceCss?: string;
   fontSize: number;
   lineHeight: number;
 };

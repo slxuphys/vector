@@ -60,6 +60,7 @@ export type DisplayPage = {
   index: number;
   width: number;
   height: number;
+  fontFaceCss?: string;
   objects: DisplayObject[];
 };
 

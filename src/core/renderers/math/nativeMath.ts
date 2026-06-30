@@ -7,6 +7,7 @@ import {
   getNativeGlyphTexMetrics,
   getOpenTypeMathConstants,
   getOpenTypeMathHorizontalGlyphVariant,
+  getOpenTypeMathKern,
   getOpenTypeMathGlyphVariant,
   getOpenTypeMathGlyphInfo,
   getOpenTypeMathRadicalVariant
@@ -109,6 +110,7 @@ export type NativeMathMetrics = {
   sqrtBodyScale: number;
   sqrtRadicalWidth: number;
   sqrtTopGap: number;
+  displaySqrtTopGap: number;
   sqrtRuleThickness: number;
   sqrtRuleStart: number;
   sqrtOverbarExtra: number;
@@ -158,6 +160,7 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   sqrtBodyScale: 1,
   sqrtRadicalWidth: 0.8,
   sqrtTopGap: 0.08,
+  displaySqrtTopGap: 0.12,
   sqrtRuleThickness: 0.045,
   sqrtRuleStart: 0.98,
   sqrtOverbarExtra: 0.12,
@@ -182,6 +185,7 @@ export const defaultOpenMathMetrics: NativeMathMetrics = {
   fractionSidePadding: 0.28,
   fractionRuleInset: 0.08,
   sqrtTopGap: 0.04,
+  displaySqrtTopGap: 0.08,
   sqrtOverbarExtra: 0.04,
   accentGap: 0.03,
   thinMathSpace: 0.08,
@@ -223,6 +227,7 @@ export function openMathMetricsFromConstants(constants: NonNullable<ReturnType<t
     fractionAxisOffset: unit(constants.axisHeight),
     fractionRuleThickness: unit(constants.fractionRuleThickness),
     sqrtTopGap: unit(constants.radicalVerticalGap),
+    displaySqrtTopGap: unit(constants.radicalDisplayStyleVerticalGap),
     sqrtRuleThickness: unit(constants.radicalRuleThickness),
     sqrtOverbarExtra: unit(constants.radicalExtraAscender),
     displayLargeOperatorSuperscriptBaseline: -unit(constants.superscriptShiftUp),
@@ -255,7 +260,6 @@ export function nativeMathProfileForRenderer(renderer: string | undefined): Nati
 const largeOperatorFontFamily = "KaTeX_Size2, KaTeX_Size1, KaTeX_Main, Times New Roman, serif";
 
 const glyphWidthCache = new Map<string, number>();
-const canvasGlyphMetricsCache = new Map<string, ReturnType<typeof measureGlyphFontMetrics>>();
 
 const commandGlyphs: Record<string, string> = {
   "\\alpha": "α",
@@ -278,15 +282,36 @@ const commandGlyphs: Record<string, string> = {
   "\\zeta": "ζ",
   "\\eta": "η",
   "\\theta": "θ",
+  "\\vartheta": "ϑ",
+  "\\iota": "ι",
+  "\\kappa": "κ",
+  "\\varkappa": "ϰ",
   "\\lambda": "λ",
   "\\mu": "μ",
+  "\\nu": "ν",
+  "\\xi": "ξ",
+  "\\omicron": "ο",
   "\\pi": "π",
+  "\\varpi": "ϖ",
   "\\rho": "ρ",
+  "\\varrho": "ϱ",
   "\\sigma": "σ",
+  "\\varsigma": "ς",
+  "\\tau": "τ",
+  "\\upsilon": "υ",
+  "\\phi": "ϕ",
+  "\\varphi": "φ",
+  "\\chi": "χ",
+  "\\psi": "ψ",
   "\\omega": "ω",
   "\\nabla": "∇",
   "\\partial": "∂",
   "\\cdot": "⋅",
+  "\\langle": "⟨",
+  "\\rangle": "⟩",
+  "\\vert": "|",
+  "\\Vert": "‖",
+  "\\mid": "|",
   "\\int": "∫",
   "\\sum": "∑",
   "\\prod": "∏",
@@ -490,8 +515,16 @@ type LastAtom = {
   scriptAdvance: number;
   italicCorrection: number;
   mathClass: MathAtomClass;
-  displayIntegralOperator?: boolean;
-  displayLimitOperator?: boolean;
+  operator?: OperatorLayoutInfo;
+};
+
+type OperatorLayoutInfo = {
+  kind: "integral" | "limits";
+  inkTop: number;
+  inkBottom: number;
+  centerX: number;
+  rightEdge: number;
+  glyphId?: number;
 };
 
 type MathAtomClass = "mord" | "mop" | "mbin" | "mrel" | "mopen" | "mclose" | "mpunct" | "minner";
@@ -510,13 +543,50 @@ const mathAtomSpacing: Partial<Record<MathAtomClass, Partial<Record<MathAtomClas
 
 const binLeftCanceller = new Set<MathAtomClass>(["mbin", "mopen", "mrel", "mop", "mpunct"]);
 const binRightCanceller = new Set<MathAtomClass>(["mrel", "mclose", "mpunct"]);
+const knownEnvironmentNames = new Set([
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "Bmatrix",
+  "vmatrix",
+  "Vmatrix",
+  "array",
+  "aligned",
+  "align",
+  "align*",
+  "gathered",
+  "gather",
+  "gather*",
+  "cases",
+  "smallmatrix"
+]);
+const environmentDelimiters: Record<string, [string, string]> = {
+  pmatrix: ["(", ")"],
+  bmatrix: ["[", "]"],
+  Bmatrix: ["{", "}"],
+  vmatrix: ["|", "|"],
+  Vmatrix: ["‖", "‖"],
+  cases: ["{", ""]
+};
+const matrixEnvironmentNames = new Set([
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "Bmatrix",
+  "vmatrix",
+  "Vmatrix",
+  "array",
+  "smallmatrix",
+  "cases"
+]);
 
 function layoutSequence(
   input: string,
   fontSize: number,
   displayMode: boolean,
   metrics: NativeMathMetrics,
-  profile: NativeMathProfile
+  profile: NativeMathProfile,
+  rootDisplayMode = displayMode
 ): Box {
   const nodes: NativeNode[] = [];
   let x = 0;
@@ -538,10 +608,10 @@ function layoutSequence(
     if (char === "{" || char === "}") continue;
     if (char === "^" || char === "_") {
       const script = readArgument(input, index + 1);
-      const scriptBox = layoutSequence(script.value, fontSize * metrics.scriptScale, false, metrics, profile);
+      const scriptBox = layoutSequence(script.value, fontSize * metrics.scriptScale, false, metrics, profile, false);
       const scriptBaseline = getScriptBaseline(char, fontSize, metrics, lastAtom, scriptBox);
       const yShift = scriptBaseline - scriptBox.baseline;
-      const anchor = getScriptAnchor(char, x, scriptBox.width, fontSize, metrics, lastAtom);
+      const anchor = getScriptAnchor(char, x, scriptBox.width, scriptBaseline, fontSize, metrics, lastAtom);
       nodes.push(...translateNodes(scriptBox.nodes, anchor, yShift));
       inkTop = Math.min(inkTop, yShift + scriptBox.inkTop);
       inkBottom = Math.max(inkBottom, yShift + scriptBox.inkBottom);
@@ -578,7 +648,7 @@ function layoutSequence(
         const body = input[command.end + 1] === "["
           ? readArgument(input, input.indexOf("]", command.end + 1) + 1)
           : readArgument(input, command.end + 1);
-        const sqrt = layoutSqrt(body.value, fontSize, displayMode, metrics, profile);
+        const sqrt = layoutSqrt(body.value, fontSize, rootDisplayMode, metrics, profile);
         nodes.push(...translateNodes(sqrt.nodes, x, -sqrt.baseline));
         inkTop = Math.min(inkTop, -sqrt.baseline + sqrt.inkTop);
         inkBottom = Math.max(inkBottom, -sqrt.baseline + sqrt.inkBottom);
@@ -605,6 +675,59 @@ function layoutSequence(
         continue;
       }
 
+      if (command.name === "\\left") {
+        const delimited = readLeftRight(input, command.end);
+        const mathClass = applyAtomSpacing("minner");
+        const body = layoutSequence(delimited.body, fontSize, displayMode, metrics, profile);
+        const box = wrapBoxWithDelimiters(body, [delimited.left, delimited.right], fontSize, profile);
+        nodes.push(...translateNodes(box.nodes, x, -box.baseline));
+        inkTop = Math.min(inkTop, -box.baseline + box.inkTop);
+        inkBottom = Math.max(inkBottom, -box.baseline + box.inkBottom);
+        lastAtom = { x, width: box.width, ascent: box.ascent, descent: box.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += box.width + glyphGap;
+        maxTop = Math.max(maxTop, box.ascent);
+        maxBottom = Math.max(maxBottom, box.descent);
+        index = delimited.end;
+        continue;
+      }
+
+      if (command.name === "\\begin") {
+        const environment = readEnvironment(input, command.end);
+        const mathClass = applyAtomSpacing("minner");
+        const box = layoutEnvironment(environment, fontSize, displayMode, metrics, profile);
+        nodes.push(...translateNodes(box.nodes, x, -box.baseline));
+        inkTop = Math.min(inkTop, -box.baseline + box.inkTop);
+        inkBottom = Math.max(inkBottom, -box.baseline + box.inkBottom);
+        lastAtom = { x, width: box.width, ascent: box.ascent, descent: box.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += box.width + glyphGap;
+        maxTop = Math.max(maxTop, box.ascent);
+        maxBottom = Math.max(maxBottom, box.descent);
+        index = environment.end;
+        continue;
+      }
+
+      if (command.name === "\\bra" || command.name === "\\ket") {
+        const mathClass = applyAtomSpacing("minner");
+        const bodyArg = readArgument(input, command.end + 1);
+        const body = layoutSequence(bodyArg.value, fontSize, displayMode, metrics, profile);
+        const delimiters: [string, string] = command.name === "\\bra" ? ["⟨", "|"] : ["|", "⟩"];
+        const box = wrapBoxWithDelimiters(body, delimiters, fontSize, profile, {
+          verticalBarsAsGlyphs: true,
+          stableInlineBaseline: true,
+          delimiterGap: 0,
+          useDelimiterVariants: false
+        });
+        nodes.push(...translateNodes(box.nodes, x, -box.baseline));
+        inkTop = Math.min(inkTop, -box.baseline + box.inkTop);
+        inkBottom = Math.max(inkBottom, -box.baseline + box.inkBottom);
+        lastAtom = { x, width: box.width, ascent: box.ascent, descent: box.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += box.width + glyphGap;
+        maxTop = Math.max(maxTop, box.ascent);
+        maxBottom = Math.max(maxBottom, box.descent);
+        index = bodyArg.end;
+        continue;
+      }
+
       if (command.name === "\\mathbf") {
         const mathClass = applyAtomSpacing("mord");
         const body = readArgument(input, command.end + 1);
@@ -624,7 +747,7 @@ function layoutSequence(
         continue;
       }
 
-      if (command.name === "\\begin" || command.name === "\\left" || command.name === "\\right") {
+      if (command.name === "\\end" || command.name === "\\right") {
         const mathClass = applyAtomSpacing("mord");
         const marker = unsupported(command.name);
         const style = { color: "#b42318", italic: false };
@@ -660,6 +783,7 @@ function layoutSequence(
       const largeOperatorPath = isDisplayLargeOperator && profile.name === "openmath"
         ? layoutOpenMathOperatorGlyph(text, glyphFontSize)
         : undefined;
+      const fontMetrics = largeOperatorPath ? undefined : measureGlyphFontMetrics(text, glyphFontSize, style);
       const width = largeOperatorPath?.width ?? measureGlyphLayoutWidth(text, glyphFontSize, style, useInkRightEdge);
       const verticalMetrics = largeOperatorPath
         ? {
@@ -685,6 +809,14 @@ function layoutSequence(
       }
       inkTop = Math.min(inkTop, -verticalMetrics.ascent);
       inkBottom = Math.max(inkBottom, verticalMetrics.descent);
+      const operator = buildOperatorLayoutInfo(
+        isDisplayIntegralOperator ? "integral" : isDisplayLimitOperator ? "limits" : undefined,
+        x,
+        width,
+        verticalMetrics,
+        fontMetrics,
+        largeOperatorPath?.glyphId
+      );
       lastAtom = {
         x,
         width,
@@ -693,8 +825,7 @@ function layoutSequence(
         scriptAdvance: 0,
         italicCorrection: largeOperatorPath?.italicCorrection ?? measureGlyphMathInfo(text, glyphFontSize, style).italicCorrection ?? 0,
         mathClass,
-        displayIntegralOperator: isDisplayIntegralOperator,
-        displayLimitOperator: isDisplayLimitOperator
+        operator
       };
       x += width + glyphGap;
       maxTop = Math.max(maxTop, verticalMetrics.ascent);
@@ -751,6 +882,30 @@ function layoutSequence(
   };
 }
 
+function buildOperatorLayoutInfo(
+  kind: OperatorLayoutInfo["kind"] | undefined,
+  x: number,
+  width: number,
+  verticalMetrics: { ascent: number; descent: number; inkTopOffset: number; inkBottomOffset: number },
+  fontMetrics?: {
+    actualLeft: number;
+    actualRight: number;
+  },
+  glyphId?: number
+): OperatorLayoutInfo | undefined {
+  if (!kind) return undefined;
+  const inkLeft = fontMetrics ? x - fontMetrics.actualLeft : x;
+  const inkRight = fontMetrics ? x + fontMetrics.actualRight : x + width;
+  return {
+    kind,
+    inkTop: verticalMetrics.inkTopOffset,
+    inkBottom: verticalMetrics.inkBottomOffset,
+    centerX: (inkLeft + inkRight) / 2,
+    rightEdge: Math.max(x + width, inkRight),
+    glyphId
+  };
+}
+
 function getScriptBaseline(
   scriptChar: string,
   fontSize: number,
@@ -758,7 +913,7 @@ function getScriptBaseline(
   lastAtom: LastAtom | undefined,
   scriptBox: Box
 ): number {
-  if (lastAtom?.displayLimitOperator) {
+  if (lastAtom?.operator?.kind === "limits") {
     return getLimitScriptBaseline(
       scriptChar,
       fontSize,
@@ -770,7 +925,7 @@ function getScriptBaseline(
       lastAtom
     );
   }
-  if (lastAtom?.displayIntegralOperator) {
+  if (lastAtom?.operator?.kind === "integral") {
     return getOperatorScriptBaseline(
       scriptChar,
       fontSize,
@@ -779,7 +934,16 @@ function getScriptBaseline(
       lastAtom
     );
   }
-  return fontSize * (scriptChar === "^" ? metrics.superscriptBaseline : metrics.subscriptBaseline);
+  const defaultBaseline = fontSize * (scriptChar === "^" ? metrics.superscriptBaseline : metrics.subscriptBaseline);
+  const tallThreshold = fontSize * 1.15;
+  if (lastAtom && lastAtom.ascent + lastAtom.descent > tallThreshold) {
+    const gap = fontSize * metrics.scriptGap;
+    if (scriptChar === "^") {
+      return Math.min(defaultBaseline, -lastAtom.ascent - gap - scriptBox.descent);
+    }
+    return Math.max(defaultBaseline, lastAtom.descent + gap + scriptBox.ascent);
+  }
+  return defaultBaseline;
 }
 
 function getOperatorScriptBaseline(
@@ -790,12 +954,13 @@ function getOperatorScriptBaseline(
   lastAtom: LastAtom
 ): number {
   if (scriptChar === "^") {
-    const top = Math.max(fontSize * 0.9, lastAtom.ascent);
+    const operatorTop = lastAtom.operator ? -lastAtom.operator.inkTop : lastAtom.ascent;
+    const top = Math.max(fontSize * 0.9, operatorTop);
     const gap = fontSize * Math.max(0, Math.abs(superscriptBaseline) - 0.9);
     return -top - gap;
   }
 
-  const bottom = lastAtom.displayLimitOperator ? lastAtom.descent : Math.max(fontSize * 0.3, lastAtom.descent);
+  const bottom = lastAtom.operator ? lastAtom.operator.inkBottom : Math.max(fontSize * 0.3, lastAtom.descent);
   const gap = fontSize * Math.max(0, subscriptBaseline - 0.3);
   return bottom + gap;
 }
@@ -812,12 +977,14 @@ function getLimitScriptBaseline(
 ): number {
   if (scriptChar === "^") {
     const baselineFromRise = -fontSize * Math.abs(superscriptBaseline);
-    const baselineFromGap = -lastAtom.ascent - fontSize * superscriptGap - scriptBox.descent;
+    const operatorTop = lastAtom.operator?.inkTop ?? -lastAtom.ascent;
+    const baselineFromGap = operatorTop - fontSize * superscriptGap - scriptBox.descent;
     return Math.min(baselineFromRise, baselineFromGap);
   }
 
   const baselineFromDrop = fontSize * subscriptBaseline;
-  const baselineFromGap = lastAtom.descent + fontSize * subscriptGap + scriptBox.ascent;
+  const operatorBottom = lastAtom.operator?.inkBottom ?? lastAtom.descent;
+  const baselineFromGap = operatorBottom + fontSize * subscriptGap + scriptBox.ascent;
   return Math.max(baselineFromDrop, baselineFromGap);
 }
 
@@ -825,24 +992,30 @@ function getScriptAnchor(
   scriptChar: string,
   cursorX: number,
   scriptWidth: number,
+  scriptBaseline: number,
   fontSize: number,
   metrics: NativeMathMetrics,
   lastAtom: LastAtom | undefined
 ): number {
   if (!lastAtom) return cursorX;
-  if (lastAtom.displayLimitOperator) {
-    return lastAtom.x + (lastAtom.width - scriptWidth) / 2;
+  if (lastAtom.operator?.kind === "limits") {
+    return lastAtom.operator.centerX - scriptWidth / 2;
   }
   const scriptGap = fontSize * (
-    lastAtom.displayIntegralOperator
+    lastAtom.operator?.kind === "integral"
       ? scriptChar === "^"
         ? metrics.displayLargeOperatorSuperscriptGap
         : metrics.displayLargeOperatorSubscriptGap
       : metrics.scriptGap
   );
   const italicCorrection = scriptChar === "^" ? lastAtom.italicCorrection : 0;
-  if (lastAtom.displayIntegralOperator) {
-    return lastAtom.x + lastAtom.width / 2 + italicCorrection + scriptGap;
+  if (lastAtom.operator?.kind === "integral") {
+    const corner = scriptChar === "^" ? "topRight" : "bottomRight";
+    const scriptHeight = Math.max(0, scriptChar === "^" ? -scriptBaseline : scriptBaseline);
+    const mathKern = lastAtom.operator.glyphId === undefined
+      ? undefined
+      : getOpenTypeMathKern(lastAtom.operator.glyphId, corner, scriptHeight, fontSize);
+    return lastAtom.operator.centerX + italicCorrection + scriptGap + (mathKern ?? 0);
   }
   return lastAtom.x + lastAtom.width + italicCorrection + scriptGap;
 }
@@ -854,8 +1027,8 @@ function getScriptAdvance(
   lastAtom: LastAtom | undefined
 ): number {
   if (!lastAtom) return Math.max(0, scriptX + scriptWidth - cursorX);
-  if (lastAtom.displayLimitOperator) {
-    const rightEdge = Math.max(lastAtom.x + lastAtom.width, scriptX + scriptWidth);
+  if (lastAtom.operator?.kind === "limits") {
+    const rightEdge = Math.max(lastAtom.operator.rightEdge, scriptX + scriptWidth);
     return Math.max(0, rightEdge - cursorX);
   }
   return Math.max(0, scriptX + scriptWidth - cursorX);
@@ -870,8 +1043,8 @@ function layoutFraction(
   profile: NativeMathProfile
 ): Box {
   const childSize = fontSize * (displayMode ? metrics.displayFractionScale : metrics.inlineFractionScale);
-  const numerator = layoutSequence(numeratorLatex, childSize, false, metrics, profile);
-  const denominator = layoutSequence(denominatorLatex, childSize, false, metrics, profile);
+  const numerator = layoutSequence(numeratorLatex, childSize, false, metrics, profile, displayMode);
+  const denominator = layoutSequence(denominatorLatex, childSize, false, metrics, profile, displayMode);
   const rule = Math.max(0.6, fontSize * metrics.fractionRuleThickness);
   const width = Math.max(numerator.width, denominator.width) + fontSize * metrics.fractionSidePadding;
   const numeratorX = (width - numerator.width) / 2;
@@ -948,10 +1121,11 @@ function layoutSqrt(
 ): Box {
   const body = layoutSequence(bodyLatex, fontSize * metrics.sqrtBodyScale, displayMode, metrics, profile);
   const bodyInkHeight = Math.max(fontSize * 0.5, body.inkBottom - body.inkTop);
-  const radicalHeight = bodyInkHeight + fontSize * metrics.sqrtTopGap;
+  const topGap = displayMode ? metrics.displaySqrtTopGap : metrics.sqrtTopGap;
+  const radicalHeight = bodyInkHeight + fontSize * topGap;
   const minRadicalWidth = fontSize * metrics.sqrtRadicalWidth * 0.68;
   const radicalWidth = Math.max(minRadicalWidth, radicalHeight * metrics.sqrtRadicalWidth * 0.55);
-  const barBodyGap = fontSize * metrics.sqrtTopGap;
+  const barBodyGap = fontSize * topGap;
   const rule = Math.max(0.6, fontSize * metrics.sqrtRuleThickness);
   const radicalStroke = Math.max(0.6, fontSize * metrics.sqrtRuleThickness);
   const ruleY = 0;
@@ -1076,6 +1250,7 @@ function layoutOpenMathRadicalGlyph(
   fontSize: number,
   profile: NativeMathProfile
 ): {
+  glyphId: number;
   d: string;
   width: number;
   height: number;
@@ -1095,6 +1270,7 @@ function layoutOpenMathRadicalGlyph(
   const actualAscent = Math.max(0, outline.bbox.maxY * scale);
   const actualDescent = Math.max(0, -outline.bbox.minY * scale);
   return {
+    glyphId: variant.glyphId,
     d: outline.path,
     width: actualRight * scale,
     height: actualAscent + actualDescent,
@@ -1109,6 +1285,7 @@ function layoutOpenMathOperatorGlyph(
   text: string,
   fontSize: number
 ): {
+  glyphId: number;
   d: string;
   width: number;
   height: number;
@@ -1133,6 +1310,7 @@ function layoutOpenMathOperatorGlyph(
   const actualAscent = Math.max(0, outline.bbox.maxY * scale);
   const actualDescent = Math.max(0, -outline.bbox.minY * scale);
   return {
+    glyphId: variant.glyphId,
     d: outline.path,
     width: actualRight * scale,
     height: actualAscent + actualDescent,
@@ -1430,6 +1608,481 @@ function readArgument(input: string, start: number): { value: string; end: numbe
   return { value: input.slice(start + 1), end: input.length - 1 };
 }
 
+type DelimiterToken = {
+  value: string;
+  end: number;
+};
+
+type LeftRightGroup = {
+  left: string;
+  right: string;
+  body: string;
+  end: number;
+  closed: boolean;
+};
+
+function readLeftRight(input: string, leftCommandEnd: number): LeftRightGroup {
+  const left = readDelimiterToken(input, leftCommandEnd + 1);
+  const bodyStart = left.end + 1;
+  const right = findMatchingRight(input, bodyStart);
+  return {
+    left: left.value,
+    right: right.delimiter,
+    body: input.slice(bodyStart, right.bodyEnd),
+    end: right.end,
+    closed: right.closed
+  };
+}
+
+function findMatchingRight(input: string, bodyStart: number): { delimiter: string; bodyEnd: number; end: number; closed: boolean } {
+  let depth = 0;
+  for (let index = bodyStart; index < input.length; index += 1) {
+    if (input[index] !== "\\") continue;
+    const command = readCommand(input, index);
+    if (command.name === "\\left") {
+      depth += 1;
+      const delimiter = readDelimiterToken(input, command.end + 1);
+      index = delimiter.end;
+      continue;
+    }
+    if (command.name !== "\\right") {
+      index = command.end;
+      continue;
+    }
+    if (depth > 0) {
+      depth -= 1;
+      const delimiter = readDelimiterToken(input, command.end + 1);
+      index = delimiter.end;
+      continue;
+    }
+
+    const delimiter = readDelimiterToken(input, command.end + 1);
+    return { delimiter: delimiter.value, bodyEnd: index, end: delimiter.end, closed: true };
+  }
+
+  return { delimiter: "", bodyEnd: input.length, end: input.length - 1, closed: false };
+}
+
+function readDelimiterToken(input: string, start: number): DelimiterToken {
+  while (input[start] === " ") start += 1;
+  if (input[start] === "\\") {
+    const command = readCommand(input, start);
+    return { value: normalizeDelimiterToken(command.name), end: command.end };
+  }
+  return { value: normalizeDelimiterToken(input[start] ?? ""), end: start };
+}
+
+function normalizeDelimiterToken(token: string): string {
+  const delimiters: Record<string, string> = {
+    ".": "",
+    "\\.": "",
+    "\\{": "{",
+    "\\}": "}",
+    "\\lbrace": "{",
+    "\\rbrace": "}",
+    "\\langle": "⟨",
+    "\\rangle": "⟩",
+    "\\vert": "|",
+    "\\Vert": "‖",
+    "\\mid": "|",
+    "<": "⟨",
+    ">": "⟩"
+  };
+  return delimiters[token] ?? token;
+}
+
+type ParsedEnvironment = {
+  name: string;
+  body: string;
+  end: number;
+  known: boolean;
+  closed: boolean;
+};
+
+function readEnvironment(input: string, beginCommandEnd: number): ParsedEnvironment {
+  const nameArg = readArgument(input, beginCommandEnd + 1);
+  const name = nameArg.value.trim();
+  const bodyStart = nameArg.end + 1;
+  const endToken = findEnvironmentEnd(input, bodyStart, name);
+  const body = input.slice(bodyStart, endToken.bodyEnd);
+  return {
+    name,
+    body,
+    end: endToken.end,
+    known: knownEnvironmentNames.has(name),
+    closed: endToken.closed
+  };
+}
+
+function findEnvironmentEnd(input: string, bodyStart: number, name: string): { bodyEnd: number; end: number; closed: boolean } {
+  if (!name) return { bodyEnd: bodyStart, end: bodyStart, closed: false };
+
+  let depth = 0;
+  for (let index = bodyStart; index < input.length; index += 1) {
+    if (input[index] !== "\\") continue;
+    const command = readCommand(input, index);
+    if (command.name !== "\\begin" && command.name !== "\\end") {
+      index = command.end;
+      continue;
+    }
+
+    const nameArg = readArgument(input, command.end + 1);
+    if (nameArg.value.trim() !== name) {
+      index = Math.max(command.end, nameArg.end);
+      continue;
+    }
+
+    if (command.name === "\\begin") depth += 1;
+    else if (depth > 0) depth -= 1;
+    else return { bodyEnd: index, end: nameArg.end, closed: true };
+
+    index = nameArg.end;
+  }
+
+  return { bodyEnd: input.length, end: input.length - 1, closed: false };
+}
+
+function layoutEnvironment(
+  environment: ParsedEnvironment,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const body = environment.known && matrixEnvironmentNames.has(environment.name)
+    ? layoutMatrixEnvironment(environment, fontSize, displayMode, metrics, profile)
+    : layoutSequence(normalizeEnvironmentBody(environment.body), fontSize, displayMode, metrics, profile);
+  const delimiter = environment.known ? environmentDelimiters[environment.name] : undefined;
+  const bodyBox = delimiter ? wrapBoxWithDelimiters(body, delimiter, fontSize, profile) : body;
+  if (environment.known && environment.closed) return bodyBox;
+
+  const message = environment.known
+    ? `environment not closed: ${environment.name || "?"}`
+    : `unknown environment: ${environment.name || "?"}`;
+  return prependErrorMarker(message, bodyBox, fontSize, profile);
+}
+
+function normalizeEnvironmentBody(body: string): string {
+  return body
+    .replace(/\\\\/g, " ; ")
+    .replace(/&/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function layoutMatrixEnvironment(
+  environment: ParsedEnvironment,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const rows = splitEnvironmentRows(environment.body).map((row) => splitEnvironmentColumns(row));
+  const normalizedRows = rows.length ? rows : [[""]];
+  const columnCount = Math.max(1, ...normalizedRows.map((row) => row.length));
+  const cellFontSize = environment.name === "smallmatrix" ? fontSize * metrics.scriptScale : fontSize;
+  const cellRows = normalizedRows.map((row) => (
+    Array.from({ length: columnCount }, (_, columnIndex) => (
+      layoutSequence((row[columnIndex] ?? "").trim(), cellFontSize, false, metrics, profile)
+    ))
+  ));
+  const columnWidths = Array.from({ length: columnCount }, (_, columnIndex) => (
+    Math.max(...cellRows.map((row) => row[columnIndex]?.width ?? 0), 0)
+  ));
+  const rowAscents = cellRows.map((row) => Math.max(...row.map((cell) => cell.ascent), cellFontSize * 0.75));
+  const rowDescents = cellRows.map((row) => Math.max(...row.map((cell) => cell.descent), cellFontSize * 0.25));
+  const columnGap = cellFontSize * (environment.name === "smallmatrix" ? 0.55 : 1.05);
+  const rowGap = cellFontSize * (environment.name === "smallmatrix" ? 0.18 : 0.38);
+  const contentWidth = columnWidths.reduce((sum, width) => sum + width, 0) + columnGap * Math.max(0, columnCount - 1);
+  const totalHeight = rowAscents.reduce((sum, ascent) => sum + ascent, 0)
+    + rowDescents.reduce((sum, descent) => sum + descent, 0)
+    + rowGap * Math.max(0, cellRows.length - 1);
+  const baseline = totalHeight / 2 + fontSize * 0.18;
+  const nodes: NativeNode[] = [];
+  let y = 0;
+  let inkTop = Number.POSITIVE_INFINITY;
+  let inkBottom = Number.NEGATIVE_INFINITY;
+
+  for (let rowIndex = 0; rowIndex < cellRows.length; rowIndex += 1) {
+    const rowBaseline = y + rowAscents[rowIndex];
+    let x = 0;
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      const cell = cellRows[rowIndex][columnIndex];
+      const columnWidth = columnWidths[columnIndex];
+      const cellX = x + (columnWidth - cell.width) / 2;
+      const cellY = rowBaseline - cell.baseline;
+      nodes.push(...translateNodes(cell.nodes, cellX, cellY));
+      inkTop = Math.min(inkTop, cellY + cell.inkTop);
+      inkBottom = Math.max(inkBottom, cellY + cell.inkBottom);
+      x += columnWidth + columnGap;
+    }
+    y += rowAscents[rowIndex] + rowDescents[rowIndex] + rowGap;
+  }
+
+  if (!Number.isFinite(inkTop) || !Number.isFinite(inkBottom)) {
+    inkTop = 0;
+    inkBottom = totalHeight;
+  }
+
+  return {
+    width: contentWidth,
+    height: totalHeight,
+    baseline,
+    ascent: baseline,
+    descent: Math.max(0, totalHeight - baseline),
+    inkTop,
+    inkBottom,
+    nodes
+  };
+}
+
+function splitEnvironmentRows(body: string): string[] {
+  return splitEnvironmentBody(body, "\\\\");
+}
+
+function splitEnvironmentColumns(row: string): string[] {
+  return splitEnvironmentBody(row, "&");
+}
+
+function splitEnvironmentBody(input: string, separator: "\\\\" | "&"): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let braceDepth = 0;
+  let environmentDepth = 0;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === "{") braceDepth += 1;
+    else if (char === "}") braceDepth = Math.max(0, braceDepth - 1);
+
+    if (char === "\\") {
+      const command = readCommand(input, index);
+      if (command.name === "\\begin" || command.name === "\\end") {
+        const name = readArgument(input, command.end + 1);
+        environmentDepth += command.name === "\\begin" ? 1 : -1;
+        environmentDepth = Math.max(0, environmentDepth);
+        index = Math.max(command.end, name.end);
+        continue;
+      }
+    }
+
+    if (braceDepth !== 0 || environmentDepth !== 0) continue;
+    if (separator === "&" && char === "&") {
+      parts.push(input.slice(start, index));
+      start = index + 1;
+      continue;
+    }
+    if (separator === "\\\\" && char === "\\" && input[index + 1] === "\\") {
+      parts.push(input.slice(start, index));
+      start = index + 2;
+      index += 1;
+    }
+  }
+
+  parts.push(input.slice(start));
+  return parts.map((part) => part.trim()).filter((part, index, list) => part.length > 0 || list.length === 1 || index < list.length - 1);
+}
+
+function wrapBoxWithDelimiters(
+  body: Box,
+  delimiters: [string, string],
+  fontSize: number,
+  profile: NativeMathProfile,
+  options: { verticalBarsAsGlyphs?: boolean; stableInlineBaseline?: boolean; delimiterGap?: number; useDelimiterVariants?: boolean } = {}
+): Box {
+  const [left, right] = delimiters;
+  const style = { italic: false, fontFamily: profile.layoutFontFamily };
+  const delimiterFontSize = Math.max(fontSize, body.height * 0.88);
+  const targetHeight = delimiterTargetHeight(body, fontSize);
+  const leftVariant = left ? layoutOpenMathDelimiterGlyph(left, targetHeight, fontSize, body, profile, options) : undefined;
+  const rightVariant = right ? layoutOpenMathDelimiterGlyph(right, targetHeight, fontSize, body, profile, options) : undefined;
+  const leftWidth = left ? leftVariant?.width ?? delimiterWidth(left, delimiterFontSize, style, options) : 0;
+  const rightWidth = right ? rightVariant?.width ?? delimiterWidth(right, delimiterFontSize, style, options) : 0;
+  const gap = options.delimiterGap ?? fontSize * 0.18;
+  const nodes: NativeNode[] = [];
+  let maxAscent = body.ascent;
+  let maxDescent = body.descent;
+  let inkTop = body.inkTop;
+  let inkBottom = body.inkBottom;
+
+  if (left) {
+    if (leftVariant) {
+      nodes.push(glyphPath(
+        leftVariant.d,
+        0,
+        leftVariant.y,
+        leftVariant.scale,
+        leftVariant.width,
+        leftVariant.height,
+        leftVariant.inkTopOffset,
+        leftVariant.inkBottomOffset
+      ));
+    } else {
+      nodes.push(...delimiterNodes(left, 0, body, delimiterFontSize, style, options));
+    }
+    maxAscent = Math.max(maxAscent, body.baseline);
+    maxDescent = Math.max(maxDescent, body.height - body.baseline);
+    inkTop = Math.min(inkTop, leftVariant?.inkTop ?? 0);
+    inkBottom = Math.max(inkBottom, leftVariant?.inkBottom ?? body.height);
+  }
+
+  nodes.push(...translateNodes(body.nodes, leftWidth + gap, 0));
+
+  if (right) {
+    const x = leftWidth + gap + body.width + gap;
+    if (rightVariant) {
+      nodes.push(glyphPath(
+        rightVariant.d,
+        x,
+        rightVariant.y,
+        rightVariant.scale,
+        rightVariant.width,
+        rightVariant.height,
+        rightVariant.inkTopOffset,
+        rightVariant.inkBottomOffset
+      ));
+    } else {
+      nodes.push(...delimiterNodes(right, x, body, delimiterFontSize, style, options));
+    }
+    maxAscent = Math.max(maxAscent, body.baseline);
+    maxDescent = Math.max(maxDescent, body.height - body.baseline);
+    inkTop = Math.min(inkTop, rightVariant?.inkTop ?? 0);
+    inkBottom = Math.max(inkBottom, rightVariant?.inkBottom ?? body.height);
+  }
+
+  const width = leftWidth + (left ? gap : 0) + body.width + (right ? gap + rightWidth : 0);
+  return {
+    width,
+    height: Math.max(maxAscent + maxDescent, body.height),
+    baseline: body.baseline,
+    ascent: maxAscent,
+    descent: maxDescent,
+    inkTop,
+    inkBottom,
+    nodes
+  };
+}
+
+function delimiterTargetHeight(body: Box, fontSize: number): number {
+  const constants = getOpenTypeMathConstants();
+  const fontMinimum = constants
+    ? fontSize * constants.delimitedSubFormulaMinHeight / constants.unitsPerEm
+    : fontSize * 1.5;
+  return Math.max(body.height, fontMinimum);
+}
+
+function layoutOpenMathDelimiterGlyph(
+  text: string,
+  targetHeight: number,
+  fontSize: number,
+  body: Box,
+  profile: NativeMathProfile,
+  options: { verticalBarsAsGlyphs?: boolean; useDelimiterVariants?: boolean } = {}
+): {
+  d: string;
+  width: number;
+  height: number;
+  y: number;
+  scale: number;
+  inkTopOffset: number;
+  inkBottomOffset: number;
+  inkTop: number;
+  inkBottom: number;
+} | undefined {
+  if (options.useDelimiterVariants === false) return undefined;
+  if (profile.name !== "openmath") return undefined;
+  if (options.verticalBarsAsGlyphs && (text === "|" || text === "‖")) return undefined;
+
+  const variant = getOpenTypeMathGlyphVariant(text, targetHeight, fontSize);
+  if (!variant) return undefined;
+
+  const outline = getNativeGlyphOutline("openMath", variant.glyphId);
+  if (!outline) return undefined;
+
+  const scale = fontSize / outline.unitsPerEm;
+  const actualAscent = Math.max(0, outline.bbox.maxY * scale);
+  const actualDescent = Math.max(0, -outline.bbox.minY * scale);
+  const width = Math.max(outline.advanceWidth, outline.bbox.maxX) * scale;
+  const height = actualAscent + actualDescent;
+  const y = (body.height + actualAscent - actualDescent) / 2;
+  return {
+    d: outline.path,
+    width,
+    height,
+    y,
+    scale,
+    inkTopOffset: -actualAscent,
+    inkBottomOffset: actualDescent,
+    inkTop: y - actualAscent,
+    inkBottom: y + actualDescent
+  };
+}
+
+function delimiterWidth(
+  text: string,
+  fontSize: number,
+  style: NativeGlyphStyle,
+  options: { verticalBarsAsGlyphs?: boolean } = {}
+): number {
+  if ((text === "|" || text === "‖") && !options.verticalBarsAsGlyphs) return text === "‖" ? fontSize * 0.36 : fontSize * 0.18;
+  return measureGlyphWidth(text, fontSize, style);
+}
+
+function delimiterNodes(
+  text: string,
+  x: number,
+  body: Box,
+  fontSize: number,
+  style: NativeGlyphStyle,
+  options: { verticalBarsAsGlyphs?: boolean; stableInlineBaseline?: boolean } = {}
+): NativeNode[] {
+  if ((text === "|" || text === "‖") && !options.verticalBarsAsGlyphs) {
+    const ruleWidth = Math.max(0.5, fontSize * 0.045);
+    const gap = text === "‖" ? ruleWidth * 2.4 : 0;
+    const first: NativeRule = { type: "rule", x, y: 0, width: ruleWidth, height: body.height };
+    return text === "‖"
+      ? [first, { type: "rule", x: x + gap, y: 0, width: ruleWidth, height: body.height }]
+      : [first];
+  }
+
+  const metrics = measureGlyphVerticalMetrics(text, fontSize, style);
+  const normalHeight = fontSize * 1.35;
+  const baseline = options.stableInlineBaseline && body.height <= normalHeight
+    ? body.baseline
+    : (body.height + metrics.ascent - metrics.descent) / 2;
+  return [glyph(text, x, baseline, fontSize, style)];
+}
+
+function prependErrorMarker(
+  message: string,
+  body: Box,
+  fontSize: number,
+  profile: NativeMathProfile
+): Box {
+  const style = { color: "#b42318", italic: false, fontFamily: profile.layoutFontFamily };
+  const text = `⟦${message}⟧`;
+  const markerSize = fontSize * 0.72;
+  const markerWidth = measureGlyphWidth(text, markerSize, style);
+  const markerMetrics = measureGlyphVerticalMetrics(text, markerSize, style);
+  const gap = fontSize * 0.28;
+  const nodes = [
+    glyph(text, 0, body.baseline, markerSize, style),
+    ...translateNodes(body.nodes, markerWidth + gap, 0)
+  ];
+  const ascent = Math.max(body.ascent, markerMetrics.ascent);
+  const descent = Math.max(body.descent, markerMetrics.descent);
+  return {
+    width: markerWidth + gap + body.width,
+    height: Math.max(body.height, ascent + descent),
+    baseline: body.baseline,
+    ascent,
+    descent,
+    inkTop: Math.min(body.inkTop, body.baseline - markerMetrics.ascent),
+    inkBottom: Math.max(body.inkBottom, body.baseline + markerMetrics.descent),
+    nodes
+  };
+}
+
 function translateNodes(nodes: NativeNode[], dx: number, dy: number): NativeNode[] {
   return nodes.map((node) => ({ ...node, x: node.x + dx, y: node.y + dy }));
 }
@@ -1674,53 +2327,7 @@ function measureGlyphFontMetrics(
   actualWidth: number;
   advanceWidth: number;
 } | undefined {
-  if (isOpenMathFontFamily(style.fontFamily)) {
-    const canvasMetrics = measureGlyphWithCanvas(text, fontSize, style);
-    if (canvasMetrics) return canvasMetrics;
-  }
   return getNativeGlyphMetrics(selectNativeFontRole(style), text, fontSize);
-}
-
-function measureGlyphWithCanvas(
-  text: string,
-  fontSize: number,
-  style: NativeGlyphStyle
-): {
-  actualLeft: number;
-  actualRight: number;
-  actualAscent: number;
-  actualDescent: number;
-  actualTopOffset: number;
-  actualBottomOffset: number;
-  actualWidth: number;
-  advanceWidth: number;
-} | undefined {
-  if (typeof document === "undefined") return undefined;
-  const cacheKey = `${style.fontFamily}:${style.bold ? "700" : "400"}:${style.italic ? "italic" : "normal"}:${fontSize}:${text}`;
-  const cached = canvasGlyphMetricsCache.get(cacheKey);
-  if (cached) return cached;
-
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) return undefined;
-  context.font = `${style.italic ? "italic " : ""}${style.bold ? "700 " : ""}${fontSize}px ${style.fontFamily}`;
-  const metrics = context.measureText(text);
-  const actualLeft = Math.max(0, metrics.actualBoundingBoxLeft ?? 0);
-  const actualRight = Math.max(0, metrics.actualBoundingBoxRight ?? metrics.width);
-  const actualAscent = Math.max(0, metrics.actualBoundingBoxAscent ?? fontSize * 0.8);
-  const actualDescent = Math.max(0, metrics.actualBoundingBoxDescent ?? fontSize * 0.2);
-  const measured = {
-    advanceWidth: metrics.width,
-    actualLeft,
-    actualRight,
-    actualAscent,
-    actualDescent,
-    actualTopOffset: -actualAscent,
-    actualBottomOffset: actualDescent,
-    actualWidth: Math.max(0, actualLeft + actualRight)
-  };
-  canvasGlyphMetricsCache.set(cacheKey, measured);
-  return measured;
 }
 
 function accentGlyphBottomLift(text: string, fontSize: number): number | undefined {

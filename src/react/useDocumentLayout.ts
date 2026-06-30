@@ -10,6 +10,7 @@ import { measureMathInDom } from "../core/engine/measureMathInDom";
 import type { EngineOptions } from "../core/engine/workerProtocol";
 import type { PagedDisplayList, PreviewStats } from "../core/display-list/displayTypes";
 import type { MathMeasurementMap } from "../core/layout/mathMetrics";
+import { clearTextMeasureCache } from "../core/layout/measureText";
 
 export type DocumentLayoutState = {
   layout?: PagedDisplayList;
@@ -122,6 +123,20 @@ async function layoutWithPremeasuredMath(
 async function waitForTextFonts(options: EngineOptions): Promise<void> {
   if (typeof document === "undefined" || !document.fonts) return;
   const fontFamily = options.theme?.fontFamily;
+  const installedFontFace = ensureDocumentFontFaceCss(options.theme?.fontFaceCss);
+  if (fontFamily?.includes("Latin Modern Roman")) {
+    await Promise.race([
+      Promise.allSettled([
+        document.fonts.load(`12px "Latin Modern Roman"`),
+        document.fonts.load(`700 28px "Latin Modern Roman"`),
+        document.fonts.load(`italic 12px "Latin Modern Roman"`),
+        document.fonts.load(`700 italic 12px "Latin Modern Roman"`)
+      ]),
+      new Promise((resolve) => window.setTimeout(resolve, 150))
+    ]);
+    if (installedFontFace) clearTextMeasureCache();
+    return;
+  }
   if (!fontFamily?.includes("KaTeX_Main")) return;
   await Promise.race([
     Promise.allSettled([
@@ -131,4 +146,24 @@ async function waitForTextFonts(options: EngineOptions): Promise<void> {
     ]),
     new Promise((resolve) => window.setTimeout(resolve, 150))
   ]);
+}
+
+function ensureDocumentFontFaceCss(fontFaceCss: string | undefined): boolean {
+  if (!fontFaceCss || typeof document === "undefined") return false;
+  const id = `svg-md-font-face-${hashString(fontFaceCss)}`;
+  if (document.getElementById(id)) return false;
+
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = fontFaceCss;
+  document.head.appendChild(style);
+  return true;
+}
+
+function hashString(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(31, hash) + value.charCodeAt(index) | 0;
+  }
+  return Math.abs(hash).toString(36);
 }

@@ -44,6 +44,7 @@ export type OpenTypeMathConstants = {
   unitsPerEm: number;
   scriptPercentScaleDown: number;
   scriptScriptPercentScaleDown: number;
+  delimitedSubFormulaMinHeight: number;
   displayOperatorMinHeight: number;
   axisHeight: number;
   subscriptShiftDown: number;
@@ -79,6 +80,13 @@ export type OpenTypeMathGlyphInfo = {
 export type OpenTypeMathGlyphVariant = {
   advanceMeasurement: number;
   glyphId: number;
+};
+
+export type OpenTypeMathKernCorner = "topRight" | "topLeft" | "bottomRight" | "bottomLeft";
+
+export type OpenTypeMathKernTable = {
+  correctionHeights: number[];
+  kernValues: number[];
 };
 
 export type NativeGlyphOutline = {
@@ -161,6 +169,7 @@ let openTypeMathConstants: OpenTypeMathConstants | undefined;
 let openTypeMathGlyphInfo: {
   italicCorrections: Map<number, number>;
   topAccentAttachments: Map<number, number>;
+  mathKerns: Map<number, Partial<Record<OpenTypeMathKernCorner, OpenTypeMathKernTable>>>;
 } | undefined;
 let openTypeMathVariants: {
   vertical: Map<number, OpenTypeMathGlyphVariant[]>;
@@ -252,6 +261,23 @@ export function getOpenTypeMathGlyphInfo(text: string, fontSize: number): OpenTy
     italicCorrection: italicCorrection === undefined ? undefined : italicCorrection * scale,
     topAccentAttachment: topAccentAttachment === undefined ? undefined : topAccentAttachment * scale
   };
+}
+
+export function getOpenTypeMathKern(
+  glyphId: number,
+  corner: OpenTypeMathKernCorner,
+  height: number,
+  fontSize: number
+): number | undefined {
+  const font = fontCache.get("openMath");
+  const table = openTypeMathGlyphInfo?.mathKerns.get(glyphId)?.[corner];
+  if (!font || !table) return undefined;
+
+  const targetHeight = height * font.unitsPerEm / fontSize;
+  const index = table.correctionHeights.findIndex((correctionHeight) => targetHeight <= correctionHeight);
+  const kernIndex = index < 0 ? table.kernValues.length - 1 : index;
+  const kern = table.kernValues[kernIndex];
+  return kern === undefined ? undefined : kern * fontSize / font.unitsPerEm;
 }
 
 export function getOpenTypeMathRadicalVariant(targetHeight: number, fontSize: number): OpenTypeMathGlyphVariant | undefined {
@@ -433,6 +459,7 @@ function parseMathGlyphConstruction(
 export function parseOpenTypeMathGlyphInfo(bytes: Uint8Array): {
   italicCorrections: Map<number, number>;
   topAccentAttachments: Map<number, number>;
+  mathKerns: Map<number, Partial<Record<OpenTypeMathKernCorner, OpenTypeMathKernTable>>>;
 } | undefined {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const mathOffset = findTableOffset(view, "MATH");
@@ -443,12 +470,16 @@ export function parseOpenTypeMathGlyphInfo(bytes: Uint8Array): {
 
   const italicInfoOffset = readUint16(view, glyphInfoOffset);
   const topAccentInfoOffset = readUint16(view, glyphInfoOffset + 2);
+  const mathKernInfoOffset = readUint16(view, glyphInfoOffset + 6);
   return {
     italicCorrections: italicInfoOffset
       ? parseMathValueInfo(view, glyphInfoOffset + italicInfoOffset)
       : new Map(),
     topAccentAttachments: topAccentInfoOffset
       ? parseMathValueInfo(view, glyphInfoOffset + topAccentInfoOffset)
+      : new Map(),
+    mathKerns: mathKernInfoOffset
+      ? parseMathKernInfo(view, glyphInfoOffset + mathKernInfoOffset)
       : new Map()
   };
 }
@@ -470,7 +501,7 @@ export function parseOpenTypeMathConstants(bytes: Uint8Array): OpenTypeMathConst
   let cursor = constantsOffset;
   const scriptPercentScaleDown = readUint16(view, cursor); cursor += 2;
   const scriptScriptPercentScaleDown = readUint16(view, cursor); cursor += 2;
-  cursor += 2; // DelimitedSubFormulaMinHeight
+  const delimitedSubFormulaMinHeight = readUint16(view, cursor); cursor += 2;
   const displayOperatorMinHeight = readUint16(view, cursor); cursor += 2;
   cursor += 4; // MathLeading
   const axisHeight = readMathValue(view, cursor); cursor += 4;
@@ -526,6 +557,7 @@ export function parseOpenTypeMathConstants(bytes: Uint8Array): OpenTypeMathConst
     unitsPerEm,
     scriptPercentScaleDown,
     scriptScriptPercentScaleDown,
+    delimitedSubFormulaMinHeight,
     displayOperatorMinHeight,
     axisHeight,
     subscriptShiftDown,
@@ -564,6 +596,54 @@ function parseMathValueInfo(view: DataView, offset: number): Map<number, number>
     values.set(glyphIds[index], readMathValue(view, offset + 4 + index * 4));
   }
   return values;
+}
+
+function parseMathKernInfo(view: DataView, offset: number): Map<number, Partial<Record<OpenTypeMathKernCorner, OpenTypeMathKernTable>>> {
+  const coverageOffset = readUint16(view, offset);
+  const count = readUint16(view, offset + 2);
+  const glyphIds = parseCoverage(view, offset + coverageOffset);
+  const values = new Map<number, Partial<Record<OpenTypeMathKernCorner, OpenTypeMathKernTable>>>();
+
+  for (let index = 0; index < Math.min(count, glyphIds.length); index += 1) {
+    const recordOffset = offset + 4 + index * 8;
+    if (recordOffset + 8 > view.byteLength) break;
+
+    const topRightOffset = readUint16(view, recordOffset);
+    const topLeftOffset = readUint16(view, recordOffset + 2);
+    const bottomRightOffset = readUint16(view, recordOffset + 4);
+    const bottomLeftOffset = readUint16(view, recordOffset + 6);
+    const kerns: Partial<Record<OpenTypeMathKernCorner, OpenTypeMathKernTable>> = {};
+
+    if (topRightOffset) kerns.topRight = parseMathKernTable(view, offset + topRightOffset);
+    if (topLeftOffset) kerns.topLeft = parseMathKernTable(view, offset + topLeftOffset);
+    if (bottomRightOffset) kerns.bottomRight = parseMathKernTable(view, offset + bottomRightOffset);
+    if (bottomLeftOffset) kerns.bottomLeft = parseMathKernTable(view, offset + bottomLeftOffset);
+    if (Object.keys(kerns).length) values.set(glyphIds[index], kerns);
+  }
+
+  return values;
+}
+
+function parseMathKernTable(view: DataView, offset: number): OpenTypeMathKernTable | undefined {
+  if (offset < 0 || offset + 2 > view.byteLength) return undefined;
+  const heightCount = readUint16(view, offset);
+  const correctionHeights: number[] = [];
+  const kernValues: number[] = [];
+
+  for (let index = 0; index < heightCount; index += 1) {
+    const heightOffset = offset + 2 + index * 4;
+    if (heightOffset + 4 > view.byteLength) return undefined;
+    correctionHeights.push(readMathValue(view, heightOffset));
+  }
+
+  const kernOffset = offset + 2 + heightCount * 4;
+  for (let index = 0; index < heightCount + 1; index += 1) {
+    const valueOffset = kernOffset + index * 4;
+    if (valueOffset + 4 > view.byteLength) return undefined;
+    kernValues.push(readMathValue(view, valueOffset));
+  }
+
+  return { correctionHeights, kernValues };
 }
 
 function parseCoverage(view: DataView, offset: number): number[] {

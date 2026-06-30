@@ -45,6 +45,10 @@ export function measureRun(run: InlineRun, style: TextStyle): number {
   return measureText(run.text, { ...style, ...run });
 }
 
+export function clearTextMeasureCache(): void {
+  cache.clear();
+}
+
 function cssFont(style: TextStyle): string {
   const fontStyle = style.italic ? "italic" : "normal";
   const fontWeight = style.bold ? "700" : "400";

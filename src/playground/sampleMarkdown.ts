@@ -285,9 +285,10 @@ $$
 
 ## Unsupported Environments
 
-The native path should visibly mark these instead of silently using KaTeX.
+Matrix-like environments should stack rows and scale their delimiters.
 
 $$
+\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}
 \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}
 \\begin{pmatrix} x \\\\ y \\end{pmatrix} =
 \\begin{pmatrix} ax + by \\\\ cx + dy \\end{pmatrix}
@@ -305,6 +306,20 @@ $$
 
 $$
 \\left(\\frac{x+1}{x-1}\\right)^2 + \\left|x\\right| = 1
+$$
+
+$$
+\\left[\\frac{1}{1 + \\frac{x}{y}}\\right]
++ \\left\\langle \\sqrt{x^2 + y^2} \\right\\rangle
++ \\left. \\frac{d}{dx} x^2 \\right|_{x=1}
+$$
+
+## Bra Ket
+
+Inline quantum notation: $\\bra{\\psi} H \\ket{\\phi}$ and $\\left\\langle \\psi | \\phi \\right\\rangle$ should keep delimiters close to the content.
+
+$$
+\\bra{0} A \\ket{1} = \\frac{1}{\\sqrt{2}}
 $$
 `;
 

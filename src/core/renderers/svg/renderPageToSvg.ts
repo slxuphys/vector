@@ -13,8 +13,9 @@ export type SvgRenderOptions = {
 export function renderPageToSvg(page: DisplayPage, options: SvgRenderOptions = {}): string {
   const body = page.objects.map(renderObject).join("");
   const title = options.title ? `<title>${options.title}</title>` : "";
+  const fontFace = page.fontFaceCss ? `<style>${page.fontFaceCss}</style>` : "";
   const className = options.className ? ` class="${options.className}"` : "";
-  return `<svg${className} xmlns="http://www.w3.org/2000/svg" width="${page.width}" height="${page.height}" viewBox="0 0 ${page.width} ${page.height}" role="img">${title}${body}</svg>`;
+  return `<svg${className} xmlns="http://www.w3.org/2000/svg" width="${page.width}" height="${page.height}" viewBox="0 0 ${page.width} ${page.height}" role="img">${title}${fontFace}${body}</svg>`;
 }
 
 function renderObject(object: DisplayObject): string {

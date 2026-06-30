@@ -7,5 +7,8 @@ export function buildDisplayList(
   page: PageConfig,
   theme: DocumentTheme
 ): PagedDisplayList {
-  return { pages, page, theme };
+  const themedPages = theme.fontFaceCss
+    ? pages.map((displayPage) => ({ ...displayPage, fontFaceCss: theme.fontFaceCss }))
+    : pages;
+  return { pages: themedPages, page, theme };
 }

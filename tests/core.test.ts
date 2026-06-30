@@ -13,7 +13,7 @@ import {
   layoutNativeMath,
   openMathMetricsFromConstants
 } from "../src/core/renderers/math/nativeMath";
-import { getNativeGlyphMetrics, getNativeGlyphTexMetrics, loadNativeFontFromBytes } from "../src/core/renderers/math/nativeFontMetrics";
+import { getNativeGlyphMetrics, getNativeGlyphTexMetrics, getOpenTypeMathKern, loadNativeFontFromBytes } from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 
 describe("markdown parser", () => {
@@ -121,7 +121,9 @@ describe("document engine", () => {
     const svg = renderPageToSvg(layout.pages[0]);
 
     expect(svg).toContain("svg-md-native-math");
-    expect(svg).toContain("⟦begin⟧");
+    expect(svg).toContain("a");
+    expect(svg).toContain("(");
+    expect(svg).not.toContain("⟦begin⟧");
     expect(svg).not.toContain("foreignObject");
     expect(svg).not.toContain("katex-html");
   });
@@ -155,6 +157,7 @@ describe("document engine", () => {
       unitsPerEm: 1000,
       scriptPercentScaleDown: 70,
       scriptScriptPercentScaleDown: 50,
+      delimitedSubFormulaMinHeight: 1500,
       displayOperatorMinHeight: 1800,
       axisHeight: 250,
       subscriptShiftDown: 180,
@@ -467,6 +470,40 @@ describe("document engine", () => {
     expect(glyphs.find((node) => node.text === "Ω")?.italic).toBe(false);
   });
 
+  it("maps OpenMath Greek variants to math italic glyphs", () => {
+    const layout = layoutNativeMath(
+      "\\iota + \\kappa + \\nu + \\omicron + \\phi + \\varphi + \\vartheta + \\varpi + \\varrho + \\varsigma + \\varkappa",
+      false,
+      12,
+      defaultOpenMathMetrics,
+      "openmath"
+    );
+    const text = layout.nodes.filter((node) => node.type === "glyph").map((node) => node.text).join("");
+
+    expect(text).toContain("𝜄");
+    expect(text).toContain("𝜅");
+    expect(text).toContain("𝜈");
+    expect(text).toContain("𝜊");
+    expect(text).toContain("𝜙");
+    expect(text).toContain("𝜑");
+    expect(text).toContain("𝜗");
+    expect(text).toContain("𝜛");
+    expect(text).toContain("𝜚");
+    expect(text).toContain("𝜍");
+    expect(text).toContain("𝜘");
+    expect(text).not.toContain("ι");
+    expect(text).not.toContain("κ");
+    expect(text).not.toContain("ν");
+    expect(text).not.toContain("ο");
+    expect(text).not.toContain("ϕ");
+    expect(text).not.toContain("φ");
+    expect(text).not.toContain("ϑ");
+    expect(text).not.toContain("ϖ");
+    expect(text).not.toContain("ϱ");
+    expect(text).not.toContain("ς");
+    expect(text).not.toContain("ϰ");
+  });
+
   it("renders native large operator commands", () => {
     const layout = layoutNativeMath("\\int + \\sum + \\prod + \\lim", false, 12);
     const glyphs = layout.nodes.filter((node) => node.type === "glyph");
@@ -484,6 +521,140 @@ describe("document engine", () => {
     expect(glyphs.find((node) => node.text === "∑")?.italic).toBe(false);
     expect(glyphs.find((node) => node.text === "∏")?.italic).toBe(false);
     expect(glyphs.find((node) => node.text === "lim")?.italic).toBe(false);
+  });
+
+  it("parses common native math environments and normalizes rows and columns", () => {
+    const layout = layoutNativeMath("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}", true, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+    const a = glyphs.find((node) => node.text === "a" || node.text === "𝑎");
+    const c = glyphs.find((node) => node.text === "c" || node.text === "𝑐");
+
+    expect(text).toContain("(");
+    expect(text).toContain(")");
+    expect(text).toContain("a");
+    expect(text).toContain("b");
+    expect(text).toContain("c");
+    expect(text).toContain("d");
+    expect(a?.type).toBe("glyph");
+    expect(c?.type).toBe("glyph");
+    if (a?.type === "glyph" && c?.type === "glyph") expect(c.y).toBeGreaterThan(a.y);
+    expect(text).not.toContain("⟦begin⟧");
+  });
+
+  it("marks unknown native math environments while still parsing their body", () => {
+    const layout = layoutNativeMath("\\begin{mystery} x + y \\end{mystery}", false, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+    const marker = glyphs.find((node) => node.text.includes("unknown environment"));
+
+    expect(text).toContain("unknown environment: mystery");
+    expect(text).toContain("x");
+    expect(text).toContain("y");
+    expect(marker?.type).toBe("glyph");
+    if (marker?.type === "glyph") expect(marker.color).toBe("#b42318");
+  });
+
+  it("renders native left/right delimiters around tall content", () => {
+    const layout = layoutNativeMath("\\left(\\frac{x}{y}\\right)^2", true, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+    const left = glyphs.find((node) => node.text === "(");
+    const right = glyphs.find((node) => node.text === ")");
+
+    expect(text).toContain("(");
+    expect(text).toContain(")");
+    expect(text).toContain("2");
+    expect(text).not.toContain("⟦left⟧");
+    expect(text).not.toContain("⟦right⟧");
+    expect(left?.type).toBe("glyph");
+    expect(right?.type).toBe("glyph");
+    if (left?.type === "glyph" && right?.type === "glyph") {
+      expect(left.fontSize).toBeGreaterThanOrEqual(12);
+      expect(right.fontSize).toBeGreaterThanOrEqual(12);
+    }
+  });
+
+  it("uses OpenType vertical delimiter variants for OpenMath left/right delimiters", () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const layout = layoutNativeMath("\\left(\\frac{x}{y}\\right)", true, 12, getDefaultOpenMathMetrics(), "openmath");
+    const delimiterPaths = layout.nodes.filter((node) => node.type === "glyphPath");
+    const delimiterGlyphs = layout.nodes.filter((node) => node.type === "glyph" && ["(", ")"].includes(node.text));
+
+    expect(delimiterPaths.length).toBeGreaterThanOrEqual(2);
+    expect(delimiterGlyphs).toHaveLength(0);
+  });
+
+  it("renders native bra and ket wrappers", () => {
+    const layout = layoutNativeMath("\\bra{\\psi} H \\ket{\\phi}", false, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+
+    expect(text).toContain("⟨");
+    expect(text).toContain("|");
+    expect(text).toContain("⟩");
+    expect(text).not.toContain("⟦bra⟧");
+    expect(text).not.toContain("⟦ket⟧");
+  });
+
+  it("keeps simple native bra and ket delimiters on a stable inline baseline", () => {
+    const layout = layoutNativeMath("\\bra{a}H\\ket{b}", false, 12);
+    const delimiters = layout.nodes.filter((node) => (
+      node.type === "glyph" && ["⟨", "|", "⟩"].includes(node.text)
+    ));
+    const baselines = delimiters.map((node) => node.y);
+
+    expect(delimiters.length).toBe(4);
+    expect(new Set(baselines.map((baseline) => baseline.toFixed(3))).size).toBe(1);
+  });
+
+  it("uses glyph advance rather than inserted padding inside native bra and ket", () => {
+    const layout = layoutNativeMath("\\bra{a}", false, 12);
+    const left = layout.nodes.find((node) => node.type === "glyph" && node.text === "⟨");
+    const body = layout.nodes.find((node) => node.type === "glyph" && (node.text === "a" || node.text === "𝑎"));
+
+    expect(left?.type).toBe("glyph");
+    expect(body?.type).toBe("glyph");
+    if (left?.type === "glyph" && body?.type === "glyph") {
+      expect(body.x - left.x).toBeLessThan(12 * 0.55);
+    }
+  });
+
+  it("keeps simple native display bra and ket delimiters on the same baseline", () => {
+    const layout = layoutNativeMath("\\bra{a} A \\ket{b} = \\frac{1}{\\sqrt{2}}", true, 12, defaultOpenMathMetrics, "openmath");
+    const delimiters = layout.nodes.filter((node) => (
+      node.type === "glyph" && ["⟨", "|", "⟩"].includes(node.text)
+    ));
+    const baselines = delimiters.map((node) => node.y);
+
+    expect(delimiters.length).toBe(4);
+    expect(new Set(baselines.map((baseline) => baseline.toFixed(3))).size).toBe(1);
+  });
+
+  it("places superscripts higher after tall native delimiters", () => {
+    const simple = layoutNativeMath("\\left(x\\right)^2", false, 12);
+    const tall = layoutNativeMath("\\left(\\frac{x}{y}\\right)^2", false, 12);
+    const simpleSup = simple.nodes.find((node) => node.type === "glyph" && node.text === "2");
+    const tallSup = tall.nodes.find((node) => node.type === "glyph" && node.text === "2");
+
+    expect(simpleSup?.type).toBe("glyph");
+    expect(tallSup?.type).toBe("glyph");
+    if (simpleSup?.type === "glyph" && tallSup?.type === "glyph") {
+      expect(tallSup.y - tall.baseline).toBeLessThan(simpleSup.y - simple.baseline);
+    }
+  });
+
+  it("places subscripts lower after tall native delimiters", () => {
+    const simple = layoutNativeMath("\\left(x\\right)_i", false, 12);
+    const tall = layoutNativeMath("\\left(\\frac{x}{y}\\right)_i", false, 12);
+    const simpleSub = simple.nodes.find((node) => node.type === "glyph" && node.text === "i");
+    const tallSub = tall.nodes.find((node) => node.type === "glyph" && node.text === "i");
+
+    expect(simpleSub?.type).toBe("glyph");
+    expect(tallSub?.type).toBe("glyph");
+    if (simpleSub?.type === "glyph" && tallSub?.type === "glyph") {
+      expect(tallSub.y - tall.baseline).toBeGreaterThan(simpleSub.y - simple.baseline);
+    }
   });
 
   it("renders named math functions upright in native and OpenMath modes", () => {
@@ -624,6 +795,19 @@ describe("document engine", () => {
       expect(subscript.x).toBeGreaterThan(integral.x + integral.width * 0.45);
       expect(subscript.x).toBeLessThan(integral.x + integral.width);
       expect(next.x).toBeGreaterThanOrEqual(integral.x + integral.width);
+    }
+  });
+
+  it("falls back cleanly when the OpenMath font has no MathKernInfo for integrals", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const layout = layoutNativeMath("\\int^x_y z", true, 12, getDefaultOpenMathMetrics(), "openmath");
+    const integral = layout.nodes.find((node) => node.type === "glyphPath");
+
+    expect(integral?.type).toBe("glyphPath");
+    if (integral?.type === "glyphPath") {
+      expect(getOpenTypeMathKern(3049, "topRight", 12, 12)).toBeUndefined();
+      expect(getOpenTypeMathKern(3063, "topRight", 12, 12)).toBeUndefined();
+      expect(Number.isFinite(layout.width)).toBe(true);
     }
   });
 
@@ -1088,6 +1272,57 @@ describe("document engine", () => {
     expect(tallRule?.type).toBe("rule");
     if (simpleRule?.type === "rule" && tallRule?.type === "rule") {
       expect(tallRule.y).toBeCloseTo(simpleRule.y, 5);
+    }
+  });
+
+  it("uses a separate display top gap for native square roots", () => {
+    const metrics = {
+      ...defaultNativeMathMetrics,
+      sqrtTopGap: 0.02,
+      displaySqrtTopGap: 0.2
+    };
+    const inline = layoutNativeMath("\\sqrt{x}", false, 12, metrics);
+    const display = layoutNativeMath("\\sqrt{x}", true, 12, metrics);
+    const inlineRule = inline.nodes.find((node) => node.type === "rule");
+    const displayRule = display.nodes.find((node) => node.type === "rule");
+    const inlineX = inline.nodes.find((node) => node.type === "glyph" && node.text === "x");
+    const displayX = display.nodes.find((node) => node.type === "glyph" && node.text === "x");
+
+    expect(inlineRule?.type).toBe("rule");
+    expect(displayRule?.type).toBe("rule");
+    expect(inlineX?.type).toBe("glyph");
+    expect(displayX?.type).toBe("glyph");
+    if (inlineRule?.type === "rule" && displayRule?.type === "rule" && inlineX?.type === "glyph" && displayX?.type === "glyph") {
+      expect(displayX.y - displayRule.y).toBeGreaterThan(inlineX.y - inlineRule.y);
+    }
+  });
+
+  it("uses display square-root top gap inside display fraction children", () => {
+    const metrics = {
+      ...defaultNativeMathMetrics,
+      sqrtTopGap: 0.02,
+      displaySqrtTopGap: 0.2
+    };
+    const inline = layoutNativeMath("\\frac{1}{\\sqrt{3}}", false, 12, metrics);
+    const display = layoutNativeMath("\\frac{1}{\\sqrt{3}}", true, 12, metrics);
+    const inlineRules = inline.nodes.filter((node) => node.type === "rule");
+    const displayRules = display.nodes.filter((node) => node.type === "rule");
+    const inlineSqrtRule = inlineRules[1];
+    const displaySqrtRule = displayRules[1];
+    const inlineThree = inline.nodes.find((node) => node.type === "glyph" && node.text === "3");
+    const displayThree = display.nodes.find((node) => node.type === "glyph" && node.text === "3");
+
+    expect(inlineSqrtRule?.type).toBe("rule");
+    expect(displaySqrtRule?.type).toBe("rule");
+    expect(inlineThree?.type).toBe("glyph");
+    expect(displayThree?.type).toBe("glyph");
+    if (
+      inlineSqrtRule?.type === "rule" &&
+      displaySqrtRule?.type === "rule" &&
+      inlineThree?.type === "glyph" &&
+      displayThree?.type === "glyph"
+    ) {
+      expect(displayThree.y - displaySqrtRule.y).toBeGreaterThan(inlineThree.y - inlineSqrtRule.y);
     }
   });
 
