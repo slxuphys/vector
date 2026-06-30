@@ -5,18 +5,18 @@ import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
 import {
   defaultNativeMathMetrics,
-  getDefaultOpenMathMetrics,
+  getDefaultOpenMathMetricsForProfile,
   isNativeMathRenderer,
   layoutNativeMath,
   nativeMathProfileForRenderer
 } from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
-import { openMathFontFaceCss, openMathFontFamily } from "../renderers/math/openMathFont";
+import { getOpenMathFontProfile, openMathFontFaceCss } from "../renderers/math/openMathFont";
 
 let root: HTMLDivElement | undefined;
 const loadedFontSizes = new Set<number>();
 const measurementCache = new Map<string, MathMeasurement>();
-let openMathFontStyle: HTMLStyleElement | undefined;
+const openMathFontStyleIds = new Set<string>();
 
 export async function measureMathInDom(
   requests: MathMeasureRequest[],
@@ -73,9 +73,11 @@ async function measureNativeMath(requests: MathMeasureRequest[], renderer: MathR
   const measurements: Record<string, MathMeasurement> = {};
   await loadNativeMathFonts();
   await waitForOpenMathFonts(requests, renderer);
-  const profile = nativeMathProfileForRenderer(renderer);
-  const fallbackMetrics = renderer === "native-openmath" ? getDefaultOpenMathMetrics() : defaultNativeMathMetrics;
   for (const request of requests) {
+    const profile = request.nativeMathProfile ?? nativeMathProfileForRenderer(renderer);
+    const fallbackMetrics = renderer === "native-openmath"
+      ? getDefaultOpenMathMetricsForProfile(profile)
+      : defaultNativeMathMetrics;
     const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize, request.nativeMetrics ?? fallbackMetrics, profile);
     measurements[request.key] = {
       width: layout.width,
@@ -89,19 +91,28 @@ async function measureNativeMath(requests: MathMeasureRequest[], renderer: MathR
 
 async function waitForOpenMathFonts(requests: MathMeasureRequest[], renderer: MathRendererName): Promise<void> {
   if (renderer !== "native-openmath" || typeof document === "undefined" || !document.fonts) return;
-  ensureOpenMathFontFace();
-  const fontSizes = [...new Set(requests.map((request) => request.fontSize))];
+  const fontLoads = requests.map((request) => {
+    const profileName = request.nativeMathProfile === "openmath-new-computer-modern"
+      ? "new-computer-modern"
+      : request.nativeMathProfile === "openmath-libertinus"
+        ? "libertinus"
+        : "latin-modern";
+    const profile = getOpenMathFontProfile(profileName);
+    ensureOpenMathFontFace(profileName);
+    return document.fonts.load(`${request.fontSize}px "${profile.family}"`);
+  });
   await Promise.race([
-    Promise.allSettled(fontSizes.map((fontSize) => document.fonts.load(`${fontSize}px "${openMathFontFamily}"`))),
+    Promise.allSettled(fontLoads),
     new Promise((resolve) => window.setTimeout(resolve, 100))
   ]);
 }
 
-function ensureOpenMathFontFace(): void {
-  if (openMathFontStyle) return;
-  openMathFontStyle = document.createElement("style");
-  openMathFontStyle.textContent = openMathFontFaceCss();
-  document.head.appendChild(openMathFontStyle);
+function ensureOpenMathFontFace(profileName: "latin-modern" | "libertinus" | "new-computer-modern"): void {
+  if (openMathFontStyleIds.has(profileName)) return;
+  openMathFontStyleIds.add(profileName);
+  const style = document.createElement("style");
+  style.textContent = openMathFontFaceCss(profileName);
+  document.head.appendChild(style);
 }
 
 async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {

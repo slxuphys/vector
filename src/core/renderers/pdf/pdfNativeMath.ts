@@ -1,7 +1,7 @@
 import type { PDFPage, PDFFont } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { layoutNativeMath, nativeMathProfileForRenderer, type NativeGlyph } from "../math/nativeMath";
-import { openMathFontFamily } from "../math/openMathFont";
+import { getOpenMathFontProfile, openMathFontProfiles } from "../math/openMathFont";
 import type { PdfFontSet } from "./pdfFonts";
 import { hexToRgb } from "./pdfText";
 
@@ -18,7 +18,7 @@ export function drawPdfNativeMath(
     object.displayMode,
     object.fontSize,
     object.nativeMetrics,
-    nativeMathProfileForRenderer(object.renderer)
+    object.nativeMathProfile ?? nativeMathProfileForRenderer(object.renderer)
   );
   for (const node of layout.nodes) {
     if (node.type === "rule") {
@@ -83,7 +83,9 @@ function selectNativeGlyphFont(
   fonts: PdfFontSet,
   preferTexFonts: boolean
 ): PDFFont {
-  if (glyph.fontFamily?.includes(openMathFontFamily) && fonts.openMath) return fonts.openMath;
+  if (glyph.fontFamily?.includes(openMathFontProfiles["new-computer-modern"].family) && fonts.openMathNewComputerModern) return fonts.openMathNewComputerModern;
+  if (glyph.fontFamily?.includes(openMathFontProfiles.libertinus.family) && fonts.openMathLibertinus) return fonts.openMathLibertinus;
+  if (glyph.fontFamily?.includes(getOpenMathFontProfile("latin-modern").family) && fonts.openMath) return fonts.openMath;
 
   const texFonts = fonts.tex;
   if (glyph.fontFamily?.includes("KaTeX_Size4") && texFonts?.size4) return texFonts.size4;

@@ -9,7 +9,7 @@ import katexSize2RegularUrl from "katex/dist/fonts/KaTeX_Size2-Regular.ttf?url";
 import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
 import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
 import fontMetricsData from "katex/src/fontMetricsData.js";
-import { openMathFontUrl } from "./openMathFont";
+import { openMathFontProfiles, type OpenMathFontProfileName } from "./openMathFont";
 
 export type NativeFontRole =
   | "mainRegular"
@@ -18,6 +18,8 @@ export type NativeFontRole =
   | "mainBoldItalic"
   | "mathItalic"
   | "openMath"
+  | "openMathLibertinus"
+  | "openMathNewComputerModern"
   | "size1"
   | "size2"
   | "size3"
@@ -143,7 +145,9 @@ const fontUrls: Record<NativeFontRole, string> = {
   mainItalic: katexMainItalicUrl,
   mainBoldItalic: katexMainBoldItalicUrl,
   mathItalic: katexMathItalicUrl,
-  openMath: openMathFontUrl,
+  openMath: openMathFontProfiles["latin-modern"].url,
+  openMathLibertinus: openMathFontProfiles.libertinus.url,
+  openMathNewComputerModern: openMathFontProfiles["new-computer-modern"].url,
   size1: katexSize1RegularUrl,
   size2: katexSize2RegularUrl,
   size3: katexSize3RegularUrl,
@@ -165,16 +169,33 @@ const katexMetricFonts: Partial<Record<NativeFontRole, KatexMetricFontName>> = {
 const fontCache = new Map<NativeFontRole, FontkitFont>();
 const loadPromises = new Map<NativeFontRole, Promise<void>>();
 const glyphMetricsCache = new Map<string, NativeGlyphMetrics>();
-let openTypeMathConstants: OpenTypeMathConstants | undefined;
-let openTypeMathGlyphInfo: {
+type OpenMathParsedGlyphInfo = {
   italicCorrections: Map<number, number>;
   topAccentAttachments: Map<number, number>;
   mathKerns: Map<number, Partial<Record<OpenTypeMathKernCorner, OpenTypeMathKernTable>>>;
-} | undefined;
-let openTypeMathVariants: {
+};
+type OpenMathParsedVariants = {
   vertical: Map<number, OpenTypeMathGlyphVariant[]>;
   horizontal: Map<number, OpenTypeMathGlyphVariant[]>;
-} | undefined;
+};
+
+const openTypeMathConstantsByRole = new Map<NativeFontRole, OpenTypeMathConstants>();
+const openTypeMathGlyphInfoByRole = new Map<NativeFontRole, OpenMathParsedGlyphInfo>();
+const openTypeMathVariantsByRole = new Map<NativeFontRole, OpenMathParsedVariants>();
+let activeOpenMathRole: NativeFontRole = "openMath";
+
+export function openMathFontRoleForProfile(name: OpenMathFontProfileName | undefined): NativeFontRole {
+  if (name === "new-computer-modern") return "openMathNewComputerModern";
+  return name === "libertinus" ? "openMathLibertinus" : "openMath";
+}
+
+export function setActiveOpenMathFontProfile(name: OpenMathFontProfileName | undefined): void {
+  activeOpenMathRole = openMathFontRoleForProfile(name);
+}
+
+export function getActiveOpenMathFontRole(): NativeFontRole {
+  return activeOpenMathRole;
+}
 
 export async function loadNativeMathFonts(): Promise<void> {
   await Promise.all(Object.keys(fontUrls).map((role) => loadNativeFont(role as NativeFontRole)));
@@ -183,10 +204,13 @@ export async function loadNativeMathFonts(): Promise<void> {
 export function loadNativeFontFromBytes(role: NativeFontRole, bytes: Uint8Array): void {
   fontCache.set(role, fontkitApi.create(bytes));
   glyphMetricsCache.clear();
-  if (role === "openMath") {
-    openTypeMathConstants = parseOpenTypeMathConstants(bytes);
-    openTypeMathGlyphInfo = parseOpenTypeMathGlyphInfo(bytes);
-    openTypeMathVariants = parseOpenTypeMathVariants(bytes);
+  if (role === "openMath" || role === "openMathLibertinus" || role === "openMathNewComputerModern") {
+    const constants = parseOpenTypeMathConstants(bytes);
+    const glyphInfo = parseOpenTypeMathGlyphInfo(bytes);
+    const variants = parseOpenTypeMathVariants(bytes);
+    if (constants) openTypeMathConstantsByRole.set(role, constants);
+    if (glyphInfo) openTypeMathGlyphInfoByRole.set(role, glyphInfo);
+    if (variants) openTypeMathVariantsByRole.set(role, variants);
   }
 }
 
@@ -239,11 +263,12 @@ export function getNativeGlyphMetrics(
 }
 
 export function getOpenTypeMathConstants(): OpenTypeMathConstants | undefined {
-  return openTypeMathConstants;
+  return openTypeMathConstantsByRole.get(activeOpenMathRole);
 }
 
 export function getOpenTypeMathGlyphInfo(text: string, fontSize: number): OpenTypeMathGlyphInfo | undefined {
-  const font = fontCache.get("openMath");
+  const font = fontCache.get(activeOpenMathRole);
+  const openTypeMathGlyphInfo = openTypeMathGlyphInfoByRole.get(activeOpenMathRole);
   if (!font || !openTypeMathGlyphInfo) return undefined;
 
   const chars = Array.from(text);
@@ -269,8 +294,8 @@ export function getOpenTypeMathKern(
   height: number,
   fontSize: number
 ): number | undefined {
-  const font = fontCache.get("openMath");
-  const table = openTypeMathGlyphInfo?.mathKerns.get(glyphId)?.[corner];
+  const font = fontCache.get(activeOpenMathRole);
+  const table = openTypeMathGlyphInfoByRole.get(activeOpenMathRole)?.mathKerns.get(glyphId)?.[corner];
   if (!font || !table) return undefined;
 
   const targetHeight = height * font.unitsPerEm / fontSize;
@@ -298,7 +323,8 @@ function getOpenTypeMathVariant(
   fontSize: number,
   direction: "vertical" | "horizontal"
 ): OpenTypeMathGlyphVariant | undefined {
-  const font = fontCache.get("openMath");
+  const font = fontCache.get(activeOpenMathRole);
+  const openTypeMathVariants = openTypeMathVariantsByRole.get(activeOpenMathRole);
   if (!font || !openTypeMathVariants) return undefined;
 
   const codePoint = Array.from(text)[0]?.codePointAt(0);

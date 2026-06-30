@@ -1,5 +1,6 @@
 import type { PageConfig } from "../layout/pageConfig";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
+import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 
 export type DisplayTextRun = {
@@ -34,6 +35,7 @@ export type DisplayObject =
       fontSize: number;
       color: string;
       nativeMetrics?: NativeMathMetrics;
+      nativeMathProfile?: NativeMathFontProfileName;
     }
   | {
       type: "rect";

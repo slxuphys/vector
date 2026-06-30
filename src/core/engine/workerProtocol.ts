@@ -2,6 +2,7 @@ import type { PagedDisplayList, PreviewStats } from "../display-list/displayType
 import type { MathMeasurementMap } from "../layout/mathMetrics";
 import type { PageSizeName } from "../layout/pageConfig";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
+import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 
 export type EngineOptions = {
@@ -11,6 +12,7 @@ export type EngineOptions = {
   useWorker?: boolean;
   mathRenderer?: MathRendererName;
   nativeMathMetrics?: NativeMathMetrics;
+  nativeMathProfile?: NativeMathFontProfileName;
 };
 
 export type MathRendererName =

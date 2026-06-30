@@ -11,6 +11,11 @@ import type { EngineOptions } from "../core/engine/workerProtocol";
 import type { PagedDisplayList, PreviewStats } from "../core/display-list/displayTypes";
 import type { MathMeasurementMap } from "../core/layout/mathMetrics";
 import { clearTextMeasureCache } from "../core/layout/measureText";
+import {
+  libertinusSerifFontFamily,
+  latinModernRomanFontFamily,
+  newComputerModernFontFamily
+} from "../core/renderers/text/latinModernRomanFont";
 
 export type DocumentLayoutState = {
   layout?: PagedDisplayList;
@@ -44,7 +49,7 @@ export function useDocumentLayout(
   const workerEnabled = options.useWorker !== false && typeof Worker !== "undefined";
   const workerClient = useMemo(
     () => workerEnabled ? createWorkerClient(options) : undefined,
-    [workerEnabled, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics]
+    [workerEnabled, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile]
   );
 
   useEffect(() => {
@@ -75,7 +80,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, workerEnabled]);
+  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile, workerEnabled]);
 
   useEffect(() => {
     return () => {
@@ -124,13 +129,20 @@ async function waitForTextFonts(options: EngineOptions): Promise<void> {
   if (typeof document === "undefined" || !document.fonts) return;
   const fontFamily = options.theme?.fontFamily;
   const installedFontFace = ensureDocumentFontFaceCss(options.theme?.fontFaceCss);
-  if (fontFamily?.includes("Latin Modern Roman")) {
+  const openMathTextFamily = fontFamily?.includes(libertinusSerifFontFamily)
+    ? libertinusSerifFontFamily
+    : fontFamily?.includes(newComputerModernFontFamily)
+      ? newComputerModernFontFamily
+    : fontFamily?.includes(latinModernRomanFontFamily)
+      ? latinModernRomanFontFamily
+      : undefined;
+  if (openMathTextFamily) {
     await Promise.race([
       Promise.allSettled([
-        document.fonts.load(`12px "Latin Modern Roman"`),
-        document.fonts.load(`700 28px "Latin Modern Roman"`),
-        document.fonts.load(`italic 12px "Latin Modern Roman"`),
-        document.fonts.load(`700 italic 12px "Latin Modern Roman"`)
+        document.fonts.load(`12px "${openMathTextFamily}"`),
+        document.fonts.load(`700 28px "${openMathTextFamily}"`),
+        document.fonts.load(`italic 12px "${openMathTextFamily}"`),
+        document.fonts.load(`700 italic 12px "${openMathTextFamily}"`)
       ]),
       new Promise((resolve) => window.setTimeout(resolve, 150))
     ]);

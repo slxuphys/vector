@@ -10,7 +10,8 @@ import {
   getOpenTypeMathKern,
   getOpenTypeMathGlyphVariant,
   getOpenTypeMathGlyphInfo,
-  getOpenTypeMathRadicalVariant
+  getOpenTypeMathRadicalVariant,
+  setActiveOpenMathFontProfile
 } from "./nativeFontMetrics";
 import {
   getNativeMathProfile,
@@ -196,6 +197,12 @@ export const defaultOpenMathMetrics: NativeMathMetrics = {
 export function getDefaultOpenMathMetrics(): NativeMathMetrics {
   const constants = getOpenTypeMathConstants();
   return constants ? openMathMetricsFromConstants(constants) : defaultOpenMathMetrics;
+}
+
+export function getDefaultOpenMathMetricsForProfile(profileName: NativeMathFontProfile = "openmath"): NativeMathMetrics {
+  const profile = getNativeMathProfile(profileName);
+  setActiveOpenMathFontProfile(profile.openMathProfileName);
+  return getDefaultOpenMathMetrics();
 }
 
 export function openMathMetricsFromConstants(constants: NonNullable<ReturnType<typeof getOpenTypeMathConstants>>): NativeMathMetrics {
@@ -453,6 +460,7 @@ export function layoutNativeMath(
   profileName: NativeMathFontProfile = "katex"
 ): NativeMathLayout {
   const profile = getNativeMathProfile(profileName);
+  if (profile.isOpenMath) setActiveOpenMathFontProfile(profile.openMathProfileName);
   const layout = layoutSequence(latex.trim(), fontSize, displayMode, metrics, profile);
   const padding = fontSize * (displayMode ? metrics.displayPadding : metrics.inlinePadding);
   const result = {
@@ -467,7 +475,7 @@ export function layoutNativeMath(
 }
 
 export function renderNativeMathSvg(object: NativeMathObject): string {
-  const profileName = nativeMathProfileForRenderer(object.renderer);
+  const profileName = object.nativeMathProfile ?? nativeMathProfileForRenderer(object.renderer);
   const profile = getNativeMathProfile(profileName);
   const layout = layoutNativeMath(object.latex, object.displayMode, object.fontSize, object.nativeMetrics, profileName);
   const fontFace = profile.svgFontFaceCss ? `<style>${profile.svgFontFaceCss}</style>` : "";
@@ -780,17 +788,17 @@ function layoutSequence(
         color: isUnsupported ? "#b42318" : undefined,
         italic: commandItalic
       };
-      const largeOperatorPath = isDisplayLargeOperator && profile.name === "openmath"
-        ? layoutOpenMathOperatorGlyph(text, glyphFontSize)
+      const largeOperatorPath = isDisplayLargeOperator && profile.isOpenMath
+        ? layoutOpenMathOperatorGlyph(text, glyphFontSize, profile)
         : undefined;
       const fontMetrics = largeOperatorPath ? undefined : measureGlyphFontMetrics(text, glyphFontSize, style);
       const width = largeOperatorPath?.width ?? measureGlyphLayoutWidth(text, glyphFontSize, style, useInkRightEdge);
       const verticalMetrics = largeOperatorPath
         ? {
-          ascent: -largeOperatorPath.inkTopOffset,
-          descent: largeOperatorPath.inkBottomOffset,
-          inkTopOffset: largeOperatorPath.inkTopOffset,
-          inkBottomOffset: largeOperatorPath.inkBottomOffset
+          ascent: Math.max(0, -(largeOperatorPath.y + largeOperatorPath.inkTopOffset)),
+          descent: Math.max(0, largeOperatorPath.y + largeOperatorPath.inkBottomOffset),
+          inkTopOffset: largeOperatorPath.y + largeOperatorPath.inkTopOffset,
+          inkBottomOffset: largeOperatorPath.y + largeOperatorPath.inkBottomOffset
         }
         : measureGlyphVerticalMetrics(text, glyphFontSize, style);
       if (largeOperatorPath) {
@@ -1136,7 +1144,7 @@ function layoutSqrt(
   const baseline = bodyY + body.baseline;
   const ascent = baseline;
   const descent = Math.max(0, height - baseline);
-  const openMathRadical = profile.name === "openmath"
+  const openMathRadical = profile.isOpenMath
     ? layoutOpenMathRadicalGlyph(bodyInkBottomY - ruleY + fontSize * metrics.sqrtOverbarExtra, fontSize, profile)
     : undefined;
   if (openMathRadical) {
@@ -1262,7 +1270,7 @@ function layoutOpenMathRadicalGlyph(
   const variant = getOpenTypeMathRadicalVariant(targetHeight, fontSize);
   if (!variant) return undefined;
 
-  const outline = getNativeGlyphOutline("openMath", variant.glyphId);
+  const outline = getNativeGlyphOutline(profile.openMathRole ?? "openMath", variant.glyphId);
   if (!outline) return undefined;
 
   const scale = fontSize / outline.unitsPerEm;
@@ -1283,7 +1291,8 @@ function layoutOpenMathRadicalGlyph(
 
 function layoutOpenMathOperatorGlyph(
   text: string,
-  fontSize: number
+  fontSize: number,
+  profile: NativeMathProfile
 ): {
   glyphId: number;
   d: string;
@@ -1302,19 +1311,21 @@ function layoutOpenMathOperatorGlyph(
   const variant = getOpenTypeMathGlyphVariant(text, targetHeight, fontSize);
   if (!variant) return undefined;
 
-  const outline = getNativeGlyphOutline("openMath", variant.glyphId);
+  const outline = getNativeGlyphOutline(profile.openMathRole ?? "openMath", variant.glyphId);
   if (!outline) return undefined;
 
   const scale = fontSize / outline.unitsPerEm;
   const actualRight = Math.max(outline.advanceWidth, outline.bbox.maxX);
   const actualAscent = Math.max(0, outline.bbox.maxY * scale);
   const actualDescent = Math.max(0, -outline.bbox.minY * scale);
+  const axisHeight = constants ? constants.axisHeight * scale : fontSize * 0.25;
+  const y = -axisHeight + (actualAscent - actualDescent) / 2;
   return {
     glyphId: variant.glyphId,
     d: outline.path,
     width: actualRight * scale,
     height: actualAscent + actualDescent,
-    y: 0,
+    y,
     scale,
     inkTopOffset: -actualAscent,
     inkBottomOffset: actualDescent,
@@ -1325,7 +1336,8 @@ function layoutOpenMathOperatorGlyph(
 function layoutOpenMathAccentGlyph(
   command: string,
   targetWidth: number,
-  fontSize: number
+  fontSize: number,
+  profile: NativeMathProfile
 ): {
   d: string;
   xOffset: number;
@@ -1342,7 +1354,7 @@ function layoutOpenMathAccentGlyph(
   const variant = getOpenTypeMathHorizontalGlyphVariant(accentText, targetWidth, fontSize);
   if (!variant) return undefined;
 
-  const outline = getNativeGlyphOutline("openMath", variant.glyphId);
+  const outline = getNativeGlyphOutline(profile.openMathRole ?? "openMath", variant.glyphId);
   if (!outline) return undefined;
 
   const scale = fontSize / outline.unitsPerEm;
@@ -1381,8 +1393,8 @@ function layoutAccent(
     : bodyX + topAccentAttachment;
   const nodes: NativeNode[] = [];
 
-  const openMathAccentPath = profile.name === "openmath"
-    ? layoutOpenMathAccentGlyph(command, getSingleAccentBaseGlyph(bodyLatex, profile) ? 0 : body.width, fontSize)
+  const openMathAccentPath = profile.isOpenMath
+    ? layoutOpenMathAccentGlyph(command, getSingleAccentBaseGlyph(bodyLatex, profile) ? 0 : body.width, fontSize, profile)
     : undefined;
   const accentText = accentGlyphForCommand(command, profile);
   if (accentText || openMathAccentPath) {
@@ -1470,7 +1482,7 @@ function layoutAccent(
 }
 
 function accentGlyphForCommand(command: string, profile: NativeMathProfile): string | undefined {
-  if (command === "\\bar") return profile.name === "openmath" ? "¯" : "ˉ";
+  if (command === "\\bar") return profile.isOpenMath ? "¯" : "ˉ";
   if (command === "\\hat") return "^";
   if (command === "\\tilde") return "~";
   if (command === "\\dot") return "˙";
@@ -1486,7 +1498,7 @@ function openMathStretchyAccentGlyph(command: string): string | undefined {
 }
 
 function getAccentSkew(bodyLatex: string, fontSize: number, profile: NativeMathProfile): number {
-  if (profile.name === "openmath") return 0;
+  if (profile.isOpenMath) return 0;
   const glyphText = getSingleAccentBaseGlyph(bodyLatex);
   if (!glyphText) return 0;
 
@@ -1499,7 +1511,7 @@ function getTopAccentAttachment(
   fontSize: number,
   profile: NativeMathProfile
 ): number | undefined {
-  if (profile.name !== "openmath") return undefined;
+  if (!profile.isOpenMath) return undefined;
   const glyphText = getSingleAccentBaseGlyph(bodyLatex, profile);
   if (!glyphText) return undefined;
   return getOpenTypeMathGlyphInfo(glyphText, fontSize)?.topAccentAttachment;
@@ -1990,13 +2002,13 @@ function layoutOpenMathDelimiterGlyph(
   inkBottom: number;
 } | undefined {
   if (options.useDelimiterVariants === false) return undefined;
-  if (profile.name !== "openmath") return undefined;
+  if (!profile.isOpenMath) return undefined;
   if (options.verticalBarsAsGlyphs && (text === "|" || text === "‖")) return undefined;
 
   const variant = getOpenTypeMathGlyphVariant(text, targetHeight, fontSize);
   if (!variant) return undefined;
 
-  const outline = getNativeGlyphOutline("openMath", variant.glyphId);
+  const outline = getNativeGlyphOutline(profile.openMathRole ?? "openMath", variant.glyphId);
   if (!outline) return undefined;
 
   const scale = fontSize / outline.unitsPerEm;
@@ -2291,7 +2303,7 @@ function measureAccentGlyphVerticalMetrics(
   style: NativeGlyphStyle
 ): { ascent: number; descent: number; inkTopOffset: number; inkBottomOffset: number } {
   if (isOpenMathFontFamily(style.fontFamily)) {
-    const fontMetrics = getNativeGlyphMetrics("openMath", text, fontSize);
+    const fontMetrics = getNativeGlyphMetrics(selectNativeFontRole(style), text, fontSize);
     if (fontMetrics) {
       return {
         ascent: fontMetrics.actualAscent,

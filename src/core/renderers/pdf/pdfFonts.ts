@@ -10,8 +10,15 @@ import katexSize1RegularUrl from "katex/dist/fonts/KaTeX_Size1-Regular.ttf?url";
 import katexSize2RegularUrl from "katex/dist/fonts/KaTeX_Size2-Regular.ttf?url";
 import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
 import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
-import { openMathFontUrl } from "../math/openMathFont";
-import { latinModernRomanFontFamily, latinModernRomanFontUrls } from "../text/latinModernRomanFont";
+import { openMathFontProfiles, openMathFontUrl } from "../math/openMathFont";
+import {
+  latinModernRomanFontFamily,
+  latinModernRomanFontUrls,
+  libertinusSerifFontFamily,
+  libertinusSerifFontUrls,
+  newComputerModernFontFamily,
+  newComputerModernFontUrls
+} from "../text/latinModernRomanFont";
 
 type TextObject = Extract<DisplayObject, { type: "text" }>;
 
@@ -22,7 +29,21 @@ export type PdfFontSet = {
   boldItalic: PDFFont;
   mono: PDFFont;
   openMath?: PDFFont;
+  openMathLibertinus?: PDFFont;
+  openMathNewComputerModern?: PDFFont;
   latinModernRoman?: {
+    regular: PDFFont;
+    bold: PDFFont;
+    italic: PDFFont;
+    boldItalic: PDFFont;
+  };
+  libertinusSerif?: {
+    regular: PDFFont;
+    bold: PDFFont;
+    italic: PDFFont;
+    boldItalic: PDFFont;
+  };
+  newComputerModern?: {
     regular: PDFFont;
     bold: PDFFont;
     italic: PDFFont;
@@ -50,18 +71,26 @@ export async function loadPdfFonts(pdf: PDFDocument): Promise<PdfFontSet> {
   const boldItalic = await pdf.embedFont(StandardFonts.HelveticaBoldOblique);
   const mono = await pdf.embedFont(StandardFonts.Courier);
 
-  const [tex, openMath, latinModernRoman] = await Promise.all([
+  const [tex, openMath, openMathLibertinus, openMathNewComputerModern, latinModernRoman, libertinusSerif, newComputerModern] = await Promise.all([
     loadTexFonts(pdf),
     loadOpenMathFont(pdf),
-    loadLatinModernRomanFonts(pdf)
+    loadOpenMathFont(pdf, openMathFontProfiles.libertinus.url),
+    loadOpenMathFont(pdf, openMathFontProfiles["new-computer-modern"].url),
+    loadLatinModernRomanFonts(pdf),
+    loadLibertinusSerifFonts(pdf),
+    loadNewComputerModernFonts(pdf)
   ]);
-  return { regular, bold, italic, boldItalic, mono, tex, openMath, latinModernRoman };
+  return { regular, bold, italic, boldItalic, mono, tex, openMath, openMathLibertinus, openMathNewComputerModern, latinModernRoman, libertinusSerif, newComputerModern };
 }
 
 export function selectPdfTextFont(object: TextObject, fonts: PdfFontSet): PDFFont {
   if (object.fontFamily.includes("Consolas") || object.fontFamily.includes("Monaco")) return fonts.mono;
   const family = isLatinModernRomanFont(object.fontFamily) && fonts.latinModernRoman
     ? fonts.latinModernRoman
+    : isLibertinusSerifFont(object.fontFamily) && fonts.libertinusSerif
+      ? fonts.libertinusSerif
+    : isNewComputerModernFont(object.fontFamily) && fonts.newComputerModern
+      ? fonts.newComputerModern
     : isTexFont(object.fontFamily) && fonts.tex
       ? fonts.tex
       : fonts;
@@ -81,12 +110,22 @@ export function selectPdfTextFontFallbacks(object: TextObject, fonts: PdfFontSet
   }
 
   if (fonts.openMath && fonts.openMath !== selected) fallbacks.push(fonts.openMath);
+  if (fonts.openMathLibertinus && fonts.openMathLibertinus !== selected) fallbacks.push(fonts.openMathLibertinus);
+  if (fonts.openMathNewComputerModern && fonts.openMathNewComputerModern !== selected) fallbacks.push(fonts.openMathNewComputerModern);
 
   return fallbacks;
 }
 
 function isLatinModernRomanFont(fontFamily: string): boolean {
   return fontFamily.includes(latinModernRomanFontFamily);
+}
+
+function isLibertinusSerifFont(fontFamily: string): boolean {
+  return fontFamily.includes(libertinusSerifFontFamily);
+}
+
+function isNewComputerModernFont(fontFamily: string): boolean {
+  return fontFamily.includes(newComputerModernFontFamily);
 }
 
 function isTexFont(fontFamily: string): boolean {
@@ -120,10 +159,10 @@ async function loadTexFonts(pdf: PDFDocument): Promise<PdfFontSet["tex"]> {
   }
 }
 
-async function loadOpenMathFont(pdf: PDFDocument): Promise<PDFFont | undefined> {
+async function loadOpenMathFont(pdf: PDFDocument, url = openMathFontUrl): Promise<PDFFont | undefined> {
   try {
     pdf.registerFontkit(fontkit);
-    return await embedCustomFont(pdf, openMathFontUrl);
+    return await embedCustomFont(pdf, url);
   } catch {
     return undefined;
   }
@@ -137,6 +176,36 @@ async function loadLatinModernRomanFonts(pdf: PDFDocument): Promise<PdfFontSet["
       embedCustomFont(pdf, latinModernRomanFontUrls.bold),
       embedCustomFont(pdf, latinModernRomanFontUrls.italic),
       embedCustomFont(pdf, latinModernRomanFontUrls.boldItalic)
+    ]);
+    return { regular, bold, italic, boldItalic };
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadLibertinusSerifFonts(pdf: PDFDocument): Promise<PdfFontSet["libertinusSerif"]> {
+  try {
+    pdf.registerFontkit(fontkit);
+    const [regular, bold, italic, boldItalic] = await Promise.all([
+      embedCustomFont(pdf, libertinusSerifFontUrls.regular),
+      embedCustomFont(pdf, libertinusSerifFontUrls.bold),
+      embedCustomFont(pdf, libertinusSerifFontUrls.italic),
+      embedCustomFont(pdf, libertinusSerifFontUrls.boldItalic)
+    ]);
+    return { regular, bold, italic, boldItalic };
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadNewComputerModernFonts(pdf: PDFDocument): Promise<PdfFontSet["newComputerModern"]> {
+  try {
+    pdf.registerFontkit(fontkit);
+    const [regular, bold, italic, boldItalic] = await Promise.all([
+      embedCustomFont(pdf, newComputerModernFontUrls.regular),
+      embedCustomFont(pdf, newComputerModernFontUrls.bold),
+      embedCustomFont(pdf, newComputerModernFontUrls.italic),
+      embedCustomFont(pdf, newComputerModernFontUrls.boldItalic)
     ]);
     return { regular, bold, italic, boldItalic };
   } catch {

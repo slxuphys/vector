@@ -1,6 +1,7 @@
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
+import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { InlineRun } from "./layoutBlocks";
 import { getMeasuredMath, type MathMeasurementMap } from "./mathMetrics";
 import { measureText } from "./measureText";
@@ -18,7 +19,8 @@ export function breakRunsIntoLines(
   theme: DocumentTheme,
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
-  nativeMathMetrics?: NativeMathMetrics
+  nativeMathMetrics?: NativeMathMetrics,
+  nativeMathProfile?: NativeMathFontProfileName
 ): LayoutLine[] {
   const lines: LayoutLine[] = [];
   let current: InlineRun[] = [];
@@ -37,14 +39,14 @@ export function breakRunsIntoLines(
     const words = run.math ? [run.text.trim()] : run.text.match(/\S+\s*|\s+/g) ?? [];
     for (const word of words) {
       const width = run.math
-        ? measureMathChunk(word, fontSize, mathMeasurements, mathRenderer, nativeMathMetrics)
+        ? measureMathChunk(word, fontSize, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile)
         : measureText(word, {
         fontSize,
         fontFamily: theme.fontFamily,
         monoFontFamily: theme.monoFontFamily,
         ...run
       });
-      const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements, mathRenderer, nativeMathMetrics) : lineHeight;
+      const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile) : lineHeight;
       if (current.length > 0 && currentWidth + width > maxWidth) pushLine();
       if (run.math) {
         current.push({ ...run, text: word });
@@ -82,9 +84,10 @@ function measureMathChunk(
   fontSize: number,
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
-  nativeMathMetrics?: NativeMathMetrics
+  nativeMathMetrics?: NativeMathMetrics,
+  nativeMathProfile?: NativeMathFontProfileName
 ): number {
-  return getMeasuredMath(mathMeasurements, text, false, fontSize, mathRenderer, nativeMathMetrics)?.advance ?? fontSize * Math.max(1, text.length * 0.6);
+  return getMeasuredMath(mathMeasurements, text, false, fontSize, mathRenderer, nativeMathMetrics, nativeMathProfile)?.advance ?? fontSize * Math.max(1, text.length * 0.6);
 }
 
 function measureMathHeight(
@@ -93,7 +96,8 @@ function measureMathHeight(
   fallback: number,
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
-  nativeMathMetrics?: NativeMathMetrics
+  nativeMathMetrics?: NativeMathMetrics,
+  nativeMathProfile?: NativeMathFontProfileName
 ): number {
-  return getMeasuredMath(mathMeasurements, text, false, fontSize, mathRenderer, nativeMathMetrics)?.height ?? fallback;
+  return getMeasuredMath(mathMeasurements, text, false, fontSize, mathRenderer, nativeMathMetrics, nativeMathProfile)?.height ?? fallback;
 }

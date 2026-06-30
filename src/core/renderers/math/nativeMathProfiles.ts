@@ -1,7 +1,12 @@
 import type { NativeFontRole } from "./nativeFontMetrics";
-import { openMathFontFaceCss, openMathFontStack } from "./openMathFont";
+import {
+  getOpenMathFontProfile,
+  openMathFontFaceCss,
+  openMathFontStack,
+  type OpenMathFontProfileName
+} from "./openMathFont";
 
-export type NativeMathFontProfileName = "katex" | "openmath";
+export type NativeMathFontProfileName = "katex" | "openmath" | "openmath-libertinus" | "openmath-new-computer-modern";
 
 export type NativeGlyphStyle = {
   fontFamily?: string;
@@ -11,6 +16,9 @@ export type NativeGlyphStyle = {
 
 export type NativeMathProfile = {
   name: NativeMathFontProfileName;
+  isOpenMath?: boolean;
+  openMathProfileName?: OpenMathFontProfileName;
+  openMathRole?: NativeFontRole;
   svgFontFaceCss: string;
   layoutFontFamily?: string;
   largeOperatorFontFamily: string;
@@ -36,6 +44,9 @@ export const katexNativeMathProfile: NativeMathProfile = {
 
 export const openTypeNativeMathProfile: NativeMathProfile = {
   name: "openmath",
+  isOpenMath: true,
+  openMathProfileName: "latin-modern",
+  openMathRole: "openMath",
   svgFontFaceCss: openMathFontFaceCss(),
   layoutFontFamily: openMathFontStack,
   largeOperatorFontFamily: openMathFontStack,
@@ -45,16 +56,46 @@ export const openTypeNativeMathProfile: NativeMathProfile = {
   shouldItalicize: () => false
 };
 
+export const libertinusOpenTypeNativeMathProfile: NativeMathProfile = {
+  ...openTypeNativeMathProfile,
+  name: "openmath-libertinus",
+  openMathProfileName: "libertinus",
+  openMathRole: "openMathLibertinus",
+  svgFontFaceCss: openMathFontFaceCss("libertinus"),
+  layoutFontFamily: getOpenMathFontProfile("libertinus").stack,
+  largeOperatorFontFamily: getOpenMathFontProfile("libertinus").stack,
+  renderFontFamily: () => getOpenMathFontProfile("libertinus").stack
+};
+
+export const newComputerModernOpenTypeNativeMathProfile: NativeMathProfile = {
+  ...openTypeNativeMathProfile,
+  name: "openmath-new-computer-modern",
+  openMathProfileName: "new-computer-modern",
+  openMathRole: "openMathNewComputerModern",
+  svgFontFaceCss: openMathFontFaceCss("new-computer-modern"),
+  layoutFontFamily: getOpenMathFontProfile("new-computer-modern").stack,
+  largeOperatorFontFamily: getOpenMathFontProfile("new-computer-modern").stack,
+  renderFontFamily: () => getOpenMathFontProfile("new-computer-modern").stack
+};
+
 export function getNativeMathProfile(name: NativeMathFontProfileName): NativeMathProfile {
+  if (name === "openmath-new-computer-modern") return newComputerModernOpenTypeNativeMathProfile;
+  if (name === "openmath-libertinus") return libertinusOpenTypeNativeMathProfile;
   return name === "openmath" ? openTypeNativeMathProfile : katexNativeMathProfile;
 }
 
 export function isOpenMathFontFamily(fontFamily: string | undefined): boolean {
-  return Boolean(fontFamily?.includes("Latin Modern Math"));
+  return Boolean(
+    fontFamily?.includes("Latin Modern Math")
+    || fontFamily?.includes("Libertinus Math")
+    || fontFamily?.includes("New Computer Modern Math")
+  );
 }
 
 export function selectNativeFontRole(style: NativeGlyphStyle): NativeFontRole {
-  if (isOpenMathFontFamily(style.fontFamily)) return "openMath";
+  if (style.fontFamily?.includes("New Computer Modern Math")) return "openMathNewComputerModern";
+  if (style.fontFamily?.includes("Libertinus Math")) return "openMathLibertinus";
+  if (style.fontFamily?.includes("Latin Modern Math")) return "openMath";
   if (style.fontFamily?.includes("KaTeX_Size4")) return "size4";
   if (style.fontFamily?.includes("KaTeX_Size3")) return "size3";
   if (style.fontFamily?.includes("KaTeX_Size2")) return "size2";

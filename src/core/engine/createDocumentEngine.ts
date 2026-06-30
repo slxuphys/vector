@@ -10,6 +10,7 @@ import { parseMarkdown } from "../markdown/parseMarkdown";
 import { defaultTheme } from "../theme/defaultTheme";
 import { isNativeMathRenderer, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
+import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
 import type { EngineOptions, MathRendererName } from "./workerProtocol";
@@ -24,6 +25,7 @@ export type PreparedLayout = {
   theme: DocumentTheme;
   mathRenderer: MathRendererName;
   nativeMathMetrics?: NativeMathMetrics;
+  nativeMathProfile?: NativeMathFontProfileName;
   parseMs: number;
   totalStart: number;
 };
@@ -56,8 +58,9 @@ export function prepareMarkdownLayout(markdown: string, options: EngineOptions =
   const theme: DocumentTheme = { ...defaultTheme, ...(options.theme ?? {}) };
   const mathRenderer = options.mathRenderer ?? "katex-raster";
   const nativeMathMetrics = options.nativeMathMetrics;
+  const nativeMathProfile = options.nativeMathProfile;
 
-  return { blocks, page, theme, mathRenderer, nativeMathMetrics, parseMs, totalStart };
+  return { blocks, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, parseMs, totalStart };
 }
 
 export function finishMarkdownLayout(
@@ -65,7 +68,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 
@@ -82,5 +85,5 @@ export function finishMarkdownLayout(
 }
 
 export function collectPreparedMathRequests(prepared: PreparedLayout) {
-  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics);
+  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile);
 }

@@ -13,7 +13,7 @@ import {
   layoutNativeMath,
   openMathMetricsFromConstants
 } from "../src/core/renderers/math/nativeMath";
-import { getNativeGlyphMetrics, getNativeGlyphTexMetrics, getOpenTypeMathKern, loadNativeFontFromBytes } from "../src/core/renderers/math/nativeFontMetrics";
+import { getNativeGlyphMetrics, getNativeGlyphTexMetrics, getOpenTypeMathConstants, getOpenTypeMathKern, loadNativeFontFromBytes } from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 
 describe("markdown parser", () => {
@@ -763,7 +763,7 @@ describe("document engine", () => {
     }
   });
 
-  it("keeps OpenMath display integral glyph paths on the math baseline", async () => {
+  it("centers OpenMath display integral glyph paths on the math axis", async () => {
     loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
     const layout = layoutNativeMath(
       "\\int^x_y \\sqrt{\\frac{a}{b}}",
@@ -776,7 +776,10 @@ describe("document engine", () => {
 
     expect(integral?.type).toBe("glyphPath");
     if (integral?.type === "glyphPath") {
-      expect(integral.y).toBeCloseTo(layout.baseline, 5);
+      const constants = getOpenTypeMathConstants();
+      const axisHeight = constants ? 12 * constants.axisHeight / constants.unitsPerEm : 12 * 0.25;
+      const visualCenter = integral.y + (integral.inkTopOffset + integral.inkBottomOffset) / 2;
+      expect(visualCenter).toBeCloseTo(layout.baseline - axisHeight, 5);
       expect(integral.y + integral.inkBottomOffset).toBeLessThanOrEqual(layout.height);
     }
   });

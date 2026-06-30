@@ -5,23 +5,26 @@ import type { MathRendererName } from "../core/engine/workerProtocol";
 import {
   defaultNativeMathMetrics,
   defaultOpenMathMetrics,
-  getDefaultOpenMathMetrics,
+  getDefaultOpenMathMetricsForProfile,
   isNativeMathRenderer,
   type NativeMathMetrics
 } from "../core/renderers/math/nativeMath";
-import { loadNativeMathFonts } from "../core/renderers/math/nativeFontMetrics";
+import type { NativeMathFontProfileName } from "../core/renderers/math/nativeMathProfiles";
+import { loadNativeMathFonts, setActiveOpenMathFontProfile } from "../core/renderers/math/nativeFontMetrics";
 import {
-  latinModernRomanFontFaceCss,
-  latinModernRomanFontStack
+  openMathTextFontFaceCss,
+  openMathTextFontStack
 } from "../core/renderers/text/latinModernRomanFont";
+import type { OpenMathFontProfileName } from "../core/renderers/math/openMathFont";
 import { playgroundSamples } from "./sampleMarkdown";
 
 type PlaygroundFont = "sans" | "tex";
-type FontSelectValue = PlaygroundFont | "latin-modern";
+type FontSelectValue = PlaygroundFont | OpenMathFontProfileName;
 
 export function App() {
   const [sample, setSample] = useState<keyof typeof playgroundSamples>("mathHeavy");
   const [font, setFont] = useState<PlaygroundFont>("sans");
+  const [openMathFont, setOpenMathFont] = useState<OpenMathFontProfileName>("latin-modern");
   const [mathRenderer, setMathRenderer] = useState<MathRendererName>("native-openmath");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
   const [margin, setMargin] = useState(64);
@@ -29,9 +32,16 @@ export function App() {
   const [nativeMetrics, setNativeMetrics] = useState<NativeMathMetrics>(defaultNativeMathMetrics);
   const [openMathMetrics, setOpenMathMetrics] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
   const [openMathDefaults, setOpenMathDefaults] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
+  const nativeMathProfile: NativeMathFontProfileName | undefined = mathRenderer === "native-openmath"
+    ? openMathFont === "new-computer-modern"
+      ? "openmath-new-computer-modern"
+      : openMathFont === "libertinus"
+        ? "openmath-libertinus"
+        : "openmath"
+    : undefined;
   const activeNativeMetrics = mathRenderer === "native-openmath" ? openMathMetrics : nativeMetrics;
   const activeNativeDefaults = mathRenderer === "native-openmath" ? openMathDefaults : defaultNativeMathMetrics;
-  const effectiveFont: FontSelectValue = mathRenderer === "native-openmath" ? "latin-modern" : font;
+  const effectiveFont: FontSelectValue = mathRenderer === "native-openmath" ? openMathFont : font;
   const options = useMemo(
     () => {
       const theme = dark ? darkTheme : defaultTheme;
@@ -42,8 +52,8 @@ export function App() {
         theme: mathRenderer === "native-openmath"
           ? {
               ...theme,
-              fontFamily: latinModernRomanFontStack,
-              fontFaceCss: latinModernRomanFontFaceCss()
+              fontFamily: openMathTextFontStack(openMathFont),
+              fontFaceCss: openMathTextFontFaceCss(openMathFont)
             }
           : font === "tex"
           ? {
@@ -52,26 +62,26 @@ export function App() {
             }
           : theme,
         nativeMathMetrics: activeNativeMetrics,
+        nativeMathProfile,
         useWorker: false
       };
     },
-    [pageSize, margin, dark, font, mathRenderer, activeNativeMetrics]
+    [pageSize, margin, dark, font, mathRenderer, activeNativeMetrics, nativeMathProfile, openMathFont]
   );
 
   useEffect(() => {
     let cancelled = false;
     loadNativeMathFonts().then(() => {
       if (cancelled) return;
-      const nextDefaults = getDefaultOpenMathMetrics();
+      setActiveOpenMathFontProfile(openMathFont);
+      const nextDefaults = getDefaultOpenMathMetricsForProfile(nativeMathProfile ?? "openmath");
       setOpenMathDefaults(nextDefaults);
-      setOpenMathMetrics((current) => (
-        current === defaultOpenMathMetrics ? nextDefaults : current
-      ));
+      setOpenMathMetrics(nextDefaults);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [nativeMathProfile, openMathFont]);
 
   const updateNativeMetric = (key: keyof NativeMathMetrics, value: number) => {
     if (mathRenderer === "native-openmath") {
@@ -118,15 +128,27 @@ export function App() {
             Font
             <select
               value={effectiveFont}
-              disabled={mathRenderer === "native-openmath"}
               onChange={(event) => {
                 const value = event.target.value as FontSelectValue;
-                if (value !== "latin-modern") setFont(value);
+                if (mathRenderer === "native-openmath") {
+                  if (value === "latin-modern" || value === "libertinus" || value === "new-computer-modern") setOpenMathFont(value);
+                } else if (value === "sans" || value === "tex") {
+                  setFont(value);
+                }
               }}
             >
-              <option value="sans">Sans</option>
-              <option value="tex">TeX</option>
-              <option value="latin-modern">Latin Modern</option>
+              {mathRenderer === "native-openmath" ? (
+                <>
+                  <option value="latin-modern">Latin Modern</option>
+                  <option value="libertinus">Libertinus</option>
+                  <option value="new-computer-modern">New Computer Modern</option>
+                </>
+              ) : (
+                <>
+                  <option value="sans">Sans</option>
+                  <option value="tex">TeX</option>
+                </>
+              )}
             </select>
           </label>
           <label>
