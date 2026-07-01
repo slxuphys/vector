@@ -1,5 +1,6 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "./markdownTypes";
 import { parseInline } from "./parseInline";
+import { parseImageBlock } from "./parseImage";
 import { isTableStart, parseTableAt } from "./parseTable";
 
 export function parseMarkdown(markdown: string): MarkdownAst {
@@ -57,6 +58,13 @@ export function parseMarkdown(markdown: string): MarkdownAst {
       continue;
     }
 
+    const image = parseImageBlock(line);
+    if (image) {
+      children.push(image);
+      i += 1;
+      continue;
+    }
+
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
       children.push({ type: "thematicBreak" });
       i += 1;
@@ -92,6 +100,7 @@ export function parseMarkdown(markdown: string): MarkdownAst {
       i < lines.length &&
       lines[i].trim() &&
       !/^(#{1,6})\s+/.test(lines[i]) &&
+      !parseImageBlock(lines[i]) &&
       !/^```/.test(lines[i]) &&
       !/^\s*(?:[-*+]\s+|\d+\.\s+)/.test(lines[i]) &&
       !isTableStart(lines, i)

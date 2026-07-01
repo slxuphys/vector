@@ -280,6 +280,7 @@ export function nativeMathProfileForRenderer(renderer: string | undefined): Nati
 const largeOperatorFontFamily = "KaTeX_Size2, KaTeX_Size1, KaTeX_Main, Times New Roman, serif";
 
 const glyphWidthCache = new Map<string, number>();
+let nativeMathLayoutCallCount = 0;
 
 const commandGlyphs: Record<string, string> = {
   "\\alpha": "α",
@@ -483,14 +484,15 @@ export function layoutNativeMath(
     advance: layout.width + padding * 2,
     nodes: translateNodes(layout.nodes, padding, padding)
   };
-  logNativeMathParse(latex, displayMode, fontSize, result);
+  nativeMathLayoutCallCount += 1;
+  logNativeMathParse(nativeMathLayoutCallCount, latex, displayMode, fontSize, result);
   return result;
 }
 
 export function renderNativeMathSvg(object: NativeMathObject): string {
   const profileName = object.nativeMathProfile ?? nativeMathProfileForRenderer(object.renderer);
   const profile = getNativeMathProfile(profileName);
-  const layout = layoutNativeMath(object.latex, object.displayMode, object.fontSize, object.nativeMetrics, profileName);
+  const layout = object.nativeLayout ?? layoutNativeMath(object.latex, object.displayMode, object.fontSize, object.nativeMetrics, profileName);
   const fontFace = profile.svgFontFaceCss ? `<style>${profile.svgFontFaceCss}</style>` : "";
   const body = layout.nodes.map((node) => {
     if (node.type === "rule") {
@@ -2137,6 +2139,7 @@ function translateNodes(nodes: NativeNode[], dx: number, dy: number): NativeNode
 }
 
 function logNativeMathParse(
+  call: number,
   latex: string,
   displayMode: boolean,
   fontSize: number,
@@ -2144,6 +2147,7 @@ function logNativeMathParse(
 ): void {
   if (typeof console === "undefined") return;
   console.log("[native-math-parse]", {
+    call,
     latex,
     displayMode,
     fontSize,
@@ -2241,6 +2245,7 @@ function logNativeSqrtBox(
   }
 ): void {
   if (typeof console === "undefined") return;
+  if (!isNativeMathDebugEnabled()) return;
   console.log("[native-math-sqrt-box]", {
     bodyLatex,
     fontSize: roundNumber(box.fontSize),
@@ -2264,6 +2269,13 @@ function logNativeSqrtBox(
     radicalInkTop: roundNumber(box.radicalInkTop),
     radicalInkBottom: roundNumber(box.radicalInkBottom)
   });
+}
+
+function isNativeMathDebugEnabled(): boolean {
+  const globalFlag = (globalThis as { __SVG_MD_NATIVE_MATH_DEBUG__?: boolean }).__SVG_MD_NATIVE_MATH_DEBUG__;
+  if (globalFlag !== undefined) return globalFlag;
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem("svg-md-native-math-debug") === "1";
 }
 
 function measureGlyphWidth(text: string, fontSize: number, style: NativeGlyphStyle = {}): number {

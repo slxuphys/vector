@@ -76,6 +76,21 @@ const x = 1
     }
   });
 
+  it("parses block images with captions and sizing attributes", () => {
+    const ast = parseMarkdown(`![Phase space](plot.svg "Figure 1. Phase space"){width=70% align=center}
+`);
+    const image = ast.children[0];
+
+    expect(image?.type).toBe("image");
+    if (image?.type === "image") {
+      expect(image.alt).toBe("Phase space");
+      expect(image.src).toBe("plot.svg");
+      expect(image.caption).toBe("Figure 1. Phase space");
+      expect(image.width).toEqual({ value: 70, unit: "percent" });
+      expect(image.align).toBe("center");
+    }
+  });
+
   it("preserves LaTeX command backslashes inside table math cells", () => {
     const ast = parseMarkdown(`| Formula |
 | --- |
@@ -146,6 +161,23 @@ describe("document engine", () => {
     expect(svg).toContain("Markdown ");
     expect(svg).toContain("Preview");
     expect(textObjects.some((object) => object.type === "text" && object.text === "Markdown ")).toBe(true);
+  });
+
+  it("renders markdown images with captions into SVG pages", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`![Plot](data:image/svg+xml,%3Csvg%2F%3E "Figure 1. Plot"){width=50% align=center}`);
+    const svg = renderPageToSvg(layout.pages[0]);
+    const image = layout.pages[0].objects.find((object) => object.type === "image");
+    const caption = layout.pages[0].objects.find((object) => object.type === "text" && object.text === "Figure 1. Plot");
+
+    expect(image?.type).toBe("image");
+    expect(caption?.type).toBe("text");
+    expect(svg).toContain("<image");
+    expect(svg).toContain("Figure 1. Plot");
+    if (image?.type === "image") {
+      expect(image.width).toBeGreaterThan(100);
+      expect(image.width).toBeLessThan(400);
+    }
   });
 
   it("keeps space after inline math", async () => {

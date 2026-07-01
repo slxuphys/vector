@@ -153,6 +153,33 @@ export function paginate(
       continue;
     }
 
+    if (block.type === "image") {
+      const image = layoutImageBlock(block, cursor.contentWidth, theme);
+      ensure(image.totalHeight + 12);
+      const x = cursor.x + image.x;
+      cursor.page.objects.push({
+        type: "image",
+        src: block.src,
+        alt: block.alt,
+        x,
+        y: cursor.y,
+        width: image.width,
+        height: image.height
+      });
+      if (block.caption) {
+        cursor.page.objects.push(textObject(
+          block.caption,
+          x + image.width / 2 - image.captionWidth / 2,
+          cursor.y + image.height + image.captionFontSize + 6,
+          image.captionFontSize,
+          theme,
+          { color: theme.mutedText }
+        ));
+      }
+      cursor.y += image.totalHeight + 12;
+      continue;
+    }
+
     if (block.type === "math") {
       const fontSize = theme.fontSize;
       const text = block.text.replace(/\s+/g, " ").trim();
@@ -176,7 +203,8 @@ export function paginate(
         color: theme.text,
         mathRenderer,
         nativeMathMetrics,
-        nativeMathProfile
+        nativeMathProfile,
+        nativeLayout: measured?.nativeLayout
       });
       cursor.page.objects.push(mathObject);
       cursor.y += height + 12;
@@ -199,6 +227,53 @@ export function paginate(
   }
 
   return pages;
+}
+
+function layoutImageBlock(
+  block: Extract<LayoutBlock, { type: "image" }>,
+  contentWidth: number,
+  theme: DocumentTheme
+): { x: number; width: number; height: number; totalHeight: number; captionFontSize: number; captionWidth: number } {
+  const fallbackRatio = 16 / 9;
+  const requestedWidth = resolveImageLength(block.width, contentWidth);
+  const requestedHeight = resolveImageLength(block.height, contentWidth);
+  let width = requestedWidth ?? Math.min(contentWidth, 420);
+  let height = requestedHeight ?? width / fallbackRatio;
+
+  if (requestedWidth !== undefined && requestedHeight !== undefined) {
+    const boxRatio = requestedWidth / requestedHeight;
+    if (boxRatio > fallbackRatio) {
+      height = requestedHeight;
+      width = height * fallbackRatio;
+    } else {
+      width = requestedWidth;
+      height = width / fallbackRatio;
+    }
+  } else if (requestedHeight !== undefined) {
+    height = requestedHeight;
+    width = height * fallbackRatio;
+  }
+
+  width = Math.min(width, contentWidth);
+  height = Math.max(1, height);
+
+  const align = block.align ?? "center";
+  const x = align === "right" ? contentWidth - width : align === "center" ? (contentWidth - width) / 2 : 0;
+  const captionFontSize = theme.fontSize * 0.86;
+  const captionWidth = block.caption
+    ? Math.min(width, measureText(block.caption, {
+        fontSize: captionFontSize,
+        fontFamily: theme.fontFamily,
+        monoFontFamily: theme.monoFontFamily
+      }))
+    : 0;
+  const totalHeight = height + (block.caption ? captionFontSize * theme.lineHeight + 6 : 0);
+  return { x, width, height, totalHeight, captionFontSize, captionWidth };
+}
+
+function resolveImageLength(length: Extract<LayoutBlock, { type: "image" }>["width"], contentWidth: number): number | undefined {
+  if (!length) return undefined;
+  return length.unit === "percent" ? contentWidth * length.value / 100 : length.value;
 }
 
 function drawLines(
@@ -244,7 +319,8 @@ function drawLines(
           color: run.link ? theme.link : options.color,
           mathRenderer,
           nativeMathMetrics,
-          nativeMathProfile
+          nativeMathProfile,
+          nativeLayout: measured?.nativeLayout
         }));
         x += advance;
         continue;
@@ -350,6 +426,7 @@ function createMathObject(options: {
   mathRenderer: MathRendererName;
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
+  nativeLayout?: ReturnType<typeof layoutNativeMath>;
 }): Extract<DisplayObject, { type: "math" }> {
   if (isMathJaxRenderer(options.mathRenderer)) {
     const artifact = getCachedMathJaxSvgArtifact(options.latex, options.displayMode, options.fontSize, options.color);
@@ -377,7 +454,7 @@ function createMathObject(options: {
   if (isNativeMathRenderer(options.mathRenderer)) {
     const profile = options.nativeMathProfile ?? nativeMathProfileForRenderer(options.mathRenderer);
     const nativeMetrics = options.nativeMathMetrics ?? (options.mathRenderer === "native-openmath" ? getDefaultOpenMathMetricsForProfile(profile) : defaultNativeMathMetrics);
-    const layout = layoutNativeMath(options.latex, options.displayMode, options.fontSize, nativeMetrics, profile);
+    const layout = options.nativeLayout ?? layoutNativeMath(options.latex, options.displayMode, options.fontSize, nativeMetrics, profile);
     const y = options.displayMode ? options.y : options.y;
     return {
       type: "math",
@@ -395,7 +472,8 @@ function createMathObject(options: {
       fontSize: options.fontSize,
       color: options.color,
       nativeMetrics,
-      nativeMathProfile: profile
+      nativeMathProfile: profile,
+      nativeLayout: layout
     };
   }
 

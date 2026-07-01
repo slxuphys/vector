@@ -32,6 +32,16 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           }))),
           align: node.align
         };
+      case "image":
+        return {
+          type: "image",
+          src: node.src,
+          alt: node.alt,
+          caption: node.caption,
+          width: node.width,
+          height: node.height,
+          align: node.align
+        };
       case "mathBlock":
         return { type: "math", text: node.text };
       case "thematicBreak":

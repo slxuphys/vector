@@ -10,6 +10,7 @@ import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactS
 import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
 import { drawPdfNativeMath } from "./pdfNativeMath";
+import { drawPdfImage } from "./pdfImage";
 import { isNativeMathRenderer } from "../math/nativeMath";
 
 export type PdfRenderOptions = {
@@ -44,6 +45,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
   const objectCounts = {
     text: 0,
     math: 0,
+    image: 0,
     shape: 0
   };
 
@@ -73,6 +75,9 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
           const mathFonts = fonts.tex ?? fonts;
           drawPdfMath(page, object, { regular: mathFonts.regular, italic: mathFonts.italic }, displayPage.height);
         }
+      } else if (object.type === "image") {
+        objectCounts.image += 1;
+        await drawPdfImage(pdf, page, object, fonts, displayPage.height);
       } else {
         objectCounts.shape += 1;
         drawPdfShape(page, object, displayPage.height);

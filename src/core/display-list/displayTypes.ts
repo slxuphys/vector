@@ -1,5 +1,5 @@
 import type { PageConfig } from "../layout/pageConfig";
-import type { NativeMathMetrics } from "../renderers/math/nativeMath";
+import type { NativeMathLayout, NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 
@@ -36,6 +36,7 @@ export type DisplayObject =
       color: string;
       nativeMetrics?: NativeMathMetrics;
       nativeMathProfile?: NativeMathFontProfileName;
+      nativeLayout?: NativeMathLayout;
     }
   | {
       type: "rect";
@@ -47,6 +48,15 @@ export type DisplayObject =
       stroke?: string;
       strokeWidth?: number;
       radius?: number;
+    }
+  | {
+      type: "image";
+      src: string;
+      alt: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
     }
   | {
       type: "line";

@@ -1,5 +1,5 @@
 import type { InlineNode } from "../markdown/markdownTypes";
-import type { TableAlign } from "../markdown/markdownTypes";
+import type { ImageAlign, ImageLength, TableAlign } from "../markdown/markdownTypes";
 
 export type InlineRun = {
   text: string;
@@ -22,6 +22,7 @@ export type LayoutBlock =
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined> }
   | { type: "code"; language?: string; code: string }
   | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[] }
+  | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign }
   | { type: "math"; text: string }
   | { type: "rule" }
   | { type: "pageBreak" };

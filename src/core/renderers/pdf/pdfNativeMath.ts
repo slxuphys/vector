@@ -13,7 +13,7 @@ export function drawPdfNativeMath(
   fonts: PdfFontSet,
   pageHeight: number
 ): boolean {
-  const layout = layoutNativeMath(
+  const layout = object.nativeLayout ?? layoutNativeMath(
     object.latex,
     object.displayMode,
     object.fontSize,

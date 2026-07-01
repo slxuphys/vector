@@ -2,6 +2,7 @@ import type { DisplayObject, DisplayPage } from "../../display-list/displayTypes
 import { escapeXml } from "../../utils/sanitize";
 import { renderKatexForeignObject } from "../math/renderKatex";
 import { isNativeMathRenderer, renderNativeMathSvg } from "../math/nativeMath";
+import { renderSvgImage } from "./svgImage";
 import { renderSvgShape } from "./svgShapes";
 import { renderSvgText } from "./svgText";
 
@@ -36,6 +37,7 @@ function renderObject(object: DisplayObject): string {
       includeCss: true
     });
   }
+  if (object.type === "image") return renderSvgImage(object);
   return object.type === "text" ? renderSvgText(object) : renderSvgShape(object);
 }
 

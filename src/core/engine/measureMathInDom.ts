@@ -83,7 +83,8 @@ async function measureNativeMath(requests: MathMeasureRequest[], renderer: MathR
       width: layout.width,
       height: layout.height,
       advance: layout.advance,
-      baseline: layout.baseline
+      baseline: layout.baseline,
+      nativeLayout: layout
     };
   }
   return measurements;

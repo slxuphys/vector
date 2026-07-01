@@ -1,7 +1,7 @@
 import type { LayoutBlock, InlineRun } from "./layoutBlocks";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
-import { isNativeMathRenderer, type NativeMathMetrics } from "../renderers/math/nativeMath";
+import { isNativeMathRenderer, type NativeMathLayout, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 
 export type MathMeasureRequest = {
@@ -19,6 +19,7 @@ export type MathMeasurement = {
   height: number;
   advance: number;
   baseline?: number;
+  nativeLayout?: NativeMathLayout;
 };
 
 export type MathMeasurementMap = Record<string, MathMeasurement>;
