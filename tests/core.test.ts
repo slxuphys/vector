@@ -13,7 +13,14 @@ import {
   layoutNativeMath,
   openMathMetricsFromConstants
 } from "../src/core/renderers/math/nativeMath";
-import { getNativeGlyphMetrics, getNativeGlyphTexMetrics, getOpenTypeMathConstants, getOpenTypeMathKern, loadNativeFontFromBytes } from "../src/core/renderers/math/nativeFontMetrics";
+import {
+  getNativeGlyphMetrics,
+  getNativeGlyphTexMetrics,
+  getOpenTypeMathConstants,
+  getOpenTypeMathKern,
+  getOpenTypeMathRadicalVariant,
+  loadNativeFontFromBytes
+} from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 
 describe("markdown parser", () => {
@@ -760,6 +767,46 @@ describe("document engine", () => {
     if (lowerZero?.type === "glyph" && upperOne?.type === "glyph" && nextX?.type === "glyph") {
       expect(upperOne.y).toBeLessThan(lowerZero.y);
       expect(nextX.x).toBeGreaterThanOrEqual(operatorPaths[0].x + operatorPaths[0].width);
+    }
+  });
+
+  it("uses tolerance when choosing near-threshold OpenMath radical variants", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const withoutTolerance = getOpenTypeMathRadicalVariant(14.69, 12, 0);
+    const withTolerance = getOpenTypeMathRadicalVariant(14.69, 12, 12 * 0.04);
+
+    expect(withoutTolerance?.glyphId).toBe(3082);
+    expect(withTolerance?.glyphId).toBe(3081);
+  });
+
+  it("uses a minimum root body box for compact OpenMath square roots", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const xRoot = layoutNativeMath("\\sqrt{x}", false, 12, getDefaultOpenMathMetrics(), "openmath");
+    const eRoot = layoutNativeMath("\\sqrt{e}", false, 12, getDefaultOpenMathMetrics(), "openmath");
+    const xRule = xRoot.nodes.find((node) => node.type === "rule");
+    const eRule = eRoot.nodes.find((node) => node.type === "rule");
+    const xGlyph = xRoot.nodes.find((node) => node.type === "glyph" && node.text === "𝑥");
+    const eGlyph = eRoot.nodes.find((node) => node.type === "glyph" && node.text === "𝑒");
+
+    expect(xRule?.type).toBe("rule");
+    expect(eRule?.type).toBe("rule");
+    expect(xGlyph?.type).toBe("glyph");
+    expect(eGlyph?.type).toBe("glyph");
+    if (xRule?.type === "rule" && eRule?.type === "rule" && xGlyph?.type === "glyph" && eGlyph?.type === "glyph") {
+      expect(xGlyph.y - xRule.y).toBeCloseTo(eGlyph.y - eRule.y, 5);
+    }
+  });
+
+  it("keeps OpenMath right delimiter variants inside the enclosing group advance", async () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const layout = layoutNativeMath("\\left. \\right|_a", true, 12, getDefaultOpenMathMetrics(), "openmath");
+    const delimiter = layout.nodes.find((node) => node.type === "glyphPath");
+    const subscript = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑎");
+
+    expect(delimiter?.type).toBe("glyphPath");
+    expect(subscript?.type).toBe("glyph");
+    if (delimiter?.type === "glyphPath" && subscript?.type === "glyph") {
+      expect(subscript.x).toBeGreaterThanOrEqual(delimiter.x + delimiter.width);
     }
   });
 

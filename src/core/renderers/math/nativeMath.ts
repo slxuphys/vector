@@ -112,9 +112,12 @@ export type NativeMathMetrics = {
   sqrtRadicalWidth: number;
   sqrtTopGap: number;
   displaySqrtTopGap: number;
+  sqrtMinBodyAscent: number;
+  sqrtMinBodyDescent: number;
   sqrtRuleThickness: number;
   sqrtRuleStart: number;
   sqrtOverbarExtra: number;
+  sqrtVariantTolerance: number;
   accentGap: number;
   displayLargeOperatorSuperscriptBaseline: number;
   displayLargeOperatorSubscriptBaseline: number;
@@ -160,11 +163,14 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   inlineFractionAxisOffset: 0.3,
   sqrtBodyScale: 1,
   sqrtRadicalWidth: 0.8,
-  sqrtTopGap: 0.08,
+  sqrtTopGap: 0.1,
   displaySqrtTopGap: 0.12,
+  sqrtMinBodyAscent: 0.6,
+  sqrtMinBodyDescent: 0,
   sqrtRuleThickness: 0.045,
   sqrtRuleStart: 0.98,
   sqrtOverbarExtra: 0.12,
+  sqrtVariantTolerance: 0.08,
   accentGap: 0.08,
   displayLargeOperatorSuperscriptBaseline: -1.24,
   displayLargeOperatorSubscriptBaseline: 0.97,
@@ -185,9 +191,12 @@ export const defaultOpenMathMetrics: NativeMathMetrics = {
   displayPadding: 0.16,
   fractionSidePadding: 0.28,
   fractionRuleInset: 0.08,
-  sqrtTopGap: 0.04,
+  sqrtTopGap: 0.1,
   displaySqrtTopGap: 0.08,
+  sqrtMinBodyAscent: 0.6,
+  sqrtMinBodyDescent: 0,
   sqrtOverbarExtra: 0.04,
+  sqrtVariantTolerance: 0.08,
   accentGap: 0.03,
   thinMathSpace: 0.08,
   relationMargin: 0.16,
@@ -233,7 +242,7 @@ export function openMathMetricsFromConstants(constants: NonNullable<ReturnType<t
     fractionDenominatorDisplayGap: unit(constants.fractionDenomDisplayStyleGapMin),
     fractionAxisOffset: unit(constants.axisHeight),
     fractionRuleThickness: unit(constants.fractionRuleThickness),
-    sqrtTopGap: unit(constants.radicalVerticalGap),
+    sqrtTopGap: defaultOpenMathMetrics.sqrtTopGap,
     displaySqrtTopGap: unit(constants.radicalDisplayStyleVerticalGap),
     sqrtRuleThickness: unit(constants.radicalRuleThickness),
     sqrtOverbarExtra: unit(constants.radicalExtraAscender),
@@ -1128,7 +1137,11 @@ function layoutSqrt(
   profile: NativeMathProfile
 ): Box {
   const body = layoutSequence(bodyLatex, fontSize * metrics.sqrtBodyScale, displayMode, metrics, profile);
-  const bodyInkHeight = Math.max(fontSize * 0.5, body.inkBottom - body.inkTop);
+  const minBodyInkTop = body.baseline - fontSize * metrics.sqrtMinBodyAscent;
+  const minBodyInkBottom = body.baseline + fontSize * metrics.sqrtMinBodyDescent;
+  const bodyRootInkTop = Math.min(body.inkTop, minBodyInkTop);
+  const bodyRootInkBottom = Math.max(body.inkBottom, minBodyInkBottom);
+  const bodyInkHeight = Math.max(fontSize * 0.5, bodyRootInkBottom - bodyRootInkTop);
   const topGap = displayMode ? metrics.displaySqrtTopGap : metrics.sqrtTopGap;
   const radicalHeight = bodyInkHeight + fontSize * topGap;
   const minRadicalWidth = fontSize * metrics.sqrtRadicalWidth * 0.68;
@@ -1138,14 +1151,19 @@ function layoutSqrt(
   const radicalStroke = Math.max(0.6, fontSize * metrics.sqrtRuleThickness);
   const ruleY = 0;
   const bodyInkTopY = ruleY + rule + barBodyGap;
-  const bodyY = bodyInkTopY - body.inkTop;
-  const bodyInkBottomY = bodyY + body.inkBottom;
+  const bodyY = bodyInkTopY - bodyRootInkTop;
+  const bodyInkBottomY = bodyY + bodyRootInkBottom;
   const height = Math.max(bodyY + body.height, bodyInkBottomY);
   const baseline = bodyY + body.baseline;
   const ascent = baseline;
   const descent = Math.max(0, height - baseline);
   const openMathRadical = profile.isOpenMath
-    ? layoutOpenMathRadicalGlyph(bodyInkBottomY - ruleY + fontSize * metrics.sqrtOverbarExtra, fontSize, profile)
+    ? layoutOpenMathRadicalGlyph(
+      bodyInkBottomY - ruleY + fontSize * metrics.sqrtOverbarExtra,
+      fontSize,
+      profile,
+      fontSize * metrics.sqrtVariantTolerance
+    )
     : undefined;
   if (openMathRadical) {
     const ruleX = openMathRadical.width * metrics.sqrtRuleStart;
@@ -1160,8 +1178,8 @@ function layoutSqrt(
       bodyBaseline: body.baseline,
       bodyAscent: body.ascent,
       bodyDescent: body.descent,
-      bodyInkTop: body.inkTop,
-      bodyInkBottom: body.inkBottom,
+      bodyInkTop: bodyRootInkTop,
+      bodyInkBottom: bodyRootInkBottom,
       ruleY,
       rule,
       bodyY,
@@ -1221,8 +1239,8 @@ function layoutSqrt(
     bodyBaseline: body.baseline,
     bodyAscent: body.ascent,
     bodyDescent: body.descent,
-    bodyInkTop: body.inkTop,
-    bodyInkBottom: body.inkBottom,
+    bodyInkTop: bodyRootInkTop,
+    bodyInkBottom: bodyRootInkBottom,
     ruleY,
     rule,
     bodyY,
@@ -1256,7 +1274,8 @@ function layoutSqrt(
 function layoutOpenMathRadicalGlyph(
   targetHeight: number,
   fontSize: number,
-  profile: NativeMathProfile
+  profile: NativeMathProfile,
+  tolerance = 0
 ): {
   glyphId: number;
   d: string;
@@ -1267,7 +1286,7 @@ function layoutOpenMathRadicalGlyph(
   inkTopOffset: number;
   inkBottomOffset: number;
 } | undefined {
-  const variant = getOpenTypeMathRadicalVariant(targetHeight, fontSize);
+  const variant = getOpenTypeMathRadicalVariant(targetHeight, fontSize, tolerance);
   if (!variant) return undefined;
 
   const outline = getNativeGlyphOutline(profile.openMathRole ?? "openMath", variant.glyphId);
@@ -1277,12 +1296,13 @@ function layoutOpenMathRadicalGlyph(
   const actualRight = Math.max(outline.advanceWidth, outline.bbox.maxX);
   const actualAscent = Math.max(0, outline.bbox.maxY * scale);
   const actualDescent = Math.max(0, -outline.bbox.minY * scale);
+  const y = actualAscent;
   return {
     glyphId: variant.glyphId,
     d: outline.path,
     width: actualRight * scale,
     height: actualAscent + actualDescent,
-    y: actualAscent,
+    y,
     scale,
     inkTopOffset: -actualAscent,
     inkBottomOffset: actualDescent
@@ -1911,6 +1931,8 @@ function wrapBoxWithDelimiters(
   const leftWidth = left ? leftVariant?.width ?? delimiterWidth(left, delimiterFontSize, style, options) : 0;
   const rightWidth = right ? rightVariant?.width ?? delimiterWidth(right, delimiterFontSize, style, options) : 0;
   const gap = options.delimiterGap ?? fontSize * 0.18;
+  const bodyX = left ? leftWidth + gap : 0;
+  const rightX = bodyX + body.width + (right ? gap : 0);
   const nodes: NativeNode[] = [];
   let maxAscent = body.ascent;
   let maxDescent = body.descent;
@@ -1938,14 +1960,13 @@ function wrapBoxWithDelimiters(
     inkBottom = Math.max(inkBottom, leftVariant?.inkBottom ?? body.height);
   }
 
-  nodes.push(...translateNodes(body.nodes, leftWidth + gap, 0));
+  nodes.push(...translateNodes(body.nodes, bodyX, 0));
 
   if (right) {
-    const x = leftWidth + gap + body.width + gap;
     if (rightVariant) {
       nodes.push(glyphPath(
         rightVariant.d,
-        x,
+        rightX,
         rightVariant.y,
         rightVariant.scale,
         rightVariant.width,
@@ -1954,7 +1975,7 @@ function wrapBoxWithDelimiters(
         rightVariant.inkBottomOffset
       ));
     } else {
-      nodes.push(...delimiterNodes(right, x, body, delimiterFontSize, style, options));
+      nodes.push(...delimiterNodes(right, rightX, body, delimiterFontSize, style, options));
     }
     maxAscent = Math.max(maxAscent, body.baseline);
     maxDescent = Math.max(maxDescent, body.height - body.baseline);
@@ -1962,7 +1983,7 @@ function wrapBoxWithDelimiters(
     inkBottom = Math.max(inkBottom, rightVariant?.inkBottom ?? body.height);
   }
 
-  const width = leftWidth + (left ? gap : 0) + body.width + (right ? gap + rightWidth : 0);
+  const width = right ? rightX + rightWidth : bodyX + body.width;
   return {
     width,
     height: Math.max(maxAscent + maxDescent, body.height),

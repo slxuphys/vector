@@ -82,6 +82,7 @@ export type OpenTypeMathGlyphInfo = {
 export type OpenTypeMathGlyphVariant = {
   advanceMeasurement: number;
   glyphId: number;
+  index?: number;
 };
 
 export type OpenTypeMathKernCorner = "topRight" | "topLeft" | "bottomRight" | "bottomLeft";
@@ -305,8 +306,12 @@ export function getOpenTypeMathKern(
   return kern === undefined ? undefined : kern * fontSize / font.unitsPerEm;
 }
 
-export function getOpenTypeMathRadicalVariant(targetHeight: number, fontSize: number): OpenTypeMathGlyphVariant | undefined {
-  return getOpenTypeMathGlyphVariant("√", targetHeight, fontSize);
+export function getOpenTypeMathRadicalVariant(
+  targetHeight: number,
+  fontSize: number,
+  tolerance = 0
+): OpenTypeMathGlyphVariant | undefined {
+  return getOpenTypeMathVariant("√", targetHeight, fontSize, "vertical", tolerance);
 }
 
 export function getOpenTypeMathGlyphVariant(text: string, targetHeight: number, fontSize: number): OpenTypeMathGlyphVariant | undefined {
@@ -321,7 +326,8 @@ function getOpenTypeMathVariant(
   text: string,
   targetMeasurement: number,
   fontSize: number,
-  direction: "vertical" | "horizontal"
+  direction: "vertical" | "horizontal",
+  tolerance = 0
 ): OpenTypeMathGlyphVariant | undefined {
   const font = fontCache.get(activeOpenMathRole);
   const openTypeMathVariants = openTypeMathVariantsByRole.get(activeOpenMathRole);
@@ -334,7 +340,7 @@ function getOpenTypeMathVariant(
   const variants = openTypeMathVariants[direction].get(baseGlyph.id);
   if (!variants?.length) return undefined;
 
-  const targetDesignMeasurement = targetMeasurement * font.unitsPerEm / fontSize;
+  const targetDesignMeasurement = Math.max(0, (targetMeasurement - tolerance) * font.unitsPerEm / fontSize);
   return variants.find((variant) => variant.advanceMeasurement >= targetDesignMeasurement)
     ?? variants[variants.length - 1];
 }
@@ -476,7 +482,8 @@ function parseMathGlyphConstruction(
     const glyphId = readUint16(view, recordOffset);
     variants.push({
       advanceMeasurement: readUint16(view, recordOffset + 2),
-      glyphId
+      glyphId,
+      index
     });
   }
   return variants;

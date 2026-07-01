@@ -248,9 +248,12 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
       { key: "sqrtRadicalWidth", label: "Radical width", min: 0.3, max: 1.2, step: 0.01, openMath: "hidden" },
       { key: "sqrtTopGap", label: "Bar-body gap", min: 0, max: 0.3, step: 0.005, openMath: "font" },
       { key: "displaySqrtTopGap", label: "Display bar-body gap", min: 0, max: 0.4, step: 0.005, openMath: "font" },
+      { key: "sqrtMinBodyAscent", label: "Min body ascent", min: 0, max: 1.2, step: 0.01, openMath: "engine" },
+      { key: "sqrtMinBodyDescent", label: "Min body descent", min: 0, max: 0.6, step: 0.01, openMath: "engine" },
       { key: "sqrtRuleThickness", label: "Rule thickness", min: 0.01, max: 0.12, step: 0.005, openMath: "font" },
       { key: "sqrtRuleStart", label: "Rule start", min: 0.2, max: 1.1, step: 0.01, openMath: "hidden" },
-      { key: "sqrtOverbarExtra", label: "Overbar extra", min: 0, max: 0.5, step: 0.01, openMath: "font" }
+      { key: "sqrtOverbarExtra", label: "Overbar extra", min: 0, max: 0.5, step: 0.01, openMath: "font" },
+      { key: "sqrtVariantTolerance", label: "Variant tolerance", min: 0, max: 0.2, step: 0.005, openMath: "engine" }
     ]
   },
   {
