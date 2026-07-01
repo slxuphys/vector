@@ -40,6 +40,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   const usingNativeMath = isNativeMathRenderer(options.mathRenderer);
   const usingMathJax = usingMathJaxVector || usingMathJaxGlyph;
   const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
+  const lockedPdfMode = usingNativeMath || usingGlyphPdf || usingMathJaxVector;
 
   const extensions = useMemo(
     () => [
@@ -164,7 +165,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
           <input
             type="checkbox"
             disabled={usingMathJax || usingKatexGlyph || usingNativeMath}
-            checked={experimentalVectorMath}
+            checked={lockedPdfMode || experimentalVectorMath}
             onChange={(event) => setExperimentalVectorMath(event.target.checked)}
           />
           {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : usingNativeMath ? "Native PDF" : "Experimental vector math"}

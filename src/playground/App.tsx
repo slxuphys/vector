@@ -116,12 +116,9 @@ export function App() {
               value={mathRenderer}
               onChange={(event) => setMathRenderer(event.target.value as MathRendererName)}
             >
-              <option value="katex-raster">KaTeX raster</option>
-              <option value="katex-glyph">KaTeX glyph</option>
-              <option value="mathjax-vector">MathJax vector</option>
-              <option value="mathjax-glyph">MathJax glyph</option>
-              <option value="native">Native engine</option>
               <option value="native-openmath">Native + OpenMath</option>
+              <option value="native">Native engine</option>
+              <option value="katex-raster">KaTeX raster</option>
             </select>
           </label>
           <label>

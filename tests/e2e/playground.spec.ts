@@ -5,13 +5,8 @@ test("renders editor and svg pages", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "SVG Markdown Preview" })).toBeVisible();
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });
   await expect(page.locator("svg.svg-md-page-svg text").first()).toBeVisible();
-  await expect(page.locator(".svg-md-katex").first()).toBeVisible();
-  await expect.poll(async () => {
-    return page.locator(".svg-md-katex").first().evaluate((element) => element.getBoundingClientRect().height);
-  }).toBeLessThan(80);
-  await expect.poll(async () => {
-    return page.locator(".svg-md-katex").first().evaluate((element) => element.innerHTML.includes("data:font/woff2"));
-  }).toBe(true);
+  await expect(page.getByLabel("Math")).toHaveValue("native-openmath");
+  await expect(page.getByLabel("Math").locator("option")).toHaveCount(3);
 
   await expect.poll(async () => {
     return page.locator(".svg-md-preview-pane").evaluate((element) => getComputedStyle(element).overflowY);
@@ -40,27 +35,21 @@ test("switches to the 100 page stress example", async ({ page }) => {
 
 test("switches main text to TeX font", async ({ page }) => {
   await page.goto("/");
+  await page.getByLabel("Math").selectOption("native");
   await page.getByLabel("Font").selectOption("tex");
   await expect(page.locator("svg.svg-md-page-svg text").first()).toHaveAttribute("font-family", /KaTeX_Main/);
 });
 
-test("switches math to MathJax vector", async ({ page }) => {
+test("switches math to KaTeX raster reference", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".app-controls select").nth(1).selectOption("mathjax-vector");
-  await expect(page.locator("svg.svg-md-page-svg path").first()).toBeVisible({ timeout: 15000 });
-  await expect.poll(async () => page.locator("svg.svg-md-page-svg foreignObject").count()).toBe(0);
-
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download PDF" }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("document.pdf");
-});
-
-test("switches math to KaTeX glyph", async ({ page }) => {
-  await page.goto("/");
-  await page.locator(".app-controls select").nth(1).selectOption("katex-glyph");
+  await page.getByLabel("Math").selectOption("katex-raster");
   await expect(page.locator(".svg-md-katex").first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByLabel("KaTeX glyph PDF")).toBeDisabled();
+  await expect.poll(async () => {
+    return page.locator(".svg-md-katex").first().evaluate((element) => element.getBoundingClientRect().height);
+  }).toBeLessThan(80);
+  await expect.poll(async () => {
+    return page.locator(".svg-md-katex").first().evaluate((element) => element.innerHTML.includes("data:font/woff2"));
+  }).toBe(true);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PDF" }).click();
@@ -68,12 +57,11 @@ test("switches math to KaTeX glyph", async ({ page }) => {
   expect(download.suggestedFilename()).toBe("document.pdf");
 });
 
-test("switches math to MathJax glyph", async ({ page }) => {
+test("switches math to native KaTeX-font engine", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".app-controls select").nth(1).selectOption("mathjax-glyph");
-  await expect(page.locator("svg.svg-md-page-svg path").first()).toBeVisible({ timeout: 15000 });
-  await expect.poll(async () => page.locator("svg.svg-md-page-svg foreignObject").count()).toBe(0);
-  await expect(page.getByLabel("MathJax glyph PDF")).toBeDisabled();
+  await page.getByLabel("Math").selectOption("native");
+  await expect(page.locator("svg.svg-md-page-svg text").first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByLabel("Native PDF")).toBeChecked();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PDF" }).click();
@@ -85,7 +73,7 @@ test("downloads the current PDF", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });
 
-  await expect(page.getByLabel("Experimental vector math")).not.toBeChecked();
+  await expect(page.getByLabel("Native PDF")).toBeChecked();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PDF" }).click();
   await expect(page.getByRole("button", { name: "Generating PDF" })).toBeVisible();
