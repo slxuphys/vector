@@ -4,6 +4,8 @@ import type { DocumentTheme } from "../theme/themeTypes";
 import type { LayoutBlock, InlineRun } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
 import { breakRunsIntoLines } from "./lineBreaking";
+import type { LayoutLine } from "./lineBreaking";
+import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
 import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
@@ -64,8 +66,9 @@ export function paginate(
   };
 
   let cursor = newPage();
-  const ensure = (height: number) => {
+  const ensure = (height: number): Cursor => {
     if (cursor.y + height > cursor.bottom) cursor = newPage();
+    return cursor;
   };
 
   for (const block of blocks) {
@@ -146,7 +149,7 @@ export function paginate(
     }
 
     if (block.type === "table") {
-      cursor = drawTable(cursor, block.headers, block.rows, theme, ensure);
+      cursor = drawTable(cursor, block, theme, ensure, newPage, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       continue;
     }
 
@@ -200,17 +203,22 @@ export function paginate(
 
 function drawLines(
   cursor: Cursor,
-  lines: Array<{ runs: InlineRun[]; height: number }>,
+  lines: LayoutLine[],
   fontSize: number,
   theme: DocumentTheme,
-  options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number },
+  options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number; align?: "left" | "center" | "right"; maxWidth?: number },
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ) {
   for (const line of lines) {
-    let x = cursor.x + (options.xOffset ?? 0);
+    const alignOffset = options.align === "center" && options.maxWidth !== undefined
+      ? Math.max(0, (options.maxWidth - line.width) / 2)
+      : options.align === "right" && options.maxWidth !== undefined
+        ? Math.max(0, options.maxWidth - line.width)
+        : 0;
+    let x = cursor.x + (options.xOffset ?? 0) + alignOffset;
     const baseline = cursor.y + fontSize;
     for (const run of line.runs) {
       if (run.math) {
@@ -479,52 +487,80 @@ function textObject(
 
 function drawTable(
   cursor: Cursor,
-  headers: InlineRun[][],
-  rows: InlineRun[][][],
+  block: Extract<LayoutBlock, { type: "table" }>,
   theme: DocumentTheme,
-  ensure: (height: number) => void
+  ensure: (height: number) => Cursor,
+  newPage: () => Cursor,
+  mathMeasurements?: MathMeasurementMap,
+  mathRenderer: MathRendererName = "katex-raster",
+  nativeMathMetrics?: NativeMathMetrics,
+  nativeMathProfile?: NativeMathFontProfileName
 ): Cursor {
-  const fontSize = theme.fontSize * 0.92;
-  const columns = Math.max(headers.length, ...rows.map((row) => row.length));
-  const colWidth = cursor.contentWidth / Math.max(columns, 1);
-  const rowHeight = fontSize * 2.2;
-  const drawRow = (cells: InlineRun[][], y: number, header: boolean) => {
-    for (let column = 0; column < columns; column += 1) {
-      const x = cursor.x + column * colWidth;
+  const table = layoutTable(block, cursor.contentWidth, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+  const header = table.rows[0];
+  const bodyRows = table.rows.slice(1);
+  const spannedRowHeight = (start: number, span: number) =>
+    table.rows.slice(start, start + span).reduce((sum, row) => sum + row.height, 0);
+  const drawRow = (row: typeof table.rows[number], rowIndex: number, y: number) => {
+    for (const cell of row.cells) {
+      const x = cursor.x + cell.x;
+      const height = spannedRowHeight(rowIndex, cell.rowSpan);
       cursor.page.objects.push({
         type: "rect",
         x,
         y,
-        width: colWidth,
-        height: rowHeight,
-        fill: header ? theme.tableHeaderBackground : theme.pageBackground,
+        width: cell.width,
+        height,
+        fill: row.header ? theme.tableHeaderBackground : theme.pageBackground,
         stroke: theme.tableBorder,
         strokeWidth: 0.7
       });
-      const text = (cells[column] ?? []).map((run) => run.text).join("");
-      cursor.page.objects.push(textObject(text, x + 6, y + fontSize * 1.45, fontSize, theme, {
+      const cellCursor = {
+        ...cursor,
+        x: x + table.paddingX,
+        y: y + table.paddingY,
+        contentWidth: Math.max(0, cell.width - table.paddingX * 2)
+      };
+      drawLines(cellCursor, cell.lines, table.fontSize, theme, {
         color: theme.text,
-        bold: header
-      }));
+        bold: row.header,
+        lineHeight: theme.lineHeight,
+        align: cell.align,
+        maxWidth: cellCursor.contentWidth
+      }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
     }
   };
 
-  ensure(rowHeight * (rows.length + 1) + 12);
-  drawRow(headers, cursor.y, true);
-  cursor.y += rowHeight;
-  for (const row of rows) {
-    if (cursor.y + rowHeight > cursor.bottom) cursor = {
-      ...cursor,
-      page: {
-        index: cursor.page.index,
-        width: cursor.page.width,
-        height: cursor.page.height,
-        objects: cursor.page.objects
-      }
-    };
-    drawRow(row, cursor.y, false);
-    cursor.y += rowHeight;
+  cursor = ensure(header.height + 12);
+  drawRow(header, 0, cursor.y);
+  cursor.y += header.height;
+  for (let index = 0; index < bodyRows.length;) {
+    const rowIndex = index + 1;
+    const groupEnd = tableRowSpanGroupEnd(table.rows, rowIndex);
+    const groupRows = table.rows.slice(rowIndex, groupEnd + 1);
+    const groupHeight = groupRows.reduce((sum, row) => sum + row.height, 0);
+    if (cursor.y + groupHeight > cursor.bottom) {
+      cursor = newPage();
+      drawRow(header, 0, cursor.y);
+      cursor.y += header.height;
+    }
+    for (let absoluteRow = rowIndex; absoluteRow <= groupEnd; absoluteRow += 1) {
+      const row = table.rows[absoluteRow];
+      drawRow(row, absoluteRow, cursor.y);
+      cursor.y += row.height;
+    }
+    index = groupEnd;
   }
   cursor.y += 14;
   return cursor;
+}
+
+function tableRowSpanGroupEnd(rows: ReturnType<typeof layoutTable>["rows"], startRow: number): number {
+  let endRow = startRow;
+  for (let rowIndex = startRow; rowIndex <= endRow && rowIndex < rows.length; rowIndex += 1) {
+    for (const cell of rows[rowIndex].cells) {
+      endRow = Math.max(endRow, rowIndex + cell.rowSpan - 1);
+    }
+  }
+  return Math.min(endRow, rows.length - 1);
 }

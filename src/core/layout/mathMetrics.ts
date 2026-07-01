@@ -65,8 +65,8 @@ export function collectMathMeasureRequests(
       block.items.forEach((item) => item.forEach((run) => addRun(run, theme.fontSize, theme.text)));
     } else if (block.type === "table") {
       const fontSize = theme.fontSize * 0.92;
-      block.headers.forEach((cell) => cell.forEach((run) => addRun(run, fontSize, theme.text)));
-      block.rows.forEach((row) => row.forEach((cell) => cell.forEach((run) => addRun(run, fontSize, theme.text))));
+      block.headers.forEach((cell) => cell.runs.forEach((run) => addRun(run, fontSize, theme.text)));
+      block.rows.forEach((row) => row.forEach((cell) => cell.runs.forEach((run) => addRun(run, fontSize, theme.text))));
     } else if (block.type === "math") {
       const fontSize = theme.fontSize;
       const latex = block.text.replace(/\s+/g, " ").trim();

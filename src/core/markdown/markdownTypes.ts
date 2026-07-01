@@ -6,12 +6,20 @@ export type InlineNode =
   | { type: "link"; href: string; children: InlineNode[] }
   | { type: "math"; text: string };
 
+export type TableAlign = "left" | "center" | "right";
+
+export type TableCellNode = {
+  children: InlineNode[];
+  colSpan: number;
+  rowSpan: number;
+};
+
 export type MarkdownNode =
   | { type: "heading"; level: number; children: InlineNode[] }
   | { type: "paragraph"; children: InlineNode[] }
   | { type: "list"; ordered: boolean; items: InlineNode[][]; checked?: Array<boolean | undefined> }
   | { type: "codeBlock"; language?: string; code: string }
-  | { type: "table"; headers: InlineNode[][]; rows: InlineNode[][][] }
+  | { type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] }
   | { type: "mathBlock"; text: string }
   | { type: "thematicBreak" }
   | { type: "pageBreak" };

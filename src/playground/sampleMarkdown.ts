@@ -241,6 +241,27 @@ Inline equations should keep the surrounding text close: $E = mc^2$, $x_i^2 + y_
 
 Fractions and roots should also stay on the baseline: $\\frac{a}{b}$, $\\frac{x+1}{x-1}$, $\\sqrt{x^2 + y^2}$, and $\\sqrt[3]{x}$.
 
+## Tables With Math
+
+| Quantity | Formula | Notes |
+| :--- | :---: | ---: |
+| Energy | $E = mc^2$ | inline baseline |
+| Radius | $x_i^2 + y_i^2 = r^2$ | scripts |
+| Ratio | $\\frac{a}{b}$ | fraction |
+| Root | $\\sqrt{x^2 + y^2}$ | radical |
+
+| Operator | Display target | Check |
+| :--- | :--- | :--- |
+| Integral | $\\int_0^1 x^2 dx$ | limits sit near the symbol |
+| Sum | $\\sum_{k=1}^{n} k$ | scripts stay attached |
+| Limit | $\\lim_{n\\to\\infty} \\frac{1}{n}$ | operator remains upright |
+
+| Family {: colspan=2} | Result |
+| :--- | :---: | ---: |
+| Quadratic {: rowspan=2} | $x^2 + y^2$ | baseline |
+| $\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ | wide formula |
+| Calculus | $\\left. \\frac{d}{dx}x^2 \\right|_{x=1}$ | delimiter scripts |
+
 ## Display Basics
 
 $$

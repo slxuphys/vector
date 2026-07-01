@@ -20,8 +20,17 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
       case "table":
         return {
           type: "table",
-          headers: node.headers.map((cell) => flattenInline(cell)),
-          rows: node.rows.map((row) => row.map((cell) => flattenInline(cell)))
+          headers: node.headers.map((cell) => ({
+            runs: flattenInline(cell.children),
+            colSpan: cell.colSpan,
+            rowSpan: cell.rowSpan
+          })),
+          rows: node.rows.map((row) => row.map((cell) => ({
+            runs: flattenInline(cell.children),
+            colSpan: cell.colSpan,
+            rowSpan: cell.rowSpan
+          }))),
+          align: node.align
         };
       case "mathBlock":
         return { type: "math", text: node.text };

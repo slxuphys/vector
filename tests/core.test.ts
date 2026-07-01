@@ -22,6 +22,10 @@ import {
   loadNativeFontFromBytes
 } from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
+import { normalizeAst } from "../src/core/markdown/normalizeAst";
+import { paginate } from "../src/core/layout/paginate";
+import { defaultTheme } from "../src/core/theme/defaultTheme";
+import type { PageConfig } from "../src/core/layout/pageConfig";
 
 describe("markdown parser", () => {
   it("parses headings, lists, tables, code, and page breaks", () => {
@@ -48,6 +52,73 @@ const x = 1
       "codeBlock",
       "pageBreak"
     ]);
+    const table = ast.children.find((node) => node.type === "table");
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.align).toEqual(["left", "left"]);
+    }
+  });
+
+  it("parses table alignment and escaped pipes", () => {
+    const ast = parseMarkdown(`| Left | Center | Right |
+| :--- | :---: | ---: |
+| a \\| b | \`x | y\` | $E=mc^2$ |
+`);
+    const table = ast.children[0];
+
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.align).toEqual(["left", "center", "right"]);
+      expect(table.rows[0][0].children).toEqual([{ type: "text", text: "a | b" }]);
+      expect(table.rows[0][1].children).toEqual([{ type: "code", text: "x | y" }]);
+      expect(table.rows[0][2].children).toEqual([{ type: "math", text: "E=mc^2" }]);
+    }
+  });
+
+  it("preserves LaTeX command backslashes inside table math cells", () => {
+    const ast = parseMarkdown(`| Formula |
+| --- |
+| $\\frac{a}{b}$ |
+`);
+    const table = ast.children[0];
+
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.rows[0][0].children).toEqual([{ type: "math", text: "\\frac{a}{b}" }]);
+    }
+  });
+
+  it("keeps pipe delimiters inside table math cells", () => {
+    const ast = parseMarkdown(`| Formula | Meaning |
+| --- | --- |
+| $\\left|x\\right|$ | absolute value |
+`);
+    const table = ast.children[0];
+
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.rows[0]).toHaveLength(2);
+      expect(table.rows[0][0].children).toEqual([{ type: "math", text: "\\left|x\\right|" }]);
+      expect(table.rows[0][1].children).toEqual([{ type: "text", text: "absolute value" }]);
+    }
+  });
+
+  it("parses table cell colspan and rowspan attributes", () => {
+    const ast = parseMarkdown(`| Group {: colspan=2} | Status |
+| --- | --- | --- |
+| Alpha {: rowspan=2} | $x$ | ready |
+| $y$ | done |
+`);
+    const table = ast.children[0];
+
+    expect(table?.type).toBe("table");
+    if (table?.type === "table") {
+      expect(table.headers[0].colSpan).toBe(2);
+      expect(table.headers[0].children).toEqual([{ type: "text", text: "Group" }]);
+      expect(table.rows[0][0].rowSpan).toBe(2);
+      expect(table.rows[0][0].children).toEqual([{ type: "text", text: "Alpha" }]);
+      expect(table.rows[1][0].children).toEqual([{ type: "math", text: "y" }]);
+    }
   });
 });
 
@@ -151,6 +222,79 @@ describe("document engine", () => {
     expect(svg).toContain("Latin Modern Math");
     expect(svg).not.toContain("foreignObject");
     expect(svg).not.toContain("katex-html");
+  });
+
+  it("renders table cell math through the selected math renderer", async () => {
+    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const { layout } = await engine.layout(`| Symbol | Value |
+| :--- | ---: |
+| radius | $r^2$ |
+`);
+    const page = layout.pages[0];
+    const math = page.objects.find((object) => object.type === "math");
+    const cellRects = page.objects.filter((object) => object.type === "rect" && object.stroke);
+
+    expect(math?.type).toBe("math");
+    if (math?.type === "math") {
+      expect(math.renderer).toBe("native-openmath");
+    }
+    expect(cellRects.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("renders inline pipe delimiters inside table math cells", async () => {
+    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const { layout } = await engine.layout(`| Formula | Meaning |
+| --- | --- |
+| $\\left|x\\right|$ | absolute value |
+`);
+    const math = layout.pages[0].objects.find((object) => object.type === "math");
+    const text = layout.pages[0].objects.find((object) => object.type === "text" && object.text.includes("absolute"));
+
+    expect(math?.type).toBe("math");
+    if (math?.type === "math") {
+      expect(math.latex).toBe("\\left|x\\right|");
+      expect(math.renderer).toBe("native-openmath");
+    }
+    expect(text?.type).toBe("text");
+  });
+
+  it("renders table colspan and rowspan as larger cell rectangles", async () => {
+    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const { layout } = await engine.layout(`| Group {: colspan=2} | Status |
+| --- | --- | --- |
+| Alpha {: rowspan=2} | $x$ | ready |
+| $y$ | done |
+`);
+    const rects = layout.pages[0].objects.filter((object): object is Extract<typeof object, { type: "rect" }> => object.type === "rect" && Boolean(object.stroke));
+    const widths = rects.map((rect) => rect.width);
+    const heights = rects.map((rect) => rect.height);
+
+    expect(rects.length).toBeGreaterThanOrEqual(6);
+    expect(Math.max(...widths)).toBeGreaterThan(Math.min(...widths) * 1.5);
+    expect(Math.max(...heights)).toBeGreaterThan(Math.min(...heights) * 1.5);
+  });
+
+  it("does not split a table rowspan group across pages", () => {
+    const ast = parseMarkdown(`Intro text forces the table near the page bottom so the first body group must move.
+
+| Family {: colspan=2} | Result |
+| --- | --- | --- |
+| Quadratic {: rowspan=2} | $x^2 + y^2$ | baseline |
+| $\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ | wide formula |
+| Calculus | $\\left. \\frac{d}{dx}x^2 \\right|_{x=1}$ | delimiter |
+`);
+    const page: PageConfig = {
+      size: "letter",
+      width: 420,
+      height: 132,
+      margin: { top: 18, right: 18, bottom: 18, left: 18 }
+    };
+    const pages = paginate(normalizeAst(ast), page, defaultTheme, undefined, "native-openmath");
+    const quadraticPage = pages.findIndex((displayPage) => displayPage.objects.some((object) => object.type === "text" && object.text.includes("Quadratic")));
+    const wideFormulaPage = pages.findIndex((displayPage) => displayPage.objects.some((object) => object.type === "text" && object.text.includes("wide")));
+
+    expect(quadraticPage).toBeGreaterThanOrEqual(0);
+    expect(wideFormulaPage).toBe(quadraticPage);
   });
 
   it("uses a less hand-tuned default metric profile for native OpenMath", () => {

@@ -1,4 +1,6 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "./markdownTypes";
+import { parseInline } from "./parseInline";
+import { isTableStart, parseTableAt } from "./parseTable";
 
 export function parseMarkdown(markdown: string): MarkdownAst {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
@@ -62,14 +64,10 @@ export function parseMarkdown(markdown: string): MarkdownAst {
     }
 
     if (isTableStart(lines, i)) {
-      const headers = splitTableRow(lines[i]).map(parseInline);
-      i += 2;
-      const rows: InlineNode[][][] = [];
-      while (i < lines.length && /^\s*\|/.test(lines[i])) {
-        rows.push(splitTableRow(lines[i]).map(parseInline));
-        i += 1;
-      }
-      children.push({ type: "table", headers, rows });
+      const table = parseTableAt(lines, i);
+      if (!table) throw new Error("Expected table parser to accept a table start");
+      children.push({ type: "table", headers: table.headers, rows: table.rows, align: table.align });
+      i = table.end;
       continue;
     }
 
@@ -105,51 +103,4 @@ export function parseMarkdown(markdown: string): MarkdownAst {
   }
 
   return { type: "document", children };
-}
-
-function isTableStart(lines: string[], index: number): boolean {
-  return Boolean(
-    lines[index]?.includes("|") &&
-      /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(lines[index + 1] ?? "")
-  );
-}
-
-function splitTableRow(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim());
-}
-
-export function parseInline(text: string): InlineNode[] {
-  const nodes: InlineNode[] = [];
-  let rest = text;
-
-  while (rest.length > 0) {
-    const match = rest.match(/(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`|\[[^\]]+]\([^)]+\)|\$[^$]+\$)/);
-    if (!match || match.index === undefined) {
-      nodes.push({ type: "text", text: rest });
-      break;
-    }
-
-    if (match.index > 0) nodes.push({ type: "text", text: rest.slice(0, match.index) });
-    const token = match[0];
-    if (token.startsWith("**")) {
-      nodes.push({ type: "strong", children: parseInline(token.slice(2, -2)) });
-    } else if (token.startsWith("_")) {
-      nodes.push({ type: "emphasis", children: parseInline(token.slice(1, -1)) });
-    } else if (token.startsWith("`")) {
-      nodes.push({ type: "code", text: token.slice(1, -1) });
-    } else if (token.startsWith("[")) {
-      const link = token.match(/^\[([^\]]+)]\(([^)]+)\)$/);
-      if (link) nodes.push({ type: "link", href: link[2], children: parseInline(link[1]) });
-    } else if (token.startsWith("$")) {
-      nodes.push({ type: "math", text: token.slice(1, -1) });
-    }
-    rest = rest.slice(match.index + token.length);
-  }
-
-  return nodes.filter((node) => node.type !== "text" || node.text.length > 0);
 }

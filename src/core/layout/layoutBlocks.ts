@@ -1,4 +1,5 @@
 import type { InlineNode } from "../markdown/markdownTypes";
+import type { TableAlign } from "../markdown/markdownTypes";
 
 export type InlineRun = {
   text: string;
@@ -9,12 +10,18 @@ export type InlineRun = {
   link?: string;
 };
 
+export type TableCellBlock = {
+  runs: InlineRun[];
+  colSpan: number;
+  rowSpan: number;
+};
+
 export type LayoutBlock =
   | { type: "heading"; level: number; runs: InlineRun[] }
   | { type: "paragraph"; runs: InlineRun[] }
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined> }
   | { type: "code"; language?: string; code: string }
-  | { type: "table"; headers: InlineRun[][]; rows: InlineRun[][][] }
+  | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[] }
   | { type: "math"; text: string }
   | { type: "rule" }
   | { type: "pageBreak" };
