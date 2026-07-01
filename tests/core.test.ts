@@ -14,6 +14,7 @@ import {
   openMathMetricsFromConstants
 } from "../src/core/renderers/math/nativeMath";
 import {
+  getNativeGlyphId,
   getNativeGlyphMetrics,
   getNativeGlyphTexMetrics,
   getOpenTypeMathConstants,
@@ -355,20 +356,20 @@ describe("document engine", () => {
       constants.fractionDenominatorDisplayStyleShiftDown / constants.unitsPerEm,
       5
     );
-    expect(metrics.displayLargeOperatorSuperscriptBaseline).toBeCloseTo(
+    expect(metrics.integralSideSuperscriptBaseline).toBeCloseTo(
       -constants.superscriptShiftUp / constants.unitsPerEm,
       5
     );
-    expect(metrics.displayLargeOperatorSubscriptBaseline).toBeCloseTo(
+    expect(metrics.integralSideSubscriptBaseline).toBeCloseTo(
       constants.subscriptShiftDown / constants.unitsPerEm,
       5
     );
-    expect(metrics.displayLargeOperatorSuperscriptGap).toBeCloseTo(
-      constants.spaceAfterScript / constants.unitsPerEm,
+    expect(metrics.integralSideSuperscriptGap).toBeCloseTo(
+      defaultOpenMathMetrics.integralSideSuperscriptGap,
       5
     );
-    expect(metrics.displayLargeOperatorSubscriptGap).toBeCloseTo(
-      constants.spaceAfterScript / constants.unitsPerEm,
+    expect(metrics.integralSideSubscriptGap).toBeCloseTo(
+      defaultOpenMathMetrics.integralSideSubscriptGap,
       5
     );
     expect(metrics.displayLimitOperatorSuperscriptGap).toBeCloseTo(
@@ -975,20 +976,52 @@ describe("document engine", () => {
     }
   });
 
-  it("tucks OpenMath display integral side scripts into the operator width", async () => {
+  it("anchors OpenMath display integral side scripts to operator ink edges", async () => {
     loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
     const layout = layoutNativeMath("\\int^x_y z", true, 12, getDefaultOpenMathMetrics(), "openmath");
     const integral = layout.nodes.find((node) => node.type === "glyphPath");
+    const superscript = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑥");
     const subscript = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑦");
     const next = layout.nodes.find((node) => node.type === "glyph" && node.text === "𝑧");
 
     expect(integral?.type).toBe("glyphPath");
+    expect(superscript?.type).toBe("glyph");
     expect(subscript?.type).toBe("glyph");
     expect(next?.type).toBe("glyph");
-    if (integral?.type === "glyphPath" && subscript?.type === "glyph" && next?.type === "glyph") {
-      expect(subscript.x).toBeGreaterThan(integral.x + integral.width * 0.45);
-      expect(subscript.x).toBeLessThan(integral.x + integral.width);
+    if (
+      integral?.type === "glyphPath" &&
+      superscript?.type === "glyph" &&
+      subscript?.type === "glyph" &&
+      next?.type === "glyph"
+    ) {
+      expect(superscript.x).toBeCloseTo(
+        integral.x + integral.width + 12 * getDefaultOpenMathMetrics().integralSideSuperscriptGap,
+        5
+      );
+      expect(subscript.x).toBeCloseTo(
+        integral.x + 12 * getDefaultOpenMathMetrics().integralSideSubscriptGap,
+        5
+      );
       expect(next.x).toBeGreaterThanOrEqual(integral.x + integral.width);
+    }
+  });
+
+  it("advances after inline integral scripts before placing the next token", async () => {
+    loadNativeFontFromBytes("openMathNewComputerModern", readFileSync("src/assets/fonts/newcm-math.otf"));
+    const layout = layoutNativeMath("\\int_a^b x", false, 12, defaultOpenMathMetrics, "openmath-new-computer-modern");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const upper = glyphs.find((node) => node.text === "𝑏");
+    const next = glyphs.find((node) => node.text === "𝑥");
+    const integralGlyphId = getNativeGlyphId("openMathNewComputerModern", "∫");
+
+    expect(integralGlyphId).toBeDefined();
+    expect(upper?.type).toBe("glyph");
+    expect(next?.type).toBe("glyph");
+    if (upper?.type === "glyph" && next?.type === "glyph") {
+      const upperMetrics = getNativeGlyphMetrics("openMathNewComputerModern", upper.text, upper.fontSize);
+      expect(upperMetrics).toBeDefined();
+      if (!upperMetrics) return;
+      expect(next.x).toBeGreaterThanOrEqual(upper.x + upperMetrics.advanceWidth);
     }
   });
 
@@ -1005,7 +1038,7 @@ describe("document engine", () => {
     }
   });
 
-  it("positions native display large-operator scripts around the taller operator", () => {
+  it("positions native integral side scripts from the operator geometry", () => {
     const inline = layoutNativeMath("\\int_0^1", false, 12);
     const display = layoutNativeMath("\\int_0^1", true, 12);
     const inlineGlyphs = inline.nodes.filter((node) => node.type === "glyph");
@@ -1034,6 +1067,7 @@ describe("document engine", () => {
       expect(displayIntegral.fontFamily).toContain("KaTeX_Size2");
       expect(displayUpper.y - displayIntegral.y).toBeLessThan(inlineUpper.y - inlineIntegral.y);
       expect(displayLower.y - displayIntegral.y).toBeGreaterThan(inlineLower.y - inlineIntegral.y);
+      expect(displayUpper.y - displayIntegral.y).toBeGreaterThan(-displayIntegral.fontSize * 1.4);
       expect(displayUpper.x).toBeGreaterThanOrEqual(displayIntegral.x);
       expect(displayLower.x).toBeGreaterThanOrEqual(displayIntegral.x);
       expect(displayUpper.x - displayIntegral.x).toBeLessThan(displayIntegral.fontSize * 2);
@@ -1088,14 +1122,12 @@ describe("document engine", () => {
     }
   });
 
-  it("allows native display large-operator script placement to be tuned", () => {
+  it("allows native integral side-script attachment to be tuned", () => {
     const normal = layoutNativeMath("\\int_0^1", true, 12);
     const tuned = layoutNativeMath("\\int_0^1", true, 12, {
       ...defaultNativeMathMetrics,
-      displayLargeOperatorSuperscriptBaseline: -1.4,
-      displayLargeOperatorSubscriptBaseline: 1.2,
-      displayLargeOperatorSuperscriptGap: 0.9,
-      displayLargeOperatorSubscriptGap: 0.32
+      integralSideSuperscriptAttachment: 0.1,
+      integralSideSuperscriptGap: 0.9
     });
     const normalGlyphs = normal.nodes.filter((node) => node.type === "glyph");
     const tunedGlyphs = tuned.nodes.filter((node) => node.type === "glyph");
@@ -1121,9 +1153,7 @@ describe("document engine", () => {
       tunedUpper?.type === "glyph"
     ) {
       expect(tunedUpper.y - tunedIntegral.y).toBeLessThan(normalUpper.y - normalIntegral.y);
-      expect(tunedLower.y - tunedIntegral.y).toBeGreaterThan(normalLower.y - normalIntegral.y);
       expect(tunedUpper.x - tunedIntegral.x).toBeGreaterThan(normalUpper.x - normalIntegral.x);
-      expect(tunedLower.x - tunedIntegral.x).toBeGreaterThan(normalLower.x - normalIntegral.x);
     }
   });
 

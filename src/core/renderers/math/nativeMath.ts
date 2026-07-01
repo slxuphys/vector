@@ -2,12 +2,12 @@ import type { DisplayObject } from "../../display-list/displayTypes";
 import { escapeXml } from "../../utils/sanitize";
 import {
   getNativeGlyphMetrics,
+  getNativeGlyphId,
   getNativeGlyphOutline,
   getNativeGlyphSkew,
   getNativeGlyphTexMetrics,
   getOpenTypeMathConstants,
   getOpenTypeMathHorizontalGlyphVariant,
-  getOpenTypeMathKern,
   getOpenTypeMathGlyphVariant,
   getOpenTypeMathGlyphInfo,
   getOpenTypeMathRadicalVariant,
@@ -119,10 +119,12 @@ export type NativeMathMetrics = {
   sqrtOverbarExtra: number;
   sqrtVariantTolerance: number;
   accentGap: number;
-  displayLargeOperatorSuperscriptBaseline: number;
-  displayLargeOperatorSubscriptBaseline: number;
-  displayLargeOperatorSuperscriptGap: number;
-  displayLargeOperatorSubscriptGap: number;
+  integralSideSuperscriptBaseline: number;
+  integralSideSubscriptBaseline: number;
+  integralSideSuperscriptGap: number;
+  integralSideSubscriptGap: number;
+  integralSideSuperscriptAttachment: number;
+  integralSideSubscriptAttachment: number;
   displayLimitOperatorSuperscriptBaseline: number;
   displayLimitOperatorSubscriptBaseline: number;
   displayLimitOperatorSuperscriptGap: number;
@@ -172,10 +174,12 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   sqrtOverbarExtra: 0.12,
   sqrtVariantTolerance: 0.08,
   accentGap: 0.08,
-  displayLargeOperatorSuperscriptBaseline: -1.24,
-  displayLargeOperatorSubscriptBaseline: 0.97,
-  displayLargeOperatorSuperscriptGap: 0.79,
-  displayLargeOperatorSubscriptGap: 0.18,
+  integralSideSuperscriptBaseline: -0.37,
+  integralSideSubscriptBaseline: 0.28,
+  integralSideSuperscriptGap: 0,
+  integralSideSubscriptGap: 0.5,
+  integralSideSuperscriptAttachment: 0.12,
+  integralSideSubscriptAttachment: -0.05,
   displayLimitOperatorSuperscriptBaseline: -1.28,
   displayLimitOperatorSubscriptBaseline: 1.11,
   displayLimitOperatorSuperscriptGap: 0.18,
@@ -246,10 +250,10 @@ export function openMathMetricsFromConstants(constants: NonNullable<ReturnType<t
     displaySqrtTopGap: unit(constants.radicalDisplayStyleVerticalGap),
     sqrtRuleThickness: unit(constants.radicalRuleThickness),
     sqrtOverbarExtra: unit(constants.radicalExtraAscender),
-    displayLargeOperatorSuperscriptBaseline: -unit(constants.superscriptShiftUp),
-    displayLargeOperatorSubscriptBaseline: unit(constants.subscriptShiftDown),
-    displayLargeOperatorSuperscriptGap: unit(constants.spaceAfterScript || constants.subSuperscriptGapMin),
-    displayLargeOperatorSubscriptGap: unit(constants.spaceAfterScript || constants.subSuperscriptGapMin),
+    integralSideSuperscriptBaseline: -unit(constants.superscriptShiftUp),
+    integralSideSubscriptBaseline: unit(constants.subscriptShiftDown),
+    integralSideSuperscriptGap: defaultOpenMathMetrics.integralSideSuperscriptGap,
+    integralSideSubscriptGap: defaultOpenMathMetrics.integralSideSubscriptGap,
     displayLimitOperatorSuperscriptBaseline: -unit(constants.upperLimitBaselineRiseMin),
     displayLimitOperatorSubscriptBaseline: unit(constants.lowerLimitBaselineDropMin),
     displayLimitOperatorSuperscriptGap: unit(constants.upperLimitGapMin),
@@ -539,6 +543,8 @@ type OperatorLayoutInfo = {
   kind: "integral" | "limits";
   inkTop: number;
   inkBottom: number;
+  inkLeft: number;
+  inkRight: number;
   centerX: number;
   rightEdge: number;
   glyphId?: number;
@@ -633,7 +639,7 @@ function layoutSequence(
       inkTop = Math.min(inkTop, yShift + scriptBox.inkTop);
       inkBottom = Math.max(inkBottom, yShift + scriptBox.inkBottom);
       const neededAdvance = getScriptAdvance(x, anchor, scriptBox.width, lastAtom);
-      x += Math.max(0, neededAdvance - (lastAtom?.scriptAdvance ?? 0));
+      x += neededAdvance;
       if (lastAtom) lastAtom.scriptAdvance = Math.max(lastAtom.scriptAdvance, neededAdvance);
       else lastAtom = { x: anchor, width: scriptBox.width, ascent: scriptBox.ascent, descent: scriptBox.descent, scriptAdvance: 0, italicCorrection: 0, mathClass: "mord" };
       maxTop = Math.max(maxTop, Math.max(0, -yShift));
@@ -785,8 +791,8 @@ function layoutSequence(
       const isUnsupported = !commandGlyphs[command.name];
       const commandIsUpright = uprightCommandGlyphs.has(command.name) || isUnsupported;
       const text = profile.mapGlyph(rawText, { upright: commandIsUpright });
+      const isIntegralOperator = command.name === "\\int";
       const isDisplayLargeOperator = displayMode && displayLargeOperatorCommands.has(command.name);
-      const isDisplayIntegralOperator = isDisplayLargeOperator && command.name === "\\int";
       const isDisplayLimitOperator = displayMode && displayLimitOperatorCommands.has(command.name);
       const useInkRightEdge = isDisplayLimitOperator && !namedOperatorCommands.has(command.name);
       const mathClass = applyAtomSpacing(mathAtomClassForCommand(command.name, text));
@@ -800,6 +806,11 @@ function layoutSequence(
       const largeOperatorPath = isDisplayLargeOperator && profile.isOpenMath
         ? layoutOpenMathOperatorGlyph(text, glyphFontSize, profile)
         : undefined;
+      const operatorGlyphId = largeOperatorPath?.glyphId ?? (
+        profile.isOpenMath && isIntegralOperator
+          ? getNativeGlyphId(profile.openMathRole ?? "openMath", text)
+          : undefined
+      );
       const fontMetrics = largeOperatorPath ? undefined : measureGlyphFontMetrics(text, glyphFontSize, style);
       const width = largeOperatorPath?.width ?? measureGlyphLayoutWidth(text, glyphFontSize, style, useInkRightEdge);
       const verticalMetrics = largeOperatorPath
@@ -827,12 +838,12 @@ function layoutSequence(
       inkTop = Math.min(inkTop, -verticalMetrics.ascent);
       inkBottom = Math.max(inkBottom, verticalMetrics.descent);
       const operator = buildOperatorLayoutInfo(
-        isDisplayIntegralOperator ? "integral" : isDisplayLimitOperator ? "limits" : undefined,
+        isIntegralOperator ? "integral" : isDisplayLimitOperator ? "limits" : undefined,
         x,
         width,
         verticalMetrics,
         fontMetrics,
-        largeOperatorPath?.glyphId
+        operatorGlyphId
       );
       lastAtom = {
         x,
@@ -917,6 +928,8 @@ function buildOperatorLayoutInfo(
     kind,
     inkTop: verticalMetrics.inkTopOffset,
     inkBottom: verticalMetrics.inkBottomOffset,
+    inkLeft,
+    inkRight,
     centerX: (inkLeft + inkRight) / 2,
     rightEdge: Math.max(x + width, inkRight),
     glyphId
@@ -946,8 +959,10 @@ function getScriptBaseline(
     return getOperatorScriptBaseline(
       scriptChar,
       fontSize,
-      metrics.displayLargeOperatorSuperscriptBaseline,
-      metrics.displayLargeOperatorSubscriptBaseline,
+      metrics.integralSideSuperscriptBaseline,
+      metrics.integralSideSubscriptBaseline,
+      metrics.integralSideSuperscriptAttachment,
+      metrics.integralSideSubscriptAttachment,
       lastAtom
     );
   }
@@ -968,18 +983,23 @@ function getOperatorScriptBaseline(
   fontSize: number,
   superscriptBaseline: number,
   subscriptBaseline: number,
+  superscriptAttachment: number,
+  subscriptAttachment: number,
   lastAtom: LastAtom
 ): number {
+  const preferredBaseline = fontSize * (scriptChar === "^" ? superscriptBaseline : subscriptBaseline);
+  if (!lastAtom.operator) return preferredBaseline;
+
+  const operatorTop = lastAtom.operator.inkTop;
+  const operatorBottom = lastAtom.operator.inkBottom;
+  const operatorHeight = Math.max(0, operatorBottom - operatorTop);
   if (scriptChar === "^") {
-    const operatorTop = lastAtom.operator ? -lastAtom.operator.inkTop : lastAtom.ascent;
-    const top = Math.max(fontSize * 0.9, operatorTop);
-    const gap = fontSize * Math.max(0, Math.abs(superscriptBaseline) - 0.9);
-    return -top - gap;
+    const attachmentBaseline = operatorTop + operatorHeight * superscriptAttachment;
+    return Math.min(preferredBaseline, attachmentBaseline);
   }
 
-  const bottom = lastAtom.operator ? lastAtom.operator.inkBottom : Math.max(fontSize * 0.3, lastAtom.descent);
-  const gap = fontSize * Math.max(0, subscriptBaseline - 0.3);
-  return bottom + gap;
+  const attachmentBaseline = operatorBottom - operatorHeight * subscriptAttachment;
+  return Math.max(preferredBaseline, attachmentBaseline);
 }
 
 function getLimitScriptBaseline(
@@ -1021,18 +1041,14 @@ function getScriptAnchor(
   const scriptGap = fontSize * (
     lastAtom.operator?.kind === "integral"
       ? scriptChar === "^"
-        ? metrics.displayLargeOperatorSuperscriptGap
-        : metrics.displayLargeOperatorSubscriptGap
+        ? metrics.integralSideSuperscriptGap
+        : metrics.integralSideSubscriptGap
       : metrics.scriptGap
   );
   const italicCorrection = scriptChar === "^" ? lastAtom.italicCorrection : 0;
   if (lastAtom.operator?.kind === "integral") {
-    const corner = scriptChar === "^" ? "topRight" : "bottomRight";
-    const scriptHeight = Math.max(0, scriptChar === "^" ? -scriptBaseline : scriptBaseline);
-    const mathKern = lastAtom.operator.glyphId === undefined
-      ? undefined
-      : getOpenTypeMathKern(lastAtom.operator.glyphId, corner, scriptHeight, fontSize);
-    return lastAtom.operator.centerX + italicCorrection + scriptGap + (mathKern ?? 0);
+    const attachmentX = scriptChar === "^" ? lastAtom.operator.inkRight : lastAtom.operator.inkLeft;
+    return attachmentX + scriptGap;
   }
   return lastAtom.x + lastAtom.width + italicCorrection + scriptGap;
 }
@@ -1044,7 +1060,7 @@ function getScriptAdvance(
   lastAtom: LastAtom | undefined
 ): number {
   if (!lastAtom) return Math.max(0, scriptX + scriptWidth - cursorX);
-  if (lastAtom.operator?.kind === "limits") {
+  if (lastAtom.operator?.kind === "limits" || lastAtom.operator?.kind === "integral") {
     const rightEdge = Math.max(lastAtom.operator.rightEdge, scriptX + scriptWidth);
     return Math.max(0, rightEdge - cursorX);
   }

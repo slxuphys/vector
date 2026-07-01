@@ -265,10 +265,12 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
   {
     title: "Operators",
     controls: [
-      { key: "displayLargeOperatorSuperscriptBaseline", label: "Large op sup baseline", min: -1.4, max: -0.2, step: 0.01, openMath: "font" },
-      { key: "displayLargeOperatorSubscriptBaseline", label: "Large op sub baseline", min: 0.2, max: 1.2, step: 0.01, openMath: "font" },
-      { key: "displayLargeOperatorSuperscriptGap", label: "Large op sup gap", min: 0, max: 1, step: 0.01, openMath: "font" },
-      { key: "displayLargeOperatorSubscriptGap", label: "Large op sub gap", min: 0, max: 1, step: 0.01, openMath: "font" },
+      { key: "integralSideSuperscriptBaseline", label: "Integral side sup baseline", min: -1.4, max: -0.2, step: 0.01, openMath: "font" },
+      { key: "integralSideSubscriptBaseline", label: "Integral side sub baseline", min: 0.2, max: 1.2, step: 0.01, openMath: "font" },
+      { key: "integralSideSuperscriptGap", label: "Integral sup x gap", min: 0, max: 1, step: 0.01, openMath: "engine" },
+      { key: "integralSideSubscriptGap", label: "Integral sub x gap", min: 0, max: 1, step: 0.01, openMath: "engine" },
+      { key: "integralSideSuperscriptAttachment", label: "Integral sup attachment", min: 0, max: 0.8, step: 0.01, openMath: "engine" },
+      { key: "integralSideSubscriptAttachment", label: "Integral sub attachment", min: -0.8, max: 0.8, step: 0.01, openMath: "engine" },
       { key: "displayLimitOperatorSuperscriptBaseline", label: "Limit op sup baseline", min: -1.4, max: -0.2, step: 0.01, openMath: "font" },
       { key: "displayLimitOperatorSubscriptBaseline", label: "Limit op sub baseline", min: 0.2, max: 1.2, step: 0.01, openMath: "font" },
       { key: "displayLimitOperatorSuperscriptGap", label: "Limit op sup gap", min: 0, max: 1, step: 0.01, openMath: "font" },

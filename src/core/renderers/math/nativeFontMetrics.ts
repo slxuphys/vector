@@ -289,6 +289,18 @@ export function getOpenTypeMathGlyphInfo(text: string, fontSize: number): OpenTy
   };
 }
 
+export function getNativeGlyphId(role: NativeFontRole, text: string): number | undefined {
+  const font = fontCache.get(role);
+  if (!font) return undefined;
+
+  const chars = Array.from(text);
+  if (chars.length !== 1) return undefined;
+  const codePoint = chars[0].codePointAt(0);
+  if (codePoint === undefined) return undefined;
+
+  return font.glyphForCodePoint(codePoint).id;
+}
+
 export function getOpenTypeMathKern(
   glyphId: number,
   corner: OpenTypeMathKernCorner,
