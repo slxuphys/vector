@@ -1,5 +1,6 @@
 import type { PDFDocument, PDFImage, PDFPage } from "pdf-lib";
 import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
+import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { now } from "../../utils/timing";
 import { isNativeMathRenderer } from "../math/nativeMath";
 import { svgToDataUrl } from "../math/renderKatex";
@@ -47,7 +48,7 @@ export async function warmPdfMathArtifactCache(layout: PagedDisplayList): Promis
     }
   }
 
-  if (mathObjects.size > 0) {
+  if (mathObjects.size > 0 && isDebugLogEnabled("pdf")) {
     console.log("[math-raster-cache]", {
       warmed,
       requested: mathObjects.size,

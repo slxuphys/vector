@@ -109,6 +109,50 @@ button:disabled {
   margin: 0;
 }
 
+.debug-log-dropdown {
+  position: relative;
+  color: #344054;
+  font-size: 13px;
+}
+
+.debug-log-dropdown summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid #a9b4c1;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 7px 10px;
+}
+
+.debug-log-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.debug-log-menu {
+  position: absolute;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  min-width: 170px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid #cbd5df;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(16, 24, 40, 0.16);
+}
+
+.debug-log-option {
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+.debug-log-option input {
+  margin: 0;
+}
+
 .svg-md-shell {
   min-height: 0;
   flex: 1;

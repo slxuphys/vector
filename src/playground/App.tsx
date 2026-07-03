@@ -3,6 +3,13 @@ import { MarkdownEditorPreview } from "../react/MarkdownEditorPreview";
 import { darkTheme, defaultTheme } from "../core/theme/defaultTheme";
 import type { MathRendererName } from "../core/engine/workerProtocol";
 import {
+  defaultDebugLogSettings,
+  readDebugLogSettings,
+  writeDebugLogSettings,
+  type DebugLogKey,
+  type DebugLogSettings
+} from "../core/utils/debugSettings";
+import {
   defaultNativeMathMetrics,
   defaultOpenMathMetrics,
   getDefaultOpenMathMetricsForProfile,
@@ -32,6 +39,7 @@ export function App() {
   const [nativeMetrics, setNativeMetrics] = useState<NativeMathMetrics>(defaultNativeMathMetrics);
   const [openMathMetrics, setOpenMathMetrics] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
   const [openMathDefaults, setOpenMathDefaults] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
+  const [debugLogs, setDebugLogs] = useState<DebugLogSettings>(() => readDebugLogSettings());
   const nativeMathProfile: NativeMathFontProfileName | undefined = mathRenderer === "native-openmath"
     ? openMathFont === "new-computer-modern"
       ? "openmath-new-computer-modern"
@@ -82,6 +90,11 @@ export function App() {
       cancelled = true;
     };
   }, [nativeMathProfile, openMathFont]);
+
+  useEffect(() => {
+    writeDebugLogSettings(debugLogs);
+    (globalThis as { __SVG_MD_DEBUG_LOGS__?: Partial<DebugLogSettings> }).__SVG_MD_DEBUG_LOGS__ = debugLogs;
+  }, [debugLogs]);
 
   const updateNativeMetric = (key: keyof NativeMathMetrics, value: number) => {
     if (mathRenderer === "native-openmath") {
@@ -170,6 +183,11 @@ export function App() {
             <input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} />
             Dark page
           </label>
+          <DebugLogDropdown
+            settings={debugLogs}
+            onChange={(key, value) => setDebugLogs((current) => ({ ...current, [key]: value }))}
+            onReset={() => setDebugLogs(defaultDebugLogSettings)}
+          />
         </div>
       </header>
       <MarkdownEditorPreview
@@ -188,6 +206,43 @@ export function App() {
         )}
       />
     </main>
+  );
+}
+
+const debugLogOptions: Array<{ key: DebugLogKey; label: string }> = [
+  { key: "math", label: "Math parse" },
+  { key: "graph", label: "GraphSX" },
+  { key: "preview", label: "Preview timing" },
+  { key: "pdf", label: "PDF export" }
+];
+
+function DebugLogDropdown({
+  settings,
+  onChange,
+  onReset
+}: {
+  settings: DebugLogSettings;
+  onChange: (key: DebugLogKey, value: boolean) => void;
+  onReset: () => void;
+}) {
+  const activeCount = debugLogOptions.filter((option) => settings[option.key]).length;
+  return (
+    <details className="debug-log-dropdown">
+      <summary>Logs {activeCount ? `(${activeCount})` : ""}</summary>
+      <div className="debug-log-menu">
+        {debugLogOptions.map((option) => (
+          <label key={option.key} className="debug-log-option">
+            <input
+              type="checkbox"
+              checked={settings[option.key]}
+              onChange={(event) => onChange(option.key, event.target.checked)}
+            />
+            {option.label}
+          </label>
+        ))}
+        <button type="button" onClick={onReset}>Reset</button>
+      </div>
+    </details>
   );
 }
 

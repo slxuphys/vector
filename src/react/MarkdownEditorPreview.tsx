@@ -2,11 +2,12 @@ import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/workerProtocol";
 import { isNativeMathRenderer } from "../core/renderers/math/nativeMath";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
+import { isDebugLogEnabled } from "../core/utils/debugSettings";
 import { SvgPagedPreview } from "./SvgPagedPreview";
 import { useDocumentLayout, type PreviewUpdateTiming } from "./useDocumentLayout";
 
@@ -32,6 +33,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const previewUpdateRef = useRef<number | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
+  const startupLogRef = useRef({ editor: false, preview: false });
   const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
   const usingKatexGlyph = options.mathRenderer === "katex-glyph";
   const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
@@ -76,11 +78,17 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
       parent: editorRef.current,
       state: EditorState.create({ doc: initialMarkdown, extensions })
     });
+    logStartupMilestone("editor", startupLogRef);
     return () => {
       window.clearTimeout(previewUpdateRef.current);
       view.destroy();
     };
   }, [extensions, initialMarkdown]);
+
+  useEffect(() => {
+    if (!layoutState.layout) return;
+    logStartupMilestone("preview", startupLogRef);
+  }, [layoutState.layout]);
 
   useEffect(() => {
     const pane = previewPaneRef.current;
@@ -202,4 +210,20 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
       </div>
     </div>
   );
+}
+
+function logStartupMilestone(
+  milestone: "editor" | "preview",
+  ref: MutableRefObject<{ editor: boolean; preview: boolean }>
+): void {
+  if (ref.current[milestone]) return;
+  ref.current[milestone] = true;
+  if (!isDebugLogEnabled("preview")) return;
+  const startedAt = (globalThis as { __SVG_MD_PLAYGROUND_STARTED_AT__?: number }).__SVG_MD_PLAYGROUND_STARTED_AT__;
+  if (startedAt === undefined) return;
+  const elapsedMs = performance.now() - startedAt;
+  console.log("[startup]", {
+    milestone,
+    elapsedMs: Math.round(elapsedMs * 10) / 10
+  });
 }

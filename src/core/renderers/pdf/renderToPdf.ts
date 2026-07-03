@@ -1,5 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import type { PagedDisplayList } from "../../display-list/displayTypes";
+import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { now } from "../../utils/timing";
 import { loadPdfFonts, selectPdfTextFontFallbacks } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
@@ -25,7 +26,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
   const fontStart = now();
   const pdf = await PDFDocument.create();
 
-  const fonts = await loadPdfFonts(pdf);
+  const fonts = await loadPdfFonts(pdf, layout, mathPdfMode);
   const fontMs = now() - fontStart;
   const drawStart = now();
   const mathStats: PdfMathArtifactStats = {
@@ -95,7 +96,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
   const bytes = await pdf.save();
   const saveMs = now() - saveStart;
   const totalMs = now() - start;
-  console.log("[pdf-export]", {
+  if (isDebugLogEnabled("pdf")) console.log("[pdf-export]", {
     totalMs: round(totalMs),
     fontMs: round(fontMs),
     drawMs: round(drawMs),

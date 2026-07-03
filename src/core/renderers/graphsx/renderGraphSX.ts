@@ -6,6 +6,7 @@ import {
   type GraphSXDisplayList
 } from "@slxu/graphsx";
 import { escapeXml } from "../../utils/sanitize";
+import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { defaultTheme } from "../../theme/defaultTheme";
 import type { DocumentTheme } from "../../theme/themeTypes";
 import { renderGraphSXDisplayListBody, renderGraphSXDisplayListToSvg } from "./renderGraphSXDisplayList";
@@ -36,7 +37,7 @@ export function renderGraphSX(source: string, theme: DocumentTheme = defaultThem
           minHeight: 0,
           defaults
         });
-    if (typeof console !== "undefined") {
+    if (typeof console !== "undefined" && isDebugLogEnabled("graph")) {
       console.log("[graphsx-display-list]", {
         type: displayList.type,
         width: displayList.width,

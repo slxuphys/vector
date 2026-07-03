@@ -1,6 +1,6 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFFont, StandardFonts } from "pdf-lib";
-import type { DisplayObject } from "../../display-list/displayTypes";
+import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
 import katexMainBoldUrl from "katex/dist/fonts/KaTeX_Main-Bold.ttf?url";
 import katexMainBoldItalicUrl from "katex/dist/fonts/KaTeX_Main-BoldItalic.ttf?url";
 import katexMainItalicUrl from "katex/dist/fonts/KaTeX_Main-Italic.ttf?url";
@@ -64,7 +64,22 @@ export type PdfFontSet = {
 
 const fontBytesCache = new Map<string, Uint8Array>();
 
-export async function loadPdfFonts(pdf: PDFDocument): Promise<PdfFontSet> {
+type PdfFontUsage = {
+  tex: boolean;
+  openMath: boolean;
+  openMathLibertinus: boolean;
+  openMathNewComputerModern: boolean;
+  latinModernRoman: boolean;
+  libertinusSerif: boolean;
+  newComputerModern: boolean;
+};
+
+export async function loadPdfFonts(
+  pdf: PDFDocument,
+  layout?: PagedDisplayList,
+  mathPdfMode: "raster" | "vector" | "glyph" = "raster"
+): Promise<PdfFontSet> {
+  const usage = layout ? collectPdfFontUsage(layout, mathPdfMode) : allPdfFontUsage();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
@@ -72,13 +87,13 @@ export async function loadPdfFonts(pdf: PDFDocument): Promise<PdfFontSet> {
   const mono = await pdf.embedFont(StandardFonts.Courier);
 
   const [tex, openMath, openMathLibertinus, openMathNewComputerModern, latinModernRoman, libertinusSerif, newComputerModern] = await Promise.all([
-    loadTexFonts(pdf),
-    loadOpenMathFont(pdf),
-    loadOpenMathFont(pdf, openMathFontProfiles.libertinus.url),
-    loadOpenMathFont(pdf, openMathFontProfiles["new-computer-modern"].url),
-    loadLatinModernRomanFonts(pdf),
-    loadLibertinusSerifFonts(pdf),
-    loadNewComputerModernFonts(pdf)
+    usage.tex ? loadTexFonts(pdf) : undefined,
+    usage.openMath ? loadOpenMathFont(pdf) : undefined,
+    usage.openMathLibertinus ? loadOpenMathFont(pdf, openMathFontProfiles.libertinus.url) : undefined,
+    usage.openMathNewComputerModern ? loadOpenMathFont(pdf, openMathFontProfiles["new-computer-modern"].url) : undefined,
+    usage.latinModernRoman ? loadLatinModernRomanFonts(pdf) : undefined,
+    usage.libertinusSerif ? loadLibertinusSerifFonts(pdf) : undefined,
+    usage.newComputerModern ? loadNewComputerModernFonts(pdf) : undefined
   ]);
   return { regular, bold, italic, boldItalic, mono, tex, openMath, openMathLibertinus, openMathNewComputerModern, latinModernRoman, libertinusSerif, newComputerModern };
 }
@@ -215,7 +230,7 @@ async function loadNewComputerModernFonts(pdf: PDFDocument): Promise<PdfFontSet[
 
 async function embedCustomFont(pdf: PDFDocument, url: string): Promise<PDFFont> {
   const bytes = await loadFontBytes(url);
-  return pdf.embedFont(bytes);
+  return pdf.embedFont(bytes, { subset: isTrueTypeFontUrl(url) });
 }
 
 async function loadFontBytes(url: string): Promise<Uint8Array> {
@@ -227,4 +242,118 @@ async function loadFontBytes(url: string): Promise<Uint8Array> {
   const bytes = new Uint8Array(await response.arrayBuffer());
   fontBytesCache.set(url, bytes);
   return bytes;
+}
+
+function isTrueTypeFontUrl(url: string): boolean {
+  return /\.ttf(?:[?#]|$)/i.test(url);
+}
+
+function collectPdfFontUsage(layout: PagedDisplayList, mathPdfMode: "raster" | "vector" | "glyph"): PdfFontUsage {
+  const usage = emptyPdfFontUsage();
+  for (const page of layout.pages) {
+    for (const object of page.objects) collectObjectFontUsage(object, usage, mathPdfMode);
+  }
+  return usage;
+}
+
+function collectObjectFontUsage(object: DisplayObject, usage: PdfFontUsage, mathPdfMode: "raster" | "vector" | "glyph"): void {
+  if (object.type === "text") {
+    collectTextFontUsage(object.fontFamily, usage);
+    return;
+  }
+
+  if (object.type === "math") {
+    if (object.renderer === "native") {
+      usage.tex = true;
+      return;
+    }
+    if (object.renderer === "native-openmath") {
+      collectOpenMathProfileUsage(object.nativeMathProfile, usage);
+      collectNativeLayoutFontUsage(object.nativeLayout?.nodes, usage);
+      return;
+    }
+    if (mathPdfMode === "glyph" && object.renderer === "katex-glyph") usage.tex = true;
+    if (mathPdfMode === "glyph" && object.renderer === "mathjax-glyph") usage.tex = true;
+    return;
+  }
+
+  if (object.type === "graphsx") {
+    if (!object.displayList) return;
+    collectGraphSXFontUsage(object.displayList, usage);
+  }
+}
+
+function collectTextFontUsage(fontFamily: string, usage: PdfFontUsage): void {
+  if (isLatinModernRomanFont(fontFamily)) usage.latinModernRoman = true;
+  if (isLibertinusSerifFont(fontFamily)) usage.libertinusSerif = true;
+  if (isNewComputerModernFont(fontFamily)) usage.newComputerModern = true;
+  if (isTexFont(fontFamily) || fontFamily.includes("KaTeX")) usage.tex = true;
+  collectOpenMathFamilyUsage(fontFamily, usage);
+}
+
+function collectNativeLayoutFontUsage(nodes: unknown[] | undefined, usage: PdfFontUsage): void {
+  for (const node of nodes ?? []) {
+    if (node && typeof node === "object" && "fontFamily" in node && typeof node.fontFamily === "string") {
+      collectTextFontUsage(node.fontFamily, usage);
+      collectOpenMathFamilyUsage(node.fontFamily, usage);
+    }
+  }
+}
+
+function collectGraphSXFontUsage(displayList: Record<string, any>, usage: PdfFontUsage): void {
+  const visit = (item: Record<string, any> | undefined) => {
+    if (!item) return;
+    if (item.type === "math" || item.tag === "math") {
+      usage.openMath = true;
+    }
+    const props = item.props ?? {};
+    const style = item.style ?? {};
+    const fontFamily = props.fontFamily ?? props["font-family"] ?? style.fontFamily ?? style["font-family"];
+    if (typeof fontFamily === "string") collectTextFontUsage(fontFamily, usage);
+    for (const child of item.children ?? []) visit(child);
+    if (item.displayList?.items) {
+      collectGraphSXFontUsage(item.displayList, usage);
+    }
+  };
+  for (const item of displayList.items ?? []) visit(item);
+}
+
+function collectOpenMathProfileUsage(profile: string | undefined, usage: PdfFontUsage): void {
+  if (profile === "libertinus") usage.openMathLibertinus = true;
+  else if (profile === "new-computer-modern") usage.openMathNewComputerModern = true;
+  else usage.openMath = true;
+}
+
+function collectOpenMathFamilyUsage(fontFamily: string, usage: PdfFontUsage): void {
+  if (fontFamily.includes(openMathFontProfiles["new-computer-modern"].family)) usage.openMathNewComputerModern = true;
+  if (fontFamily.includes(openMathFontProfiles.libertinus.family)) usage.openMathLibertinus = true;
+  if (fontFamily.includes(getOpenMathFamily())) usage.openMath = true;
+}
+
+function getOpenMathFamily(): string {
+  return openMathFontProfiles["latin-modern"].family;
+}
+
+function emptyPdfFontUsage(): PdfFontUsage {
+  return {
+    tex: false,
+    openMath: false,
+    openMathLibertinus: false,
+    openMathNewComputerModern: false,
+    latinModernRoman: false,
+    libertinusSerif: false,
+    newComputerModern: false
+  };
+}
+
+function allPdfFontUsage(): PdfFontUsage {
+  return {
+    tex: true,
+    openMath: true,
+    openMathLibertinus: true,
+    openMathNewComputerModern: true,
+    latinModernRoman: true,
+    libertinusSerif: true,
+    newComputerModern: true
+  };
 }

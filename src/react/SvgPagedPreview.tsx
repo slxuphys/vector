@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { PagedDisplayList } from "../core/display-list/displayTypes";
+import { isDebugLogEnabled } from "../core/utils/debugSettings";
 import { PageViewport } from "./PageViewport";
 import type { CompletedPreviewUpdateTiming } from "./useDocumentLayout";
 
@@ -36,6 +37,7 @@ export function SvgPagedPreview({
 
   useEffect(() => {
     if (!timing) return;
+    if (!isDebugLogEnabled("preview")) return;
     requestAnimationFrame(() => {
       const paintedAt = performance.now();
       const renderMs = paintedAt - refresh.startedAt;

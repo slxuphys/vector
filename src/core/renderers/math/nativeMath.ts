@@ -1,4 +1,5 @@
 import type { DisplayObject } from "../../display-list/displayTypes";
+import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { escapeXml } from "../../utils/sanitize";
 import {
   getNativeGlyphMetrics,
@@ -2146,6 +2147,7 @@ function logNativeMathParse(
   layout: NativeMathLayout
 ): void {
   if (typeof console === "undefined") return;
+  if (!isDebugLogEnabled("math")) return;
   console.log("[native-math-parse]", {
     call,
     latex,
@@ -2245,7 +2247,7 @@ function logNativeSqrtBox(
   }
 ): void {
   if (typeof console === "undefined") return;
-  if (!isNativeMathDebugEnabled()) return;
+  if (!isDebugLogEnabled("math")) return;
   console.log("[native-math-sqrt-box]", {
     bodyLatex,
     fontSize: roundNumber(box.fontSize),
@@ -2269,13 +2271,6 @@ function logNativeSqrtBox(
     radicalInkTop: roundNumber(box.radicalInkTop),
     radicalInkBottom: roundNumber(box.radicalInkBottom)
   });
-}
-
-function isNativeMathDebugEnabled(): boolean {
-  const globalFlag = (globalThis as { __SVG_MD_NATIVE_MATH_DEBUG__?: boolean }).__SVG_MD_NATIVE_MATH_DEBUG__;
-  if (globalFlag !== undefined) return globalFlag;
-  if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem("svg-md-native-math-debug") === "1";
 }
 
 function measureGlyphWidth(text: string, fontSize: number, style: NativeGlyphStyle = {}): number {
