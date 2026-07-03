@@ -11,6 +11,7 @@ import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
 import { drawPdfNativeMath } from "./pdfNativeMath";
 import { drawPdfImage } from "./pdfImage";
+import { drawPdfGraphSX } from "./pdfGraphSX";
 import { isNativeMathRenderer } from "../math/nativeMath";
 
 export type PdfRenderOptions = {
@@ -46,6 +47,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     text: 0,
     math: 0,
     image: 0,
+    graphsx: 0,
     shape: 0
   };
 
@@ -78,6 +80,9 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
       } else if (object.type === "image") {
         objectCounts.image += 1;
         await drawPdfImage(pdf, page, object, fonts, displayPage.height);
+      } else if (object.type === "graphsx") {
+        objectCounts.graphsx += 1;
+        await drawPdfGraphSX(pdf, page, object, fonts, displayPage.height);
       } else {
         objectCounts.shape += 1;
         drawPdfShape(page, object, displayPage.height);

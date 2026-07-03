@@ -108,6 +108,7 @@ export function App() {
               <option value="long">Long</option>
               <option value="hundred">100 pages</option>
               <option value="mathHeavy">Math heavy</option>
+              <option value="graphsxDebug">GraphSX debug</option>
             </select>
           </label>
           <label>

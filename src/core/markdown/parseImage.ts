@@ -16,7 +16,7 @@ export function parseImageBlock(line: string): ImageNode | undefined {
   };
 }
 
-function parseImageAttributes(raw: string | undefined): {
+export function parseImageAttributes(raw: string | undefined): {
   width?: ImageLength;
   height?: ImageLength;
   align?: ImageAlign;

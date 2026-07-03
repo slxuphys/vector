@@ -2,6 +2,7 @@ import type { PDFDocument, PDFPage } from "pdf-lib";
 import { rgb } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { sanitizeImageUrl } from "../../utils/sanitize";
+import { svgToDataUrl } from "../math/renderKatex";
 import type { PdfFontSet } from "./pdfFonts";
 import { hexToRgb } from "./pdfText";
 
@@ -22,20 +23,24 @@ export async function drawPdfImage(
 
   try {
     const bytes = await loadImageBytes(src);
-    const image = isJpeg(bytes, src)
-      ? await pdf.embedJpg(bytes)
-      : isPng(bytes, src)
-        ? await pdf.embedPng(bytes)
+    const imageBytes = isSvg(bytes, src)
+      ? await rasterizeSvgBytes(bytes, object.width, object.height)
+      : bytes;
+    const image = isJpeg(imageBytes, src)
+      ? await pdf.embedJpg(imageBytes)
+      : isPng(imageBytes, src) || isSvg(bytes, src)
+        ? await pdf.embedPng(imageBytes)
         : undefined;
     if (!image) {
       drawImagePlaceholder(page, object, fonts, pageHeight);
       return false;
     }
+    const fitted = fitContain(image.width, image.height, object.width, object.height);
     page.drawImage(image, {
-      x: object.x,
-      y: pageHeight - object.y - object.height,
-      width: object.width,
-      height: object.height
+      x: object.x + fitted.x,
+      y: pageHeight - object.y - fitted.y - fitted.height,
+      width: fitted.width,
+      height: fitted.height
     });
     return true;
   } catch {
@@ -50,6 +55,41 @@ async function loadImageBytes(src: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+function isSvg(bytes: Uint8Array, src: string): boolean {
+  if (/^data:image\/svg\+xml[;,]/i.test(src) || /\.svg(?:[?#]|$)/i.test(src)) return true;
+  const head = new TextDecoder().decode(bytes.slice(0, Math.min(bytes.length, 256))).trimStart();
+  return head.startsWith("<svg") || head.startsWith("<?xml");
+}
+
+async function rasterizeSvgBytes(bytes: Uint8Array, width: number, height: number): Promise<Uint8Array> {
+  if (typeof document === "undefined" || typeof Image === "undefined") return bytes;
+  const svg = new TextDecoder().decode(bytes);
+  const scale = 3;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.ceil(width * scale));
+  canvas.height = Math.max(1, Math.ceil(height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) return bytes;
+
+  const image = await loadImage(svgToDataUrl(svg));
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  const fitted = fitContain(image.naturalWidth || width, image.naturalHeight || height, width, height);
+  context.drawImage(image, fitted.x, fitted.y, fitted.width, fitted.height);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) return bytes;
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not rasterize SVG image"));
+    image.src = src;
+  });
+}
+
 function isPng(bytes: Uint8Array, src: string): boolean {
   return /\.png(?:[?#]|$)/i.test(src) || (
     bytes[0] === 0x89 &&
@@ -61,6 +101,26 @@ function isPng(bytes: Uint8Array, src: string): boolean {
 
 function isJpeg(bytes: Uint8Array, src: string): boolean {
   return /\.jpe?g(?:[?#]|$)/i.test(src) || (bytes[0] === 0xff && bytes[1] === 0xd8);
+}
+
+function fitContain(sourceWidth: number, sourceHeight: number, boxWidth: number, boxHeight: number): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  if (sourceWidth <= 0 || sourceHeight <= 0 || boxWidth <= 0 || boxHeight <= 0) {
+    return { x: 0, y: 0, width: boxWidth, height: boxHeight };
+  }
+  const scale = Math.min(boxWidth / sourceWidth, boxHeight / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    x: (boxWidth - width) / 2,
+    y: (boxHeight - height) / 2,
+    width,
+    height
+  };
 }
 
 function drawImagePlaceholder(page: PDFPage, object: ImageObject, fonts: PdfFontSet, pageHeight: number): void {

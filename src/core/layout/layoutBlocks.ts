@@ -23,6 +23,7 @@ export type LayoutBlock =
   | { type: "code"; language?: string; code: string }
   | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[] }
   | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign }
+  | { type: "graphsx"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign }
   | { type: "math"; text: string }
   | { type: "rule" }
   | { type: "pageBreak" };

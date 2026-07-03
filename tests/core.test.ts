@@ -91,6 +91,22 @@ const x = 1
     }
   });
 
+  it("parses fenced GraphSX blocks with sizing attributes", () => {
+    const ast = parseMarkdown(`\`\`\`graphsx width=80% align=center caption="Figure 2. Routed graph"
+<Graph><Rect id="A" /></Graph>
+\`\`\`
+`);
+    const graph = ast.children[0];
+
+    expect(graph?.type).toBe("graphsx");
+    if (graph?.type === "graphsx") {
+      expect(graph.source).toContain("<Graph>");
+      expect(graph.caption).toBe("Figure 2. Routed graph");
+      expect(graph.width).toEqual({ value: 80, unit: "percent" });
+      expect(graph.align).toBe("center");
+    }
+  });
+
   it("preserves LaTeX command backslashes inside table math cells", () => {
     const ast = parseMarkdown(`| Formula |
 | --- |
@@ -178,6 +194,25 @@ describe("document engine", () => {
       expect(image.width).toBeGreaterThan(100);
       expect(image.width).toBeLessThan(400);
     }
+  });
+
+  it("renders fenced GraphSX blocks into SVG pages", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`\`\`\`graphsx width=60% align=center caption="Figure 2. GraphSX"
+<Graph>
+  <Rect id="A" at={[80, 80]} label="A" />
+  <Rect id="B" at={[240, 80]} label="B" />
+  <Link headArrow from="A.right" to="B.left" />
+</Graph>
+\`\`\``);
+    const svg = renderPageToSvg(layout.pages[0]);
+    const graph = layout.pages[0].objects.find((object) => object.type === "graphsx");
+    const caption = layout.pages[0].objects.find((object) => object.type === "text" && object.text === "Figure 2. GraphSX");
+
+    expect(graph?.type).toBe("graphsx");
+    expect(caption?.type).toBe("text");
+    expect(svg).toContain("graphsx-arrow-head");
+    expect(svg).toContain("Figure 2. GraphSX");
   });
 
   it("keeps space after inline math", async () => {

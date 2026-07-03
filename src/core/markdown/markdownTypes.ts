@@ -27,6 +27,7 @@ export type MarkdownNode =
   | { type: "codeBlock"; language?: string; code: string }
   | { type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] }
   | ImageNode
+  | GraphSXNode
   | { type: "mathBlock"; text: string }
   | { type: "thematicBreak" }
   | { type: "pageBreak" };
@@ -38,6 +39,14 @@ export type ImageNode = {
   caption?: string;
   width?: ImageLength;
   height?: ImageLength;
+  align?: ImageAlign;
+};
+
+export type GraphSXNode = {
+  type: "graphsx";
+  source: string;
+  caption?: string;
+  width?: ImageLength;
   align?: ImageAlign;
 };
 

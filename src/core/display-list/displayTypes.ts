@@ -1,6 +1,7 @@
 import type { PageConfig } from "../layout/pageConfig";
 import type { NativeMathLayout, NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
+import type { GraphSXDisplayList } from "@slxu/graphsx";
 import type { DocumentTheme } from "../theme/themeTypes";
 
 export type DisplayTextRun = {
@@ -57,6 +58,20 @@ export type DisplayObject =
       y: number;
       width: number;
       height: number;
+    }
+  | {
+      type: "graphsx";
+      source: string;
+      svg: string;
+      svgBody: string;
+      viewBox: string;
+      summary: string;
+      displayList?: GraphSXDisplayList;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      warnings?: string[];
     }
   | {
       type: "line";

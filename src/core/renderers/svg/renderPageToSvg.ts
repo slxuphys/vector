@@ -3,6 +3,7 @@ import { escapeXml } from "../../utils/sanitize";
 import { renderKatexForeignObject } from "../math/renderKatex";
 import { isNativeMathRenderer, renderNativeMathSvg } from "../math/nativeMath";
 import { renderSvgImage } from "./svgImage";
+import { renderSvgGraphSX } from "./svgGraphSX";
 import { renderSvgShape } from "./svgShapes";
 import { renderSvgText } from "./svgText";
 
@@ -38,6 +39,7 @@ function renderObject(object: DisplayObject): string {
     });
   }
   if (object.type === "image") return renderSvgImage(object);
+  if (object.type === "graphsx") return renderSvgGraphSX(object);
   return object.type === "text" ? renderSvgText(object) : renderSvgShape(object);
 }
 

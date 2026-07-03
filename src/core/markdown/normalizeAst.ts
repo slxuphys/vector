@@ -42,6 +42,14 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           height: node.height,
           align: node.align
         };
+      case "graphsx":
+        return {
+          type: "graphsx",
+          source: node.source,
+          caption: node.caption,
+          width: node.width,
+          align: node.align
+        };
       case "mathBlock":
         return { type: "math", text: node.text };
       case "thematicBreak":

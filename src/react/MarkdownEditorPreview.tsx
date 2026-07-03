@@ -171,7 +171,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
           {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : usingNativeMath ? "Native PDF" : "Experimental vector math"}
         </label>
         <label>
-          Zoom
+          Zoom <span className="svg-md-zoom-value">{Math.round(zoom * 100)}%</span>
           <input
             type="range"
             min="0.55"

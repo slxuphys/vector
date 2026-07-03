@@ -1,6 +1,6 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "./markdownTypes";
 import { parseInline } from "./parseInline";
-import { parseImageBlock } from "./parseImage";
+import { parseImageAttributes, parseImageBlock } from "./parseImage";
 import { isTableStart, parseTableAt } from "./parseTable";
 
 export function parseMarkdown(markdown: string): MarkdownAst {
@@ -21,16 +21,27 @@ export function parseMarkdown(markdown: string): MarkdownAst {
       continue;
     }
 
-    const fence = line.match(/^```(\S*)\s*$/);
+    const fence = line.match(/^```([^\s`]*)\s*(.*?)$/);
     if (fence) {
       const language = fence[1] || undefined;
+      const fenceInfo = parseFenceInfo(language, fence[2] ?? "");
       const code: string[] = [];
       i += 1;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) {
         code.push(lines[i]);
         i += 1;
       }
-      children.push({ type: "codeBlock", language, code: code.join("\n") });
+      if (language === "graphsx") {
+        children.push({
+          type: "graphsx",
+          source: code.join("\n"),
+          caption: fenceInfo.caption,
+          width: fenceInfo.width,
+          align: fenceInfo.align
+        });
+      } else {
+        children.push({ type: "codeBlock", language, code: code.join("\n") });
+      }
       i += 1;
       continue;
     }
@@ -112,4 +123,17 @@ export function parseMarkdown(markdown: string): MarkdownAst {
   }
 
   return { type: "document", children };
+}
+
+function parseFenceInfo(language: string | undefined, rest: string): {
+  caption?: string;
+  width?: ReturnType<typeof parseImageAttributes>["width"];
+  align?: ReturnType<typeof parseImageAttributes>["align"];
+} {
+  if (language !== "graphsx" || !rest.trim()) return {};
+  const body = rest.trim().startsWith("{") ? rest.trim() : `{${rest.trim()}}`;
+  const attrs = parseImageAttributes(body);
+  const captionMatch = rest.match(/(?:^|\s)caption=("([^"]*)"|'([^']*)'|[^\s]+)/);
+  const caption = captionMatch?.[2] ?? captionMatch?.[3] ?? captionMatch?.[1]?.replace(/^["']|["']$/g, "");
+  return { caption, width: attrs.width, align: attrs.align };
 }

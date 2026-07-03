@@ -266,6 +266,29 @@ Fractions and roots should also stay on the baseline: $\\frac{a}{b}$, $\\frac{x+
 
 ![Phase space sketch](data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20640%20360%22%3E%3Crect%20width%3D%22640%22%20height%3D%22360%22%20fill%3D%22%23f7fafc%22%2F%3E%3Cpath%20d%3D%22M70%20285H580M90%20310V45%22%20stroke%3D%22%231f2933%22%20stroke-width%3D%224%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M95%20255C170%20155%20245%20115%20320%20165S465%20255%20555%2095%22%20stroke%3D%22%23145ea8%22%20stroke-width%3D%226%22%20fill%3D%22none%22%2F%3E%3Ccircle%20cx%3D%22320%22%20cy%3D%22165%22%20r%3D%2210%22%20fill%3D%22%23b42318%22%2F%3E%3Ctext%20x%3D%22110%22%20y%3D%2275%22%20font-family%3D%22serif%22%20font-size%3D%2228%22%20fill%3D%22%231f2933%22%3E%CF%88(x)%3C%2Ftext%3E%3C%2Fsvg%3E "Figure 1. A small SVG image with a caption, centered under the image."){width=70% align=center}
 
+## GraphSX Figure
+
+\`\`\`graphsx width=80% align=center caption="Figure 2. GraphSX uses its own routing and anchors."
+<Graph route="auto" corner={8}>
+  <Style id="box" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
+  <Style id="wire" stroke="#7c3aed" strokeWidth={2.6} />
+
+  <Rect id="A" at={[80, 90]} size={[110, 62]} label="$\\alpha$" useStyle="box">
+    <Port id="out" right label="$x$" />
+  </Rect>
+  <Rect id="B" at={[310, 70]} size={[120, 72]} label="$H$" useStyle="box">
+    <Port id="in" left />
+    <Port id="out" bottom />
+  </Rect>
+  <Circle id="C" at={[292, 230]} r={38} label="$\\psi$">
+    <Port id="in" top />
+  </Circle>
+
+  <Link headArrow from="A.out" to="B.in" useStyle="wire" />
+  <Link headArrow from="B.out" to="C.in" useStyle="wire" />
+</Graph>
+\`\`\`
+
 ## Display Basics
 
 $$
@@ -348,9 +371,52 @@ $$
 $$
 `;
 
+export const graphsxDebugSampleMarkdown = `# GraphSX Debug
+
+This page is intentionally small so the GraphSX display list and PDF coordinates are easy to inspect.
+
+## Simple Graph
+
+\`\`\`graphsx width=80% align=center caption="GraphSX debug: two nodes, one routed link, one explicit path, and math labels."
+<Graph route="auto" corner={8}>
+  <Style id="node" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
+  <Style id="wire" stroke="#7c3aed" strokeWidth={2.5} />
+  <Style id="path" stroke="#b42318" strokeWidth={3} fill="none" />
+
+  <Rect id="A" at={[80, 80]} size={[96, 56]} label="$A$" useStyle="node">
+    <Port id="out" right label="$x$" />
+  </Rect>
+  <Rect id="B" at={[300, 160]} size={[96, 56]} label="$B$" useStyle="node">
+    <Port id="in" left label="$y$" />
+  </Rect>
+
+  <Link headArrow from="A.out" to="B.in" useStyle="wire" />
+  <Path d="M 70 230 C 130 180 210 280 280 230 S 380 190 430 230" useStyle="path" />
+</Graph>
+\`\`\`
+
+## Plot Path
+
+\`\`\`graphsx width=80% align=center caption="GraphSX debug: plot path coordinates."
+<Plot width={620} height={380} padding={[54, 64, 70, 74]} xDomain={[-1, 1]} yDomain={[-1.1, 1.1]} frame box>
+  <Data id="root" y="sqrt(x)" domain={[-1, 1]} samples={220} />
+
+  <Axis x label="$x$" ticks grid />
+  <Axis y label="$\\sqrt{x}$" ticks grid />
+
+  <Line data="root" stroke="#2563eb" strokeWidth={2.5} label="real" />
+  <Line data="root" yMap="imag(y)" stroke="#dc2626" strokeWidth={2.5} strokeDasharray="7 5" label="imag" />
+  <Line data="root" yMap="abs(y)" stroke="#16a34a" strokeWidth={2} strokeDasharray="2 4" label="abs" />
+  <Text at={[-0.42, 0.68]} label="$y=\\sqrt{x}$" fontSize={22} />
+  <Legend position="bottom-right" />
+</Plot>
+\`\`\`
+`;
+
 export const playgroundSamples = {
   short: sampleMarkdown,
   long: longSampleMarkdown,
   hundred: hundredPageSampleMarkdown,
-  mathHeavy: mathHeavySampleMarkdown
+  mathHeavy: mathHeavySampleMarkdown,
+  graphsxDebug: graphsxDebugSampleMarkdown
 } as const;

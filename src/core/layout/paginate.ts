@@ -8,6 +8,7 @@ import type { LayoutLine } from "./lineBreaking";
 import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
+import { renderGraphSX } from "../renderers/graphsx/renderGraphSX";
 import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import {
   defaultNativeMathMetrics,
@@ -180,6 +181,38 @@ export function paginate(
       continue;
     }
 
+    if (block.type === "graphsx") {
+      const graph = layoutGraphSXBlock(block, cursor.contentWidth, theme);
+      ensure(graph.totalHeight + 12);
+      const x = cursor.x + graph.x;
+      cursor.page.objects.push({
+        type: "graphsx",
+        source: block.source,
+        svg: graph.svg,
+        svgBody: graph.svgBody,
+        viewBox: graph.viewBox,
+        summary: graph.summary,
+        displayList: graph.displayList,
+        x,
+        y: cursor.y,
+        width: graph.width,
+        height: graph.height,
+        warnings: graph.warnings
+      });
+      if (block.caption) {
+        cursor.page.objects.push(textObject(
+          block.caption,
+          x + graph.width / 2 - graph.captionWidth / 2,
+          cursor.y + graph.height + graph.captionFontSize + 6,
+          graph.captionFontSize,
+          theme,
+          { color: theme.mutedText }
+        ));
+      }
+      cursor.y += graph.totalHeight + 12;
+      continue;
+    }
+
     if (block.type === "math") {
       const fontSize = theme.fontSize;
       const text = block.text.replace(/\s+/g, " ").trim();
@@ -271,9 +304,66 @@ function layoutImageBlock(
   return { x, width, height, totalHeight, captionFontSize, captionWidth };
 }
 
-function resolveImageLength(length: Extract<LayoutBlock, { type: "image" }>["width"], contentWidth: number): number | undefined {
+function resolveImageLength(length: { value: number; unit: "px" | "percent" } | undefined, contentWidth: number): number | undefined {
   if (!length) return undefined;
   return length.unit === "percent" ? contentWidth * length.value / 100 : length.value;
+}
+
+function layoutGraphSXBlock(
+  block: Extract<LayoutBlock, { type: "graphsx" }>,
+  contentWidth: number,
+  theme: DocumentTheme
+): {
+  x: number;
+  width: number;
+  height: number;
+  totalHeight: number;
+  captionFontSize: number;
+  captionWidth: number;
+  svg: string;
+  svgBody: string;
+  viewBox: string;
+  summary: string;
+  displayList: ReturnType<typeof renderGraphSX>["displayList"];
+  warnings: string[];
+} {
+  const artifact = renderGraphSX(block.source, theme);
+  const requestedWidth = resolveImageLength(block.width, contentWidth);
+  const width = requestedWidth === undefined ? artifact.width : Math.min(contentWidth, requestedWidth);
+  const scale = artifact.width > 0 ? width / artifact.width : 1;
+  const height = Math.max(1, artifact.height * scale);
+  const align = block.align ?? "center";
+  const x = align === "right" ? contentWidth - width : align === "center" ? (contentWidth - width) / 2 : 0;
+  const warnings = requestedWidth === undefined && artifact.width > contentWidth
+    ? [`GraphSX natural width ${formatWarningNumber(artifact.width)} exceeds content width ${formatWarningNumber(contentWidth)}. Add width=100% to fit.`]
+    : [];
+  const captionFontSize = theme.fontSize * 0.86;
+  const captionWidth = block.caption
+    ? Math.min(width, measureText(block.caption, {
+        fontSize: captionFontSize,
+        fontFamily: theme.fontFamily,
+        monoFontFamily: theme.monoFontFamily
+      }))
+    : 0;
+  const totalHeight = height + (block.caption ? captionFontSize * theme.lineHeight + 6 : 0);
+  return {
+    x,
+    width,
+    height,
+    totalHeight,
+    captionFontSize,
+    captionWidth,
+    svg: artifact.svg,
+    svgBody: artifact.svgBody,
+    viewBox: artifact.viewBox,
+    summary: artifact.summary,
+    displayList: artifact.displayList,
+    warnings
+  };
+}
+
+function formatWarningNumber(value: number): string {
+  return Number(value.toFixed(1)).toString();
 }
 
 function drawLines(
