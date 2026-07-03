@@ -182,7 +182,7 @@ export function paginate(
     }
 
     if (block.type === "graphsx") {
-      const graph = layoutGraphSXBlock(block, cursor.contentWidth, theme);
+      const graph = layoutGraphSXBlock(block, cursor.contentWidth, theme, nativeMathProfile);
       ensure(graph.totalHeight + 12);
       const x = cursor.x + graph.x;
       cursor.page.objects.push({
@@ -193,6 +193,7 @@ export function paginate(
         viewBox: graph.viewBox,
         summary: graph.summary,
         displayList: graph.displayList,
+        nativeMathProfile: graph.nativeMathProfile,
         x,
         y: cursor.y,
         width: graph.width,
@@ -312,7 +313,8 @@ function resolveImageLength(length: { value: number; unit: "px" | "percent" } | 
 function layoutGraphSXBlock(
   block: Extract<LayoutBlock, { type: "graphsx" }>,
   contentWidth: number,
-  theme: DocumentTheme
+  theme: DocumentTheme,
+  nativeMathProfile?: NativeMathFontProfileName
 ): {
   x: number;
   width: number;
@@ -325,9 +327,11 @@ function layoutGraphSXBlock(
   viewBox: string;
   summary: string;
   displayList: ReturnType<typeof renderGraphSX>["displayList"];
+  nativeMathProfile: NativeMathFontProfileName;
   warnings: string[];
 } {
-  const artifact = renderGraphSX(block.source, theme);
+  const profile = nativeMathProfile ?? "openmath";
+  const artifact = renderGraphSX(block.source, theme, profile);
   const requestedWidth = resolveImageLength(block.width, contentWidth);
   const width = requestedWidth === undefined ? artifact.width : Math.min(contentWidth, requestedWidth);
   const scale = artifact.width > 0 ? width / artifact.width : 1;
@@ -358,6 +362,7 @@ function layoutGraphSXBlock(
     viewBox: artifact.viewBox,
     summary: artifact.summary,
     displayList: artifact.displayList,
+    nativeMathProfile: profile,
     warnings
   };
 }
@@ -385,8 +390,16 @@ function drawLines(
         : 0;
     let x = cursor.x + (options.xOffset ?? 0) + alignOffset;
     const baseline = cursor.y + fontSize;
+    let pendingText: Extract<DisplayObject, { type: "text" }> | undefined;
+    let pendingKey = "";
+    const flushText = () => {
+      if (pendingText) cursor.page.objects.push(pendingText);
+      pendingText = undefined;
+      pendingKey = "";
+    };
     for (const run of line.runs) {
       if (run.math) {
+        flushText();
         const latex = run.text.trim();
         const measured = getMeasuredMath(mathMeasurements, latex, false, fontSize, mathRenderer, nativeMathMetrics, nativeMathProfile);
         const width = measured?.width ?? measureInlineMathBoxWidth(latex, fontSize, theme);
@@ -416,26 +429,45 @@ function drawLines(
         continue;
       }
       const font = run.code ? theme.monoFontFamily : theme.fontFamily;
-      cursor.page.objects.push({
-        type: "text",
-        text: run.text,
-        x,
-        y: baseline,
-        fontSize,
-        fontFamily: font,
-        color: run.link ? theme.link : options.color,
-        bold: options.bold || run.bold,
-        italic: run.italic || run.math,
-        link: run.link
-      });
-      x += measureText(run.text, {
+      const textWidth = measureText(run.text, {
         fontSize,
         fontFamily: theme.fontFamily,
         monoFontFamily: theme.monoFontFamily,
         ...run,
         bold: options.bold || run.bold
       });
+      const textObject: Extract<DisplayObject, { type: "text" }> = {
+        type: "text",
+        text: run.text,
+        x,
+        y: baseline,
+        width: textWidth,
+        fontSize,
+        fontFamily: font,
+        color: run.link ? theme.link : options.color,
+        bold: options.bold || run.bold,
+        italic: run.italic || run.math,
+        link: run.link
+      };
+      const textKey = [
+        textObject.fontFamily,
+        textObject.fontSize,
+        textObject.color,
+        textObject.bold ? "b" : "",
+        textObject.italic ? "i" : "",
+        textObject.link ?? ""
+      ].join("\u0000");
+      if (pendingText && pendingKey === textKey) {
+        pendingText.text += run.text;
+        pendingText.width = (pendingText.width ?? 0) + textWidth;
+      } else {
+        flushText();
+        pendingText = textObject;
+        pendingKey = textKey;
+      }
+      x += textWidth;
     }
+    flushText();
     cursor.y += Math.max(line.height, fontSize * options.lineHeight);
   }
 }

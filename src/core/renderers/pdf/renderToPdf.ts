@@ -18,15 +18,36 @@ import { isNativeMathRenderer } from "../math/nativeMath";
 export type PdfRenderOptions = {
   rasterizeMath?: boolean;
   mathPdfMode?: "raster" | "vector" | "glyph";
+  subsetFonts?: boolean;
 };
 
 export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOptions = {}): Promise<Uint8Array> {
+  const subsetFonts = options.subsetFonts ?? false;
+  if (!subsetFonts) return renderToPdfAttempt(layout, options, false);
+
+  try {
+    return await renderToPdfAttempt(layout, options, true);
+  } catch (error) {
+    if (!isFontSubsetError(error)) throw error;
+    if (isDebugLogEnabled("pdf")) {
+      console.warn("[pdf-export] font subsetting failed; retrying with full fonts", error);
+    }
+    return renderToPdfAttempt(layout, options, false, "subset-fallback");
+  }
+}
+
+async function renderToPdfAttempt(
+  layout: PagedDisplayList,
+  options: PdfRenderOptions,
+  subsetFonts: boolean,
+  fontSubsetFallback?: "subset-fallback"
+): Promise<Uint8Array> {
   const start = now();
   const mathPdfMode = options.mathPdfMode ?? (options.rasterizeMath ?? true ? "raster" : "vector");
   const fontStart = now();
   const pdf = await PDFDocument.create();
 
-  const fonts = await loadPdfFonts(pdf, layout, mathPdfMode);
+  const fonts = await loadPdfFonts(pdf, layout, mathPdfMode, subsetFonts);
   const fontMs = now() - fontStart;
   const drawStart = now();
   const mathStats: PdfMathArtifactStats = {
@@ -104,6 +125,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     pages: layout.pages.length,
     bytes: bytes.byteLength,
     mathMode: mathPdfMode === "raster" ? "rasterized-artifact" : mathPdfMode === "glyph" ? "pdf-glyph" : "pdf-vector",
+    fontSubset: fontSubsetFallback ?? (subsetFonts ? "subset" : "full"),
     objects: objectCounts,
     mathArtifacts: {
       attempted: mathStats.attempted,
@@ -136,4 +158,15 @@ export async function downloadPdf(layout: PagedDisplayList, filename: string, op
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function isFontSubsetError(error: unknown): boolean {
+  const value = error as { name?: unknown; message?: unknown; stack?: unknown };
+  const message = [
+    typeof value?.name === "string" ? value.name : "",
+    typeof value?.message === "string" ? value.message : "",
+    typeof value?.stack === "string" ? value.stack : "",
+    String(error)
+  ].join("\n");
+  return /fontkit|CFFSubset|EncodeStream|writeUInt8|out of bounds|subset/i.test(message);
 }

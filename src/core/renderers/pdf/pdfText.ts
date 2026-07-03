@@ -1,4 +1,4 @@
-import { PDFPage, PDFFont, rgb } from "pdf-lib";
+import { PDFPage, PDFFont, popGraphicsState, pushGraphicsState, rgb, setCharacterSqueeze } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 
 export function drawPdfText(
@@ -13,6 +13,10 @@ export function drawPdfText(
   const printableText = canEncode(selectedFont, text) ? text : stripUnencodableText(selectedFont, text);
   if (!printableText) return;
 
+  const naturalWidth = selectedFont.widthOfTextAtSize(printableText, object.fontSize);
+  const targetWidth = printableText === text ? object.width : undefined;
+  const squeeze = textSqueezePercent(naturalWidth, targetWidth);
+  if (squeeze !== undefined) page.pushOperators(pushGraphicsState(), setCharacterSqueeze(squeeze));
   page.drawText(printableText, {
     x: object.x,
     y: pageHeight - object.y,
@@ -20,6 +24,7 @@ export function drawPdfText(
     font: selectedFont,
     color: hexToRgb(object.color)
   });
+  if (squeeze !== undefined) page.pushOperators(popGraphicsState());
 }
 
 export function hexToRgb(hex: string) {
@@ -39,4 +44,11 @@ function canEncode(font: PDFFont, text: string): boolean {
 
 function stripUnencodableText(font: PDFFont, text: string): string {
   return Array.from(text).filter((char) => canEncode(font, char)).join("");
+}
+
+function textSqueezePercent(naturalWidth: number, targetWidth: number | undefined): number | undefined {
+  if (!targetWidth || naturalWidth <= 0) return undefined;
+  const ratio = targetWidth / naturalWidth;
+  if (!Number.isFinite(ratio) || Math.abs(ratio - 1) < 0.01) return undefined;
+  return Math.max(80, Math.min(125, ratio * 100));
 }

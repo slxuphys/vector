@@ -9,6 +9,7 @@ import { escapeXml } from "../../utils/sanitize";
 import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { defaultTheme } from "../../theme/defaultTheme";
 import type { DocumentTheme } from "../../theme/themeTypes";
+import type { NativeMathFontProfileName } from "../math/nativeMathProfiles";
 import { renderGraphSXDisplayListBody, renderGraphSXDisplayListToSvg } from "./renderGraphSXDisplayList";
 
 export type GraphSXArtifact = {
@@ -21,10 +22,14 @@ export type GraphSXArtifact = {
   displayList: GraphSXDisplayList;
 };
 
-export function renderGraphSX(source: string, theme: DocumentTheme = defaultTheme): GraphSXArtifact {
+export function renderGraphSX(
+  source: string,
+  theme: DocumentTheme = defaultTheme,
+  nativeMathProfile: NativeMathFontProfileName = "openmath"
+): GraphSXArtifact {
   try {
     const model = parseGraphSXDocument(source);
-    const defaults = graphSXDefaults(theme);
+    const defaults = graphSXDefaults(theme, nativeMathProfile);
     const displayList = model.type === "graph"
       ? buildGraphDisplayList(model, {
           minWidth: 0,
@@ -46,10 +51,10 @@ export function renderGraphSX(source: string, theme: DocumentTheme = defaultThem
         displayList
       });
     }
-    const svg = renderGraphSXDisplayListToSvg(displayList);
+    const svg = renderGraphSXDisplayListToSvg(displayList, nativeMathProfile);
     return {
       svg,
-      svgBody: renderGraphSXDisplayListBody(displayList),
+      svgBody: renderGraphSXDisplayListBody(displayList, nativeMathProfile),
       viewBox: `0 0 ${displayList.width} ${displayList.height}`,
       width: displayList.width,
       height: displayList.height,
@@ -62,7 +67,7 @@ export function renderGraphSX(source: string, theme: DocumentTheme = defaultThem
   }
 }
 
-function graphSXDefaults(theme: DocumentTheme): Record<string, unknown> {
+function graphSXDefaults(theme: DocumentTheme, nativeMathProfile: NativeMathFontProfileName): Record<string, unknown> {
   return {
     text: {
       fontFamily: theme.fontFamily,
@@ -72,7 +77,7 @@ function graphSXDefaults(theme: DocumentTheme): Record<string, unknown> {
     math: {
       fontSize: theme.fontSize,
       fill: theme.text,
-      profile: "openmath"
+      profile: nativeMathProfile
     },
     graph: {
       labelFontSize: theme.fontSize * 1.33,

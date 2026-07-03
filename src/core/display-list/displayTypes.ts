@@ -8,6 +8,7 @@ export type DisplayTextRun = {
   text: string;
   x: number;
   y: number;
+  width?: number;
   fontSize: number;
   fontFamily: string;
   color: string;
@@ -67,6 +68,7 @@ export type DisplayObject =
       viewBox: string;
       summary: string;
       displayList?: GraphSXDisplayList;
+      nativeMathProfile?: NativeMathFontProfileName;
       x: number;
       y: number;
       width: number;

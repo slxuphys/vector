@@ -5,47 +5,62 @@ import {
   layoutNativeMath,
   renderNativeMathSvg
 } from "../math/nativeMath";
+import type { NativeMathFontProfileName } from "../math/nativeMathProfiles";
 
-export function renderGraphSXDisplayListToSvg(displayList: GraphSXDisplayList): string {
+export function renderGraphSXDisplayListToSvg(
+  displayList: GraphSXDisplayList,
+  nativeMathProfile: NativeMathFontProfileName = "openmath"
+): string {
   const body = displayList.type === "graph"
     ? [
         renderGraphArrowDefs(displayList),
-        renderLayer(displayList, "edge"),
-        renderLayer(displayList, "path"),
-        renderLayer(displayList, "node")
+        renderLayer(displayList, "edge", nativeMathProfile),
+        renderLayer(displayList, "path", nativeMathProfile),
+        renderLayer(displayList, "node", nativeMathProfile)
       ].join("")
     : [
         renderClipDefs(displayList),
-        ...displayList.items.map((item) => renderItem(item, displayList))
+        ...displayList.items.map((item) => renderItem(item, displayList, nativeMathProfile))
       ].join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${round(displayList.width)}" height="${round(displayList.height)}" viewBox="0 0 ${round(displayList.width)} ${round(displayList.height)}">${body}</svg>`;
 }
 
-export function renderGraphSXDisplayListBody(displayList: GraphSXDisplayList): string {
+export function renderGraphSXDisplayListBody(
+  displayList: GraphSXDisplayList,
+  nativeMathProfile: NativeMathFontProfileName = "openmath"
+): string {
   return displayList.type === "graph"
     ? [
         renderGraphArrowDefs(displayList),
-        renderLayer(displayList, "edge"),
-        renderLayer(displayList, "path"),
-        renderLayer(displayList, "node")
+        renderLayer(displayList, "edge", nativeMathProfile),
+        renderLayer(displayList, "path", nativeMathProfile),
+        renderLayer(displayList, "node", nativeMathProfile)
       ].join("")
     : [
         renderClipDefs(displayList),
-        ...displayList.items.map((item) => renderItem(item, displayList))
+        ...displayList.items.map((item) => renderItem(item, displayList, nativeMathProfile))
       ].join("");
 }
 
-function renderLayer(displayList: GraphSXDisplayList, layer: "edge" | "path" | "node"): string {
-  return `<g>${displayList.items.filter((item) => item.layer === layer).map((item) => renderItem(item, displayList)).join("")}</g>`;
+function renderLayer(
+  displayList: GraphSXDisplayList,
+  layer: "edge" | "path" | "node",
+  nativeMathProfile: NativeMathFontProfileName
+): string {
+  return `<g>${displayList.items.filter((item) => item.layer === layer).map((item) => renderItem(item, displayList, nativeMathProfile)).join("")}</g>`;
 }
 
-function renderItem(item: GraphSXDisplayItem | undefined, displayList?: GraphSXDisplayList): string {
+function renderItem(
+  item: GraphSXDisplayItem | undefined,
+  displayList?: GraphSXDisplayList,
+  nativeMathProfile: NativeMathFontProfileName = "openmath"
+): string {
   if (!item) return "";
   if (item.type === "plot" && item.displayList) {
-    return `<svg ${attrsToString(displayPropsToSvgAttrs(itemDisplayProps(item), item.style, displayList))} viewBox="0 0 ${round(item.displayList.width)} ${round(item.displayList.height)}">${renderGraphSXDisplayListBody(item.displayList)}</svg>`;
+    return `<svg ${attrsToString(displayPropsToSvgAttrs(itemDisplayProps(item), item.style, displayList))} viewBox="0 0 ${round(item.displayList.width)} ${round(item.displayList.height)}">${renderGraphSXDisplayListBody(item.displayList, nativeMathProfile)}</svg>`;
   }
   if (item.type === "element" && item.tag) {
-    const children = item.children?.map((child) => renderItem(child, displayList)).join("") ?? "";
+    const children = item.children?.map((child) => renderItem(child, displayList, nativeMathProfile)).join("") ?? "";
     const text = item.text == null ? "" : escapeXml(String(item.text));
     return `<${item.tag}${attrsToString(displayPropsToSvgAttrs(itemDisplayProps(item), item.style, displayList))}>${text}${children}</${item.tag}>`;
   }
@@ -56,7 +71,7 @@ function renderItem(item: GraphSXDisplayItem | undefined, displayList?: GraphSXD
     return renderTextItem(item);
   }
   if (item.type === "math") {
-    return renderMathItem(item);
+    return renderMathItem(item, nativeMathProfile);
   }
   return "";
 }
@@ -74,12 +89,12 @@ function renderTextItem(item: GraphSXDisplayItem): string {
   return `<text${attrsToString(attrs)}>${escapeXml(item.text ?? "")}</text>`;
 }
 
-function renderMathItem(item: GraphSXDisplayItem): string {
+function renderMathItem(item: GraphSXDisplayItem, nativeMathProfile: NativeMathFontProfileName): string {
   const source = item.source ?? item.fallback ?? "";
   const fontSize = item.fontSize ?? 12;
   const color = stringProp(item.textStyle?.fill ?? item.style?.fill, "#111111");
-  const metrics = getDefaultOpenMathMetricsForProfile("openmath");
-  const layout = layoutNativeMath(source, false, fontSize, metrics, "openmath");
+  const metrics = getDefaultOpenMathMetricsForProfile(nativeMathProfile);
+  const layout = layoutNativeMath(source, false, fontSize, metrics, nativeMathProfile);
   const { x, y } = mathAnchorPosition(item, layout.width, layout.height, layout.baseline);
   const svg = renderNativeMathSvg({
     type: "math",
@@ -97,7 +112,7 @@ function renderMathItem(item: GraphSXDisplayItem): string {
     fontSize,
     color,
     nativeMetrics: metrics,
-    nativeMathProfile: "openmath",
+    nativeMathProfile,
     nativeLayout: layout
   });
   return item.rotate ? `<g transform="rotate(${round(item.rotate)} ${round(item.x ?? x)} ${round(item.y ?? y)})">${svg}</g>` : svg;

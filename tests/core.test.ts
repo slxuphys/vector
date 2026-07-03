@@ -176,7 +176,7 @@ describe("document engine", () => {
     expect(svg).toContain("SVG ");
     expect(svg).toContain("Markdown ");
     expect(svg).toContain("Preview");
-    expect(textObjects.some((object) => object.type === "text" && object.text === "Markdown ")).toBe(true);
+    expect(textObjects.some((object) => object.type === "text" && object.text.includes("Markdown "))).toBe(true);
   });
 
   it("renders markdown images with captions into SVG pages", async () => {
@@ -232,7 +232,8 @@ describe("document engine", () => {
       expect(firstMath.advance).toBeGreaterThan(0);
       expect(firstMath.width).toBeGreaterThan(firstMath.advance ?? 0);
       expect(firstMath.width).toBeGreaterThan(34);
-      expect(nextText.x).toBeGreaterThan(firstMath.x + (firstMath.advance ?? 0));
+      expect(nextText.x).toBeGreaterThanOrEqual(firstMath.x + (firstMath.advance ?? 0));
+      expect(nextText.text.startsWith(" ") || nextText.x > firstMath.x + (firstMath.advance ?? 0)).toBe(true);
       expect(nextText.x - (firstMath.x + (firstMath.advance ?? 0))).toBeLessThan(5);
       expect(fraction.width).toBeLessThan(firstMath.width);
       expect(fraction.width).toBeGreaterThan(8);

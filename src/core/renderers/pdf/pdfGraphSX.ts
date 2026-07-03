@@ -228,8 +228,9 @@ function drawGraphSXMath(
   const source = String(item.source ?? item.fallback ?? "");
   const fontSize = numberAttr(item.fontSize, 12) * scale;
   const color = stringAttr(item.textStyle?.fill ?? item.style?.fill, "#111111");
-  const metrics = getDefaultOpenMathMetricsForProfile("openmath");
-  const layout = layoutNativeMath(source, false, fontSize, metrics, "openmath");
+  const nativeMathProfile = object.nativeMathProfile ?? "openmath";
+  const metrics = getDefaultOpenMathMetricsForProfile(nativeMathProfile);
+  const layout = layoutNativeMath(source, false, fontSize, metrics, nativeMathProfile);
   const safeScale = scale || 1;
   const localLayoutWidth = layout.width / safeScale;
   const localLayoutHeight = layout.height / safeScale;
@@ -264,7 +265,7 @@ function drawGraphSXMath(
     fontSize,
     color,
     nativeMetrics: metrics,
-    nativeMathProfile: "openmath",
+    nativeMathProfile,
     nativeLayout: layout
   }, fonts, pageHeight);
   if (rotate) page.pushOperators(popGraphicsState());
