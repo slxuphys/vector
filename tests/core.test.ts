@@ -23,8 +23,11 @@ import {
   loadNativeFontFromBytes
 } from "../src/core/renderers/math/nativeFontMetrics";
 import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
+import { measureText } from "../src/core/layout/measureText";
 import { normalizeAst } from "../src/core/markdown/normalizeAst";
 import { paginate } from "../src/core/layout/paginate";
+import { loadTextFontFromBytes } from "../src/core/renderers/text/textFontMetrics";
+import { newComputerModernFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
 import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
 
@@ -155,6 +158,17 @@ const x = 1
 });
 
 describe("document engine", () => {
+  it("measures bundled text fonts from font files", () => {
+    loadTextFontFromBytes("new-computer-modern:regular", readFileSync("src/assets/fonts/cmu-serif-regular.otf"));
+    const width = measureText("This sample", {
+      fontSize: 12,
+      fontFamily: newComputerModernFontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    });
+
+    expect(width).toBeCloseTo(63.408, 3);
+  });
+
   it("creates a paged display list", async () => {
     const engine = createDocumentEngine({ useWorker: false });
     const { layout, stats } = await engine.layout("# Title\n\nBody text\n\n$$\nE = mc^2\n$$");

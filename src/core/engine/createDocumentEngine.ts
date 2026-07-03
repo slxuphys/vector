@@ -10,6 +10,7 @@ import { parseMarkdown } from "../markdown/parseMarkdown";
 import { defaultTheme } from "../theme/defaultTheme";
 import { isNativeMathRenderer, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
+import { loadTextFontsForTheme } from "../renderers/text/textFontMetrics";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
@@ -33,6 +34,7 @@ export type PreparedLayout = {
 export function createDocumentEngine(options: EngineOptions = {}): DocumentEngine {
   return {
     async layout(markdown: string) {
+      await loadTextFontsForTheme({ ...defaultTheme, ...(options.theme ?? {}) });
       if (isNativeMathRenderer(options.mathRenderer)) await loadNativeMathFonts();
       return layoutMarkdown(markdown, options);
     }

@@ -1,4 +1,4 @@
-export type DebugLogKey = "math" | "graph" | "preview" | "pdf";
+export type DebugLogKey = "math" | "graph" | "preview" | "pdf" | "text";
 
 export type DebugLogSettings = Record<DebugLogKey, boolean>;
 
@@ -6,7 +6,8 @@ export const defaultDebugLogSettings: DebugLogSettings = {
   math: false,
   graph: false,
   preview: true,
-  pdf: false
+  pdf: false,
+  text: false
 };
 
 const storageKey = "svg-md-debug-log-settings";

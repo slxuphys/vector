@@ -11,11 +11,13 @@ import type { EngineOptions } from "../core/engine/workerProtocol";
 import type { PagedDisplayList, PreviewStats } from "../core/display-list/displayTypes";
 import type { MathMeasurementMap } from "../core/layout/mathMetrics";
 import { clearTextMeasureCache } from "../core/layout/measureText";
+import { defaultTheme } from "../core/theme/defaultTheme";
 import {
   libertinusSerifFontFamily,
   latinModernRomanFontFamily,
   newComputerModernFontFamily
 } from "../core/renderers/text/latinModernRomanFont";
+import { loadTextFontsForTheme } from "../core/renderers/text/textFontMetrics";
 
 export type DocumentLayoutState = {
   layout?: PagedDisplayList;
@@ -126,6 +128,7 @@ async function layoutWithPremeasuredMath(
 }
 
 async function waitForTextFonts(options: EngineOptions): Promise<void> {
+  await loadTextFontsForTheme({ ...defaultTheme, ...(options.theme ?? {}) });
   if (typeof document === "undefined" || !document.fonts) return;
   const fontFamily = options.theme?.fontFamily;
   const installedFontFace = ensureDocumentFontFaceCss(options.theme?.fontFaceCss);

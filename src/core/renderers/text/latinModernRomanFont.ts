@@ -6,10 +6,10 @@ import libertinusSerifBoldItalicUrl from "../../../assets/fonts/libertinus-serif
 import libertinusSerifBoldUrl from "../../../assets/fonts/libertinus-serif-bold.otf?url";
 import libertinusSerifItalicUrl from "../../../assets/fonts/libertinus-serif-italic.otf?url";
 import libertinusSerifRegularUrl from "../../../assets/fonts/libertinus-serif-regular.otf?url";
-import newComputerModernBoldItalicUrl from "../../../assets/fonts/newcm10-bolditalic.otf?url";
-import newComputerModernBoldUrl from "../../../assets/fonts/newcm10-bold.otf?url";
-import newComputerModernItalicUrl from "../../../assets/fonts/newcm10-italic.otf?url";
-import newComputerModernRegularUrl from "../../../assets/fonts/newcm10-regular.otf?url";
+import newComputerModernBoldItalicUrl from "../../../assets/fonts/cmu-serif-bolditalic.otf?url";
+import newComputerModernBoldUrl from "../../../assets/fonts/cmu-serif-bold.otf?url";
+import newComputerModernItalicUrl from "../../../assets/fonts/cmu-serif-italic.otf?url";
+import newComputerModernRegularUrl from "../../../assets/fonts/cmu-serif-regular.otf?url";
 import type { OpenMathFontProfileName } from "../math/openMathFont";
 
 export const latinModernRomanFontFamily = "Latin Modern Roman";

@@ -1,4 +1,6 @@
 import type { InlineRun } from "./layoutBlocks";
+import { measureTextWithFontFile } from "../renderers/text/textFontMetrics";
+import { isDebugLogEnabled } from "../utils/debugSettings";
 
 export type TextStyle = {
   fontSize: number;
@@ -11,6 +13,7 @@ export type TextStyle = {
 
 const canvasContext = createCanvasContext();
 const cache = new Map<string, number>();
+const fallbackLogKeys = new Set<string>();
 
 export function measureText(text: string, style: TextStyle): number {
   if (text.length === 0) return 0;
@@ -18,6 +21,13 @@ export function measureText(text: string, style: TextStyle): number {
   const cacheKey = `${font}\n${text}`;
   const cached = cache.get(cacheKey);
   if (cached !== undefined) return cached;
+
+  const fontFileWidth = measureTextWithFontFile(text, style);
+  if (fontFileWidth !== undefined) {
+    cache.set(cacheKey, fontFileWidth);
+    return fontFileWidth;
+  }
+  logTextMeasureFallback(text, style);
 
   if (canvasContext) {
     canvasContext.font = font;
@@ -39,6 +49,24 @@ export function measureText(text: string, style: TextStyle): number {
   const measured = width * weight;
   cache.set(cacheKey, measured);
   return measured;
+}
+
+function logTextMeasureFallback(text: string, style: TextStyle): void {
+  if (typeof console === "undefined" || !isDebugLogEnabled("text")) return;
+  const normalized = text.length > 40 ? `${text.slice(0, 40)}...` : text;
+  const key = `${style.fontFamily}:${style.bold ? "b" : ""}${style.italic ? "i" : ""}:${style.code ? "code" : ""}:${normalized}`;
+  if (fallbackLogKeys.has(key)) return;
+  fallbackLogKeys.add(key);
+  if (fallbackLogKeys.size > 80) return;
+  console.log("[text-measure-fallback]", {
+    text: normalized,
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    bold: Boolean(style.bold),
+    italic: Boolean(style.italic),
+    code: Boolean(style.code),
+    reason: style.code ? "code font" : "font file metrics unavailable"
+  });
 }
 
 export function measureRun(run: InlineRun, style: TextStyle): number {
