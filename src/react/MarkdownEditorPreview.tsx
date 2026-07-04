@@ -152,7 +152,10 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
     setPdfPending(true);
     window.setTimeout(() => {
       const mathPdfMode = usingGlyphPdf ? "glyph" : usingMathJaxVector || experimentalVectorMath ? "vector" : "raster";
-      void downloadPdf(layout, "document.pdf", { mathPdfMode })
+      void downloadPdf(layout, "document.pdf", { mathPdfMode, subsetFonts: true })
+        .catch((error) => {
+          console.error("[pdf-export] failed", error);
+        })
         .finally(() => setPdfPending(false));
     }, 150);
   };

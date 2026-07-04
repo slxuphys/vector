@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import fontkit from "@pdf-lib/fontkit";
+import { PDFDocument } from "pdf-lib";
 import { createDocumentEngine } from "../src/core/engine/createDocumentEngine";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
+import { subsetFontWithHarfbuzz } from "../src/core/renderers/pdf/pdfFontSubset";
 import { renderKatex } from "../src/core/renderers/math/renderKatex";
 import {
   defaultNativeMathMetrics,
@@ -260,6 +263,43 @@ describe("document engine", () => {
     const bytes = await renderToPdf(layout);
 
     expect(bytes.length).toBeGreaterThan(100);
+  });
+
+  it("subsets bundled PDF text fonts", async () => {
+    const fontBytes = readFileSync("src/assets/fonts/cmu-serif-regular.otf");
+    const createPdf = async (subsetFont: boolean) => {
+      const pdf = await PDFDocument.create();
+      pdf.registerFontkit(fontkit);
+      const font = await pdf.embedFont(fontBytes, { subset: subsetFont });
+      const page = pdf.addPage([320, 120]);
+      page.drawText("This sample uses a bundled Computer Modern text font.", {
+        x: 24,
+        y: 64,
+        size: 12,
+        font
+      });
+      return pdf.save();
+    };
+    const full = await createPdf(false);
+    const subset = await createPdf(true);
+
+    expect(subset.length).toBeGreaterThan(100);
+    expect(subset.length).toBeLessThan(full.length);
+  });
+
+  it("subsets bundled text fonts with HarfBuzz WASM", async () => {
+    const fontBytes = readFileSync("src/assets/fonts/cmu-serif-regular.otf");
+    const wasmBytes = readFileSync("node_modules/subset-font/node_modules/harfbuzzjs/hb-subset.wasm");
+    const subset = await subsetFontWithHarfbuzz(fontBytes, "This is a test", {
+      noLayoutClosure: true,
+      wasmBytes
+    });
+    const font = fontkit.create(subset);
+    const missingGlyphs = font.characterSet.filter((codePoint) => !font.glyphForCodePoint(codePoint));
+
+    expect(subset.length).toBeGreaterThan(100);
+    expect(subset.length).toBeLessThan(fontBytes.length);
+    expect(missingGlyphs).toEqual([]);
   });
 
   it("tokenizes latex for PDF math fallback", () => {

@@ -1,6 +1,7 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFFont, StandardFonts } from "pdf-lib";
 import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
+import { isDebugLogEnabled } from "../../utils/debugSettings";
 import katexMainBoldUrl from "katex/dist/fonts/KaTeX_Main-Bold.ttf?url";
 import katexMainBoldItalicUrl from "katex/dist/fonts/KaTeX_Main-BoldItalic.ttf?url";
 import katexMainItalicUrl from "katex/dist/fonts/KaTeX_Main-Italic.ttf?url";
@@ -19,6 +20,7 @@ import {
   newComputerModernFontFamily,
   newComputerModernFontUrls
 } from "../text/latinModernRomanFont";
+import { subsetFontWithHarfbuzz } from "./pdfFontSubset";
 
 type TextObject = Extract<DisplayObject, { type: "text" }>;
 
@@ -72,7 +74,11 @@ type PdfFontUsage = {
   latinModernRoman: boolean;
   libertinusSerif: boolean;
   newComputerModern: boolean;
+  subsetFontText: Map<string, string>;
 };
+
+type FontSubsetText = (url: string) => string | undefined;
+type FontVariantUsed = (url: string) => boolean;
 
 export async function loadPdfFonts(
   pdf: PDFDocument,
@@ -81,6 +87,8 @@ export async function loadPdfFonts(
   subsetCustomFonts = false
 ): Promise<PdfFontSet> {
   const usage = layout ? collectPdfFontUsage(layout, mathPdfMode) : allPdfFontUsage();
+  const getSubsetText: FontSubsetText = (url) => subsetCustomFonts && isSubsettableCustomFontUrl(url) ? usage.subsetFontText.get(url) : undefined;
+  const isVariantUsed: FontVariantUsed = (url) => layout ? usage.subsetFontText.has(url) : true;
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
@@ -88,14 +96,40 @@ export async function loadPdfFonts(
   const mono = await pdf.embedFont(StandardFonts.Courier);
 
   const [tex, openMath, openMathLibertinus, openMathNewComputerModern, latinModernRoman, libertinusSerif, newComputerModern] = await Promise.all([
-    usage.tex ? loadTexFonts(pdf, subsetCustomFonts) : undefined,
-    usage.openMath ? loadOpenMathFont(pdf, openMathFontUrl, subsetCustomFonts) : undefined,
-    usage.openMathLibertinus ? loadOpenMathFont(pdf, openMathFontProfiles.libertinus.url, subsetCustomFonts) : undefined,
-    usage.openMathNewComputerModern ? loadOpenMathFont(pdf, openMathFontProfiles["new-computer-modern"].url, subsetCustomFonts) : undefined,
-    usage.latinModernRoman ? loadLatinModernRomanFonts(pdf, subsetCustomFonts) : undefined,
-    usage.libertinusSerif ? loadLibertinusSerifFonts(pdf, subsetCustomFonts) : undefined,
-    usage.newComputerModern ? loadNewComputerModernFonts(pdf, subsetCustomFonts) : undefined
+    usage.tex ? loadTexFonts(pdf, getSubsetText) : undefined,
+    usage.openMath ? loadOpenMathFont(pdf, openMathFontUrl, getSubsetText) : undefined,
+    usage.openMathLibertinus ? loadOpenMathFont(pdf, openMathFontProfiles.libertinus.url, getSubsetText) : undefined,
+    usage.openMathNewComputerModern ? loadOpenMathFont(pdf, openMathFontProfiles["new-computer-modern"].url, getSubsetText) : undefined,
+    usage.latinModernRoman ? loadLatinModernRomanFonts(pdf, getSubsetText, isVariantUsed) : undefined,
+    usage.libertinusSerif ? loadLibertinusSerifFonts(pdf, getSubsetText, isVariantUsed) : undefined,
+    usage.newComputerModern ? loadNewComputerModernFonts(pdf, getSubsetText, isVariantUsed) : undefined
   ]);
+  if (isDebugLogEnabled("pdf")) {
+    console.log("[pdf-fonts]", {
+      usage: {
+        tex: usage.tex,
+        openMath: usage.openMath,
+        openMathLibertinus: usage.openMathLibertinus,
+        openMathNewComputerModern: usage.openMathNewComputerModern,
+        latinModernRoman: usage.latinModernRoman,
+        libertinusSerif: usage.libertinusSerif,
+        newComputerModern: usage.newComputerModern
+      },
+      subsetFonts: Array.from(usage.subsetFontText, ([url, text]) => ({
+        url,
+        textLength: text.length
+      })),
+      loaded: {
+        tex: Boolean(tex),
+        openMath: Boolean(openMath),
+        openMathLibertinus: Boolean(openMathLibertinus),
+        openMathNewComputerModern: Boolean(openMathNewComputerModern),
+        latinModernRoman: Boolean(latinModernRoman),
+        libertinusSerif: Boolean(libertinusSerif),
+        newComputerModern: Boolean(newComputerModern)
+      }
+    });
+  }
   return { regular, bold, italic, boldItalic, mono, tex, openMath, openMathLibertinus, openMathNewComputerModern, latinModernRoman, libertinusSerif, newComputerModern };
 }
 
@@ -155,19 +189,19 @@ function selectTexTextFont(object: TextObject, fonts: NonNullable<PdfFontSet["te
   return fonts.regular;
 }
 
-async function loadTexFonts(pdf: PDFDocument, subsetCustomFonts: boolean): Promise<PdfFontSet["tex"]> {
+async function loadTexFonts(pdf: PDFDocument, getSubsetText: FontSubsetText): Promise<PdfFontSet["tex"]> {
   try {
     pdf.registerFontkit(fontkit);
     const [regular, bold, italic, boldItalic, mathItalic, size1, size2, size3, size4] = await Promise.all([
-      embedCustomFont(pdf, katexMainRegularUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexMainBoldUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexMainItalicUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexMainBoldItalicUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexMathItalicUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexSize1RegularUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexSize2RegularUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexSize3RegularUrl, subsetCustomFonts),
-      embedCustomFont(pdf, katexSize4RegularUrl, subsetCustomFonts)
+      embedCustomFont(pdf, katexMainRegularUrl, getSubsetText),
+      embedCustomFont(pdf, katexMainBoldUrl, getSubsetText),
+      embedCustomFont(pdf, katexMainItalicUrl, getSubsetText),
+      embedCustomFont(pdf, katexMainBoldItalicUrl, getSubsetText),
+      embedCustomFont(pdf, katexMathItalicUrl, getSubsetText),
+      embedCustomFont(pdf, katexSize1RegularUrl, getSubsetText),
+      embedCustomFont(pdf, katexSize2RegularUrl, getSubsetText),
+      embedCustomFont(pdf, katexSize3RegularUrl, getSubsetText),
+      embedCustomFont(pdf, katexSize4RegularUrl, getSubsetText)
     ]);
     return { regular, bold, italic, boldItalic, mathItalic, size1, size2, size3, size4 };
   } catch {
@@ -175,63 +209,109 @@ async function loadTexFonts(pdf: PDFDocument, subsetCustomFonts: boolean): Promi
   }
 }
 
-async function loadOpenMathFont(pdf: PDFDocument, url = openMathFontUrl, subsetCustomFonts = false): Promise<PDFFont | undefined> {
+async function loadOpenMathFont(pdf: PDFDocument, url = openMathFontUrl, getSubsetText: FontSubsetText): Promise<PDFFont | undefined> {
   try {
     pdf.registerFontkit(fontkit);
-    return await embedCustomFont(pdf, url, subsetCustomFonts);
+    return await embedCustomFont(pdf, url, getSubsetText);
   } catch {
     return undefined;
   }
 }
 
-async function loadLatinModernRomanFonts(pdf: PDFDocument, subsetCustomFonts: boolean): Promise<PdfFontSet["latinModernRoman"]> {
+async function loadLatinModernRomanFonts(pdf: PDFDocument, getSubsetText: FontSubsetText, isVariantUsed: FontVariantUsed): Promise<PdfFontSet["latinModernRoman"]> {
   try {
     pdf.registerFontkit(fontkit);
-    const [regular, bold, italic, boldItalic] = await Promise.all([
-      embedCustomFont(pdf, latinModernRomanFontUrls.regular, subsetCustomFonts),
-      embedCustomFont(pdf, latinModernRomanFontUrls.bold, subsetCustomFonts),
-      embedCustomFont(pdf, latinModernRomanFontUrls.italic, subsetCustomFonts),
-      embedCustomFont(pdf, latinModernRomanFontUrls.boldItalic, subsetCustomFonts)
-    ]);
-    return { regular, bold, italic, boldItalic };
+    return await loadVariantFonts(pdf, latinModernRomanFontUrls, getSubsetText, isVariantUsed);
   } catch {
     return undefined;
   }
 }
 
-async function loadLibertinusSerifFonts(pdf: PDFDocument, subsetCustomFonts: boolean): Promise<PdfFontSet["libertinusSerif"]> {
+async function loadLibertinusSerifFonts(pdf: PDFDocument, getSubsetText: FontSubsetText, isVariantUsed: FontVariantUsed): Promise<PdfFontSet["libertinusSerif"]> {
   try {
     pdf.registerFontkit(fontkit);
-    const [regular, bold, italic, boldItalic] = await Promise.all([
-      embedCustomFont(pdf, libertinusSerifFontUrls.regular, subsetCustomFonts),
-      embedCustomFont(pdf, libertinusSerifFontUrls.bold, subsetCustomFonts),
-      embedCustomFont(pdf, libertinusSerifFontUrls.italic, subsetCustomFonts),
-      embedCustomFont(pdf, libertinusSerifFontUrls.boldItalic, subsetCustomFonts)
-    ]);
-    return { regular, bold, italic, boldItalic };
+    return await loadVariantFonts(pdf, libertinusSerifFontUrls, getSubsetText, isVariantUsed);
   } catch {
     return undefined;
   }
 }
 
-async function loadNewComputerModernFonts(pdf: PDFDocument, subsetCustomFonts: boolean): Promise<PdfFontSet["newComputerModern"]> {
+async function loadNewComputerModernFonts(pdf: PDFDocument, getSubsetText: FontSubsetText, isVariantUsed: FontVariantUsed): Promise<PdfFontSet["newComputerModern"]> {
   try {
     pdf.registerFontkit(fontkit);
-    const [regular, bold, italic, boldItalic] = await Promise.all([
-      embedCustomFont(pdf, newComputerModernFontUrls.regular, subsetCustomFonts),
-      embedCustomFont(pdf, newComputerModernFontUrls.bold, subsetCustomFonts),
-      embedCustomFont(pdf, newComputerModernFontUrls.italic, subsetCustomFonts),
-      embedCustomFont(pdf, newComputerModernFontUrls.boldItalic, subsetCustomFonts)
-    ]);
-    return { regular, bold, italic, boldItalic };
+    return await loadVariantFonts(pdf, newComputerModernFontUrls, getSubsetText, isVariantUsed);
   } catch {
     return undefined;
   }
 }
 
-async function embedCustomFont(pdf: PDFDocument, url: string, subsetCustomFonts: boolean): Promise<PDFFont> {
+async function loadVariantFonts(
+  pdf: PDFDocument,
+  urls: { regular: string; bold: string; italic: string; boldItalic: string },
+  getSubsetText: FontSubsetText,
+  isVariantUsed: FontVariantUsed
+): Promise<NonNullable<PdfFontSet["latinModernRoman"]>> {
+  const variants = {
+    regular: isVariantUsed(urls.regular) ? await embedCustomFont(pdf, urls.regular, getSubsetText) : undefined,
+    bold: isVariantUsed(urls.bold) ? await embedCustomFont(pdf, urls.bold, getSubsetText) : undefined,
+    italic: isVariantUsed(urls.italic) ? await embedCustomFont(pdf, urls.italic, getSubsetText) : undefined,
+    boldItalic: isVariantUsed(urls.boldItalic) ? await embedCustomFont(pdf, urls.boldItalic, getSubsetText) : undefined
+  };
+  const fallback = variants.regular ?? variants.bold ?? variants.italic ?? variants.boldItalic ?? await embedCustomFont(pdf, urls.regular, getSubsetText);
+  return {
+    regular: variants.regular ?? fallback,
+    bold: variants.bold ?? fallback,
+    italic: variants.italic ?? fallback,
+    boldItalic: variants.boldItalic ?? fallback
+  };
+}
+
+async function embedCustomFont(pdf: PDFDocument, url: string, getSubsetText: FontSubsetText): Promise<PDFFont> {
   const bytes = await loadFontBytes(url);
-  return pdf.embedFont(bytes, { subset: subsetCustomFonts && isSubsettableMathFontUrl(url) });
+  const subsetText = getSubsetText(url);
+  if (subsetText) {
+    try {
+      const subsetBytes = await createSubsetFont(bytes, subsetText);
+      validatePdfLibEmbeddableFont(subsetBytes);
+      if (isDebugLogEnabled("pdf")) {
+        console.log("[pdf-font-subset]", {
+          url,
+          textLength: subsetText.length,
+          originalBytes: bytes.byteLength,
+          subsetBytes: subsetBytes.byteLength,
+          embedded: subsetBytes.byteLength < bytes.byteLength ? "subset" : "full-sized-subset-output"
+        });
+      }
+      return pdf.embedFont(subsetBytes, { subset: false });
+    } catch (error) {
+      if (isDebugLogEnabled("pdf")) {
+        console.warn("[pdf-export] HarfBuzz font subsetting failed; embedding full font", {
+          url,
+          textLength: subsetText.length,
+          originalBytes: bytes.byteLength,
+          error
+        });
+      }
+    }
+  }
+  return pdf.embedFont(bytes, { subset: false });
+}
+
+async function createSubsetFont(bytes: Uint8Array, text: string): Promise<Uint8Array> {
+  return subsetFontWithHarfbuzz(bytes, text, { noLayoutClosure: true });
+}
+
+function validatePdfLibEmbeddableFont(bytes: Uint8Array): void {
+  const font = fontkit.create(bytes) as {
+    characterSet?: number[];
+    glyphForCodePoint?: (codePoint: number) => unknown;
+  };
+  if (!font.characterSet || !font.glyphForCodePoint) return;
+  for (const codePoint of font.characterSet) {
+    if (!font.glyphForCodePoint(codePoint)) {
+      throw new Error(`Subset font maps U+${codePoint.toString(16).toUpperCase()} to a missing glyph`);
+    }
+  }
 }
 
 async function loadFontBytes(url: string): Promise<Uint8Array> {
@@ -245,23 +325,26 @@ async function loadFontBytes(url: string): Promise<Uint8Array> {
   return bytes;
 }
 
-function isSubsettableMathFontUrl(url: string): boolean {
-  return mathSubsetFontUrls.has(url);
+function isSubsettableCustomFontUrl(url: string): boolean {
+  return subsettableCustomFontUrls.has(url);
 }
 
-const mathSubsetFontUrls = new Set([
-  katexMainRegularUrl,
-  katexMainBoldUrl,
-  katexMainItalicUrl,
-  katexMainBoldItalicUrl,
-  katexMathItalicUrl,
-  katexSize1RegularUrl,
-  katexSize2RegularUrl,
-  katexSize3RegularUrl,
-  katexSize4RegularUrl,
+const subsettableCustomFontUrls = new Set([
   openMathFontUrl,
   openMathFontProfiles.libertinus.url,
-  openMathFontProfiles["new-computer-modern"].url
+  openMathFontProfiles["new-computer-modern"].url,
+  latinModernRomanFontUrls.regular,
+  latinModernRomanFontUrls.bold,
+  latinModernRomanFontUrls.italic,
+  latinModernRomanFontUrls.boldItalic,
+  libertinusSerifFontUrls.regular,
+  libertinusSerifFontUrls.bold,
+  libertinusSerifFontUrls.italic,
+  libertinusSerifFontUrls.boldItalic,
+  newComputerModernFontUrls.regular,
+  newComputerModernFontUrls.bold,
+  newComputerModernFontUrls.italic,
+  newComputerModernFontUrls.boldItalic
 ]);
 
 function collectPdfFontUsage(layout: PagedDisplayList, mathPdfMode: "raster" | "vector" | "glyph"): PdfFontUsage {
@@ -274,7 +357,7 @@ function collectPdfFontUsage(layout: PagedDisplayList, mathPdfMode: "raster" | "
 
 function collectObjectFontUsage(object: DisplayObject, usage: PdfFontUsage, mathPdfMode: "raster" | "vector" | "glyph"): void {
   if (object.type === "text") {
-    collectTextFontUsage(object.fontFamily, usage);
+    collectTextObjectFontUsage(object, usage);
     return;
   }
 
@@ -285,7 +368,7 @@ function collectObjectFontUsage(object: DisplayObject, usage: PdfFontUsage, math
     }
     if (object.renderer === "native-openmath") {
       collectOpenMathProfileUsage(object.nativeMathProfile, usage);
-      collectNativeLayoutFontUsage(object.nativeLayout?.nodes, usage);
+      collectNativeLayoutFontUsage(object.nativeLayout?.nodes, usage, object.nativeMathProfile);
       return;
     }
     if (mathPdfMode === "glyph" && object.renderer === "katex-glyph") usage.tex = true;
@@ -307,13 +390,35 @@ function collectTextFontUsage(fontFamily: string, usage: PdfFontUsage): void {
   collectOpenMathFamilyUsage(fontFamily, usage);
 }
 
-function collectNativeLayoutFontUsage(nodes: unknown[] | undefined, usage: PdfFontUsage): void {
+function collectTextObjectFontUsage(object: TextObject, usage: PdfFontUsage): void {
+  collectTextFontUsage(object.fontFamily, usage);
+  const url = textFontUrlForStyle(object.fontFamily, object.bold, object.italic);
+  if (url) addSubsetText(usage, url, object.text);
+}
+
+function textFontUrlForStyle(fontFamily: string, bold?: boolean, italic?: boolean): string | undefined {
+  const variant = bold && italic ? "boldItalic" : bold ? "bold" : italic ? "italic" : "regular";
+  if (isLatinModernRomanFont(fontFamily)) return latinModernRomanFontUrls[variant];
+  if (isLibertinusSerifFont(fontFamily)) return libertinusSerifFontUrls[variant];
+  if (isNewComputerModernFont(fontFamily)) return newComputerModernFontUrls[variant];
+  return undefined;
+}
+
+function collectNativeLayoutFontUsage(nodes: unknown[] | undefined, usage: PdfFontUsage, profile?: string): void {
+  const openMathUrl = openMathFontUrlForProfile(profile);
   for (const node of nodes ?? []) {
-    if (node && typeof node === "object" && "fontFamily" in node && typeof node.fontFamily === "string") {
-      collectTextFontUsage(node.fontFamily, usage);
-      collectOpenMathFamilyUsage(node.fontFamily, usage);
+    if (node && typeof node === "object") {
+      if ("text" in node && typeof node.text === "string") {
+        addSubsetText(usage, openMathUrl, node.text);
+      }
     }
   }
+}
+
+function openMathFontUrlForProfile(profile: string | undefined): string {
+  if (profile === "openmath-new-computer-modern" || profile === "new-computer-modern") return openMathFontProfiles["new-computer-modern"].url;
+  if (profile === "openmath-libertinus" || profile === "libertinus") return openMathFontProfiles.libertinus.url;
+  return openMathFontUrl;
 }
 
 function collectGraphSXFontUsage(
@@ -329,7 +434,20 @@ function collectGraphSXFontUsage(
     const props = item.props ?? {};
     const style = item.style ?? {};
     const fontFamily = props.fontFamily ?? props["font-family"] ?? style.fontFamily ?? style["font-family"];
-    if (typeof fontFamily === "string") collectTextFontUsage(fontFamily, usage);
+    if (typeof fontFamily === "string") {
+      collectTextFontUsage(fontFamily, usage);
+      const fontWeight = String(props.fontWeight ?? props["font-weight"] ?? style.fontWeight ?? style["font-weight"] ?? "");
+      const fontStyle = String(props.fontStyle ?? props["font-style"] ?? style.fontStyle ?? style["font-style"] ?? "");
+      const url = textFontUrlForStyle(fontFamily, fontWeight === "700" || fontWeight === "bold", fontStyle === "italic");
+      const text = typeof props.text === "string"
+        ? props.text
+        : typeof item.text === "string"
+          ? item.text
+          : typeof props.label === "string"
+            ? props.label
+            : "";
+      if (url && text) addSubsetText(usage, url, text);
+    }
     for (const child of item.children ?? []) visit(child);
     if (item.displayList?.items) {
       collectGraphSXFontUsage(item.displayList, usage, nativeMathProfile);
@@ -339,8 +457,8 @@ function collectGraphSXFontUsage(
 }
 
 function collectOpenMathProfileUsage(profile: string | undefined, usage: PdfFontUsage): void {
-  if (profile === "libertinus") usage.openMathLibertinus = true;
-  else if (profile === "new-computer-modern") usage.openMathNewComputerModern = true;
+  if (profile === "openmath-libertinus" || profile === "libertinus") usage.openMathLibertinus = true;
+  else if (profile === "openmath-new-computer-modern" || profile === "new-computer-modern") usage.openMathNewComputerModern = true;
   else usage.openMath = true;
 }
 
@@ -362,7 +480,8 @@ function emptyPdfFontUsage(): PdfFontUsage {
     openMathNewComputerModern: false,
     latinModernRoman: false,
     libertinusSerif: false,
-    newComputerModern: false
+    newComputerModern: false,
+    subsetFontText: new Map()
   };
 }
 
@@ -374,6 +493,11 @@ function allPdfFontUsage(): PdfFontUsage {
     openMathNewComputerModern: true,
     latinModernRoman: true,
     libertinusSerif: true,
-    newComputerModern: true
+    newComputerModern: true,
+    subsetFontText: new Map()
   };
+}
+
+function addSubsetText(usage: PdfFontUsage, url: string, text: string): void {
+  usage.subsetFontText.set(url, `${usage.subsetFontText.get(url) ?? ""}${text}`);
 }
