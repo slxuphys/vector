@@ -21,6 +21,7 @@ import {
 } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMetrics";
+import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 
 type Cursor = {
   page: DisplayPage;
@@ -37,7 +38,8 @@ export function paginate(
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
   nativeMathMetrics?: NativeMathMetrics,
-  nativeMathProfile?: NativeMathFontProfileName
+  nativeMathProfile?: NativeMathFontProfileName,
+  crossRef: CrossRefConfig = defaultCrossRefConfig
 ): DisplayPage[] {
   const pages: DisplayPage[] = [];
   const newPage = (): Cursor => {
@@ -82,7 +84,8 @@ export function paginate(
       const fontSize = headingSize(block.level, theme.fontSize);
       const before = block.level === 1 ? 4 : 10;
       const after = block.level <= 2 ? 10 : 7;
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      const runs = sectionHeadingRuns(block, crossRef);
+      const lines = breakRunsIntoLines(runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       ensure(before + lines.length * fontSize * 1.2 + after);
       if (block.label) pushAnchor(cursor, block.label);
       cursor.y += before;
@@ -155,7 +158,7 @@ export function paginate(
     if (block.type === "table") {
       if (block.label) pushAnchor(cursor, block.label);
       if (block.labelNumber) {
-        const label = `Table ${block.labelNumber}`;
+        const label = applyCrossRefFormat(crossRef.table.captionFormat, { number: block.labelNumber, kind: "table", id: block.label });
         const fontSize = theme.fontSize * 0.9;
         ensure(fontSize * 1.4);
         cursor.page.objects.push(textObject(label, cursor.x, cursor.y + fontSize, fontSize, theme, {
@@ -183,7 +186,7 @@ export function paginate(
         anchorId: block.label
       });
       if (block.caption) {
-        const caption = block.labelNumber ? `Figure ${block.labelNumber}. ${block.caption}` : block.caption;
+        const caption = block.labelNumber ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}` : block.caption;
         const captionWidth = measureText(caption, {
           fontSize: image.captionFontSize,
           fontFamily: theme.fontFamily,
@@ -223,7 +226,7 @@ export function paginate(
         anchorId: block.label
       });
       if (block.caption) {
-        const caption = block.labelNumber ? `Figure ${block.labelNumber}. ${block.caption}` : block.caption;
+        const caption = block.labelNumber ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}` : block.caption;
         const captionWidth = measureText(caption, {
           fontSize: graph.captionFontSize,
           fontFamily: theme.fontFamily,
@@ -271,7 +274,7 @@ export function paginate(
       });
       cursor.page.objects.push(mathObject);
       if (block.labelNumber) {
-        const label = `(${block.labelNumber})`;
+        const label = applyCrossRefFormat(crossRef.equation.captionFormat, { number: block.labelNumber, kind: "equation", id: block.label });
         const labelWidth = measureText(label, {
           fontSize,
           fontFamily: theme.fontFamily,
@@ -306,6 +309,25 @@ export function paginate(
   }
 
   return pages;
+}
+
+function sectionHeadingRuns(
+  block: Extract<LayoutBlock, { type: "heading" }>,
+  crossRef: CrossRefConfig
+): InlineRun[] {
+  if (!block.labelNumber) return block.runs;
+  const prefix = applyCrossRefFormat(crossRef.section.captionFormat, {
+    number: block.labelNumber,
+    kind: "section",
+    id: block.label
+  });
+  if (!prefix) return block.runs;
+  return [
+    {
+      text: /\s$/.test(prefix) ? prefix : `${prefix} `
+    },
+    ...block.runs
+  ];
 }
 
 function layoutImageBlock(

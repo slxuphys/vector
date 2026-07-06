@@ -8,7 +8,7 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
         return {
           type: "heading",
           level: node.level,
-          runs: flattenInline(node.labelNumber ? [{ type: "text", text: `${node.labelNumber} ` }, ...node.children] : node.children),
+          runs: flattenInline(node.children),
           label: node.label,
           labelNumber: node.labelNumber
         };

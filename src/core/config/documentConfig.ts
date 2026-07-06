@@ -1,0 +1,274 @@
+import type { MathRendererName, EngineOptions } from "../engine/workerProtocol";
+import type { PageSizeName } from "../layout/pageConfig";
+import { getDefaultOpenMathMetricsForProfile } from "../renderers/math/nativeMath";
+import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
+import { isOpenMathFontProfileName, type OpenMathFontProfileName } from "../renderers/math/openMathFont";
+import { openMathTextFontFaceCss, openMathTextFontStack } from "../renderers/text/latinModernRomanFont";
+import type { DocumentTheme } from "../theme/themeTypes";
+import { defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
+
+export type DocumentFrontMatter = {
+  page?: {
+    size?: PageSizeName;
+    margin?: number;
+  };
+  typography?: {
+    family?: OpenMathFontProfileName;
+    fontSize?: number;
+    lineHeight?: number;
+  };
+  theme?: Partial<DocumentTheme>;
+  math?: {
+    renderer?: "native-openmath";
+  };
+  crossref?: Partial<Record<keyof CrossRefConfig, Partial<CrossRefConfig[keyof CrossRefConfig]>>>;
+};
+
+export type ParsedMarkdownDocument = {
+  markdown: string;
+  frontMatter?: DocumentFrontMatter;
+  warnings: string[];
+};
+
+type YamlValue = string | number | boolean | YamlObject;
+type YamlObject = {
+  [key: string]: YamlValue;
+};
+
+export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
+  const normalized = source.replace(/^\uFEFF/, "");
+  if (!normalized.startsWith("---")) return { markdown: source, warnings: [] };
+
+  const lines = normalized.split(/\r?\n/);
+  if (lines[0].trim() !== "---") return { markdown: source, warnings: [] };
+
+  const endIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+  if (endIndex < 0) {
+    return {
+      markdown: source,
+      warnings: ["Front matter starts with --- but has no closing ---."]
+    };
+  }
+
+  const warnings: string[] = [];
+  const raw = parseSimpleYaml(lines.slice(1, endIndex), warnings);
+  return {
+    markdown: lines.slice(endIndex + 1).join("\n"),
+    frontMatter: normalizeFrontMatter(raw, warnings),
+    warnings
+  };
+}
+
+export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: DocumentFrontMatter | undefined): EngineOptions {
+  if (!frontMatter) return options;
+
+  const typographyFamily = frontMatter.typography?.family;
+  const themeOverrides = frontMatter.theme ?? {};
+  const nativeMathProfile = typographyFamily ? nativeMathProfileForOpenMathFont(typographyFamily) : options.nativeMathProfile;
+  const nativeMathMetrics = typographyFamily ? getDefaultOpenMathMetricsForProfile(nativeMathProfile) : options.nativeMathMetrics;
+  const themeFromTypography: Partial<DocumentTheme> | undefined = typographyFamily
+    ? {
+        fontFamily: openMathTextFontStack(typographyFamily),
+        fontFaceCss: openMathTextFontFaceCss(typographyFamily)
+      }
+    : undefined;
+  const typographyTheme: Partial<DocumentTheme> = {
+    ...(frontMatter.typography?.fontSize === undefined ? {} : { fontSize: frontMatter.typography.fontSize }),
+    ...(frontMatter.typography?.lineHeight === undefined ? {} : { lineHeight: frontMatter.typography.lineHeight })
+  };
+
+  return {
+    ...options,
+    pageSize: frontMatter.page?.size ?? options.pageSize,
+    margin: frontMatter.page?.margin ?? options.margin,
+    theme: {
+      ...(options.theme ?? {}),
+      ...(themeFromTypography ?? {}),
+      ...typographyTheme,
+      ...themeOverrides
+    },
+    mathRenderer: typographyFamily || frontMatter.math?.renderer ? "native-openmath" : options.mathRenderer,
+    nativeMathMetrics,
+    nativeMathProfile,
+    crossRef: mergeCrossRefConfig(options.crossRef, frontMatter.crossref)
+  };
+}
+
+export function mergeCrossRefConfig(
+  base: Partial<CrossRefConfig> | undefined,
+  override: DocumentFrontMatter["crossref"] | undefined
+): CrossRefConfig {
+  const merged: CrossRefConfig = {
+    section: { ...defaultCrossRefConfig.section, ...(base?.section ?? {}) },
+    equation: { ...defaultCrossRefConfig.equation, ...(base?.equation ?? {}) },
+    figure: { ...defaultCrossRefConfig.figure, ...(base?.figure ?? {}) },
+    table: { ...defaultCrossRefConfig.table, ...(base?.table ?? {}) }
+  };
+
+  if (!override) return merged;
+  return {
+    section: { ...merged.section, ...(override.section ?? {}) },
+    equation: { ...merged.equation, ...(override.equation ?? {}) },
+    figure: { ...merged.figure, ...(override.figure ?? {}) },
+    table: { ...merged.table, ...(override.table ?? {}) }
+  };
+}
+
+export function nativeMathProfileForOpenMathFont(font: OpenMathFontProfileName): NativeMathFontProfileName {
+  if (font === "new-computer-modern") return "openmath-new-computer-modern";
+  if (font === "libertinus") return "openmath-libertinus";
+  return "openmath";
+}
+
+function parseSimpleYaml(lines: string[], warnings: string[]): Record<string, YamlValue> {
+  const root: Record<string, YamlValue> = {};
+  const stack: Array<{ indent: number; value: Record<string, YamlValue> }> = [{ indent: -1, value: root }];
+
+  for (const originalLine of lines) {
+    const withoutComment = stripYamlComment(originalLine);
+    if (!withoutComment.trim()) continue;
+
+    const indent = withoutComment.match(/^ */)?.[0].length ?? 0;
+    const trimmed = withoutComment.trim();
+    const separator = trimmed.indexOf(":");
+    if (separator < 0) {
+      warnings.push(`Ignoring front matter line without ":" separator: ${trimmed}`);
+      continue;
+    }
+
+    const key = trimmed.slice(0, separator).trim();
+    const rawValue = trimmed.slice(separator + 1).trim();
+    while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
+    const parent = stack[stack.length - 1].value;
+
+    if (!rawValue) {
+      const child: Record<string, YamlValue> = {};
+      parent[key] = child;
+      stack.push({ indent, value: child });
+      continue;
+    }
+
+    parent[key] = parseScalar(rawValue);
+  }
+
+  return root;
+}
+
+function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]): DocumentFrontMatter {
+  const config: DocumentFrontMatter = {};
+  const page = readObject(raw.page);
+  const typography = readObject(raw.typography);
+  const theme = readObject(raw.theme);
+  const math = readObject(raw.math);
+  const crossref = readObject(raw.crossref);
+
+  if (page) {
+    const size = readString(page.size);
+    const margin = readNumber(page.margin);
+    config.page = {};
+    if (size === "letter" || size === "a4") config.page.size = size;
+    else if (size) warnings.push(`Unsupported page.size "${size}". Use "letter" or "a4".`);
+    if (margin !== undefined) config.page.margin = margin;
+  }
+
+  if (theme) {
+    config.theme = {};
+    if (readString(theme.font)) warnings.push("theme.font is deprecated in front matter; use typography.family instead.");
+    copyThemeNumber(theme, config.theme, "fontSize");
+    copyThemeNumber(theme, config.theme, "lineHeight");
+    copyThemeString(theme, config.theme, "text");
+    copyThemeString(theme, config.theme, "mutedText");
+    copyThemeString(theme, config.theme, "link");
+    copyThemeString(theme, config.theme, "pageBackground");
+  }
+
+  if (typography) {
+    const family = readString(typography.family);
+    const fontSize = readNumber(typography.fontSize);
+    const lineHeight = readNumber(typography.lineHeight);
+    config.typography = {};
+    if (family) {
+      if (isOpenMathFontProfileName(family)) config.typography.family = family;
+      else warnings.push(`Unsupported typography.family "${family}". Use "latin-modern", "libertinus", or "new-computer-modern".`);
+    }
+    if (fontSize !== undefined) config.typography.fontSize = fontSize;
+    if (lineHeight !== undefined) config.typography.lineHeight = lineHeight;
+  }
+
+  if (math) {
+    const renderer = readString(math.renderer) as MathRendererName | undefined;
+    config.math = {};
+    if (renderer === "native-openmath") {
+      config.math.renderer = renderer;
+      warnings.push("math.renderer is redundant in front matter; typography.family selects the native OpenMath document path.");
+    } else if (renderer) warnings.push(`Unsupported math.renderer "${renderer}" in front matter. Front matter always uses the native OpenMath document path when typography.family is set.`);
+    const legacyFont = readString(math.font);
+    if (legacyFont) warnings.push("math.font is deprecated in front matter; use typography.family instead.");
+  }
+
+  if (crossref) config.crossref = normalizeCrossRef(crossref, warnings);
+  return config;
+}
+
+function normalizeCrossRef(raw: Record<string, YamlValue>, warnings: string[]): DocumentFrontMatter["crossref"] {
+  const crossref: DocumentFrontMatter["crossref"] = {};
+  for (const kind of ["section", "equation", "figure", "table"] as const) {
+    const value = readObject(raw[kind]);
+    if (!value) continue;
+    const captionFormat = readString(value.captionFormat);
+    const referenceFormat = readString(value.referenceFormat);
+    crossref[kind] = {};
+    if (captionFormat !== undefined) crossref[kind].captionFormat = validateFormat(captionFormat, `${kind}.captionFormat`, warnings);
+    if (referenceFormat !== undefined) crossref[kind].referenceFormat = validateFormat(referenceFormat, `${kind}.referenceFormat`, warnings);
+  }
+  return crossref;
+}
+
+function validateFormat(format: string, name: string, warnings: string[]): string {
+  if (format && !format.includes("{number}")) warnings.push(`crossref.${name} does not include {number}.`);
+  return format;
+}
+
+function stripYamlComment(line: string): string {
+  let quote: string | undefined;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if ((char === "\"" || char === "'") && line[index - 1] !== "\\") {
+      quote = quote === char ? undefined : quote ?? char;
+    }
+    if (char === "#" && !quote) return line.slice(0, index);
+  }
+  return line;
+}
+
+function parseScalar(value: string): YamlValue {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+  if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function readObject(value: YamlValue | undefined): Record<string, YamlValue> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+}
+
+function readString(value: YamlValue | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNumber(value: YamlValue | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function copyThemeString(source: Record<string, YamlValue>, target: Partial<DocumentTheme>, key: keyof DocumentTheme): void {
+  const value = readString(source[key]);
+  if (value !== undefined) (target as Record<string, unknown>)[key] = value;
+}
+
+function copyThemeNumber(source: Record<string, YamlValue>, target: Partial<DocumentTheme>, key: keyof DocumentTheme): void {
+  const value = readNumber(source[key]);
+  if (value !== undefined) (target as Record<string, unknown>)[key] = value;
+}

@@ -231,9 +231,33 @@ ${page < 100 ? "<!-- pagebreak -->" : ""}
 
 export const hundredPageSampleMarkdown = hundredPageSections.join("\n");
 
-export const mathHeavySampleMarkdown = `# Native Math Stress
+export const mathHeavySampleMarkdown = `---
+page:
+  size: letter
+  margin: 64
+typography:
+  family: libertinus
+  fontSize: 12
+  lineHeight: 1.45
+crossref:
+  figure:
+    captionFormat: "Fig. {number}:"
+    referenceFormat: "Fig. {number}"
+  table:
+    captionFormat: "Table {number}."
+    referenceFormat: "Table {number}"
+  equation:
+    captionFormat: "({number})"
+    referenceFormat: "Eq. ({number})"
+  section:
+    referenceFormat: "Sec. {number}"
+---
+
+# Native Math Stress {#sec:native-math}
 
 This sample is meant to be used with the **Native engine** math mode. It does not hide unsupported TeX behind KaTeX, so red markers show where our own parser/layout still needs work.
+
+This note also tests YAML front matter. It asks for Libertinus OpenMath, custom cross-reference wording, and document-level page/theme settings. See @sec:native-math, @tbl:inline-math, @fig:phase, @fig:graphsx-routing, and @eq:energy.
 
 ## Inline Basics
 
@@ -249,6 +273,7 @@ Fractions and roots should also stay on the baseline: $\\frac{a}{b}$, $\\frac{x+
 | Radius | $x_i^2 + y_i^2 = r^2$ | scripts |
 | Ratio | $\\frac{a}{b}$ | fraction |
 | Root | $\\sqrt{x^2 + y^2}$ | radical |
+{: #tbl:inline-math}
 
 | Operator | Display target | Check |
 | :--- | :--- | :--- |
@@ -264,11 +289,11 @@ Fractions and roots should also stay on the baseline: $\\frac{a}{b}$, $\\frac{x+
 
 ## Image With Caption
 
-![Phase space sketch](data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20640%20360%22%3E%3Crect%20width%3D%22640%22%20height%3D%22360%22%20fill%3D%22%23f7fafc%22%2F%3E%3Cpath%20d%3D%22M70%20285H580M90%20310V45%22%20stroke%3D%22%231f2933%22%20stroke-width%3D%224%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M95%20255C170%20155%20245%20115%20320%20165S465%20255%20555%2095%22%20stroke%3D%22%23145ea8%22%20stroke-width%3D%226%22%20fill%3D%22none%22%2F%3E%3Ccircle%20cx%3D%22320%22%20cy%3D%22165%22%20r%3D%2210%22%20fill%3D%22%23b42318%22%2F%3E%3Ctext%20x%3D%22110%22%20y%3D%2275%22%20font-family%3D%22serif%22%20font-size%3D%2228%22%20fill%3D%22%231f2933%22%3E%CF%88(x)%3C%2Ftext%3E%3C%2Fsvg%3E "Figure 1. A small SVG image with a caption, centered under the image."){width=70% align=center}
+![Phase space sketch](data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20640%20360%22%3E%3Crect%20width%3D%22640%22%20height%3D%22360%22%20fill%3D%22%23f7fafc%22%2F%3E%3Cpath%20d%3D%22M70%20285H580M90%20310V45%22%20stroke%3D%22%231f2933%22%20stroke-width%3D%224%22%20fill%3D%22none%22%2F%3E%3Cpath%20d%3D%22M95%20255C170%20155%20245%20115%20320%20165S465%20255%20555%2095%22%20stroke%3D%22%23145ea8%22%20stroke-width%3D%226%22%20fill%3D%22none%22%2F%3E%3Ccircle%20cx%3D%22320%22%20cy%3D%22165%22%20r%3D%2210%22%20fill%3D%22%23b42318%22%2F%3E%3Ctext%20x%3D%22110%22%20y%3D%2275%22%20font-family%3D%22serif%22%20font-size%3D%2228%22%20fill%3D%22%231f2933%22%3E%CF%88(x)%3C%2Ftext%3E%3C%2Fsvg%3E "A small SVG image with a caption, centered under the image."){#fig:phase width=70% align=center}
 
 ## GraphSX Figure
 
-\`\`\`graphsx width=80% align=center caption="Figure 2. GraphSX uses its own routing and anchors."
+\`\`\`graphsx width=80% align=center caption="GraphSX uses its own routing and anchors."
 <Graph route="auto" corner={8}>
   <Style id="box" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
   <Style id="wire" stroke="#7c3aed" strokeWidth={2.6} />
@@ -288,12 +313,14 @@ Fractions and roots should also stay on the baseline: $\\frac{a}{b}$, $\\frac{x+
   <Link headArrow from="B.out" to="C.in" useStyle="wire" />
 </Graph>
 \`\`\`
+{#fig:graphsx-routing}
 
 ## Display Basics
 
 $$
 E = mc^2
 $$
+{#eq:energy}
 
 $$
 \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}

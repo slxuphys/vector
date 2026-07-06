@@ -1,13 +1,13 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
-import type { CrossRefAnchor, CrossRefKind } from "./xrefTypes";
+import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefAnchor, type CrossRefConfig, type CrossRefKind } from "./xrefTypes";
 
 const refPattern = /@((?:eq|fig|tbl|sec):[A-Za-z][\w:-]*(?:\.[A-Za-z0-9_-]+)*)/g;
 
-export function resolveCrossReferences(ast: MarkdownAst): MarkdownAst {
+export function resolveCrossReferences(ast: MarkdownAst, config: CrossRefConfig = defaultCrossRefConfig): MarkdownAst {
   const anchors = collectAnchors(ast.children);
   return {
     type: "document",
-    children: ast.children.map((node) => resolveNodeReferences(annotateNode(node, anchors), anchors))
+    children: ast.children.map((node) => resolveNodeReferences(annotateNode(node, anchors), anchors, config))
   };
 }
 
@@ -45,19 +45,19 @@ function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
   return anchors;
 }
 
-function resolveNodeReferences(node: MarkdownNode, anchors: Map<string, CrossRefAnchor>): MarkdownNode {
+function resolveNodeReferences(node: MarkdownNode, anchors: Map<string, CrossRefAnchor>, config: CrossRefConfig): MarkdownNode {
   switch (node.type) {
     case "heading":
-      return { ...node, children: resolveInlineReferences(node.children, anchors) };
+      return { ...node, children: resolveInlineReferences(node.children, anchors, config) };
     case "paragraph":
-      return { ...node, children: resolveInlineReferences(node.children, anchors) };
+      return { ...node, children: resolveInlineReferences(node.children, anchors, config) };
     case "list":
-      return { ...node, items: node.items.map((item) => resolveInlineReferences(item, anchors)) };
+      return { ...node, items: node.items.map((item) => resolveInlineReferences(item, anchors, config)) };
     case "table":
       return {
         ...node,
-        headers: node.headers.map((cell) => ({ ...cell, children: resolveInlineReferences(cell.children, anchors) })),
-        rows: node.rows.map((row) => row.map((cell) => ({ ...cell, children: resolveInlineReferences(cell.children, anchors) })))
+        headers: node.headers.map((cell) => ({ ...cell, children: resolveInlineReferences(cell.children, anchors, config) })),
+        rows: node.rows.map((row) => row.map((cell) => ({ ...cell, children: resolveInlineReferences(cell.children, anchors, config) })))
       };
     default:
       return node;
@@ -72,20 +72,20 @@ function annotateNode(node: MarkdownNode, anchors: Map<string, CrossRefAnchor>):
   return node;
 }
 
-function resolveInlineReferences(nodes: InlineNode[], anchors: Map<string, CrossRefAnchor>): InlineNode[] {
+function resolveInlineReferences(nodes: InlineNode[], anchors: Map<string, CrossRefAnchor>, config: CrossRefConfig): InlineNode[] {
   return nodes.flatMap((node): InlineNode[] => {
-    if (node.type === "text") return resolveTextReferences(node.text, anchors);
+    if (node.type === "text") return resolveTextReferences(node.text, anchors, config);
     if (node.type === "strong" || node.type === "emphasis") {
-      return [{ ...node, children: resolveInlineReferences(node.children, anchors) }];
+      return [{ ...node, children: resolveInlineReferences(node.children, anchors, config) }];
     }
     if (node.type === "link") {
-      return [{ ...node, children: resolveInlineReferences(node.children, anchors) }];
+      return [{ ...node, children: resolveInlineReferences(node.children, anchors, config) }];
     }
     return [node];
   });
 }
 
-function resolveTextReferences(text: string, anchors: Map<string, CrossRefAnchor>): InlineNode[] {
+function resolveTextReferences(text: string, anchors: Map<string, CrossRefAnchor>, config: CrossRefConfig): InlineNode[] {
   const nodes: InlineNode[] = [];
   let cursor = 0;
   for (const match of text.matchAll(refPattern)) {
@@ -93,7 +93,7 @@ function resolveTextReferences(text: string, anchors: Map<string, CrossRefAnchor
     if (index > cursor) nodes.push({ type: "text", text: text.slice(cursor, index) });
     const id = match[1];
     const anchor = anchors.get(id);
-    const resolved = formatReference(id, anchor);
+    const resolved = formatReference(id, anchor, config);
     nodes.push(anchor
       ? {
           type: "link",
@@ -107,17 +107,18 @@ function resolveTextReferences(text: string, anchors: Map<string, CrossRefAnchor
   return nodes.length ? nodes : [{ type: "text", text }];
 }
 
-function formatReference(id: string, anchor: CrossRefAnchor | undefined): string {
+function formatReference(id: string, anchor: CrossRefAnchor | undefined, config: CrossRefConfig): string {
   if (!anchor) {
     if (typeof console !== "undefined") console.warn("[xref-missing]", { id });
     return `??${id}??`;
   }
   const prefix = id.split(":", 1)[0];
   const kind = kindForPrefix(prefix) ?? anchor.kind;
-  if (kind === "equation") return `(${anchor.number})`;
-  if (kind === "figure") return `Figure ${anchor.number}`;
-  if (kind === "table") return `Table ${anchor.number}`;
-  return `Section ${anchor.number}`;
+  return applyCrossRefFormat(config[kind].referenceFormat, {
+    number: anchor.number,
+    id,
+    kind
+  });
 }
 
 function kindForPrefix(prefix: string): CrossRefKind | undefined {

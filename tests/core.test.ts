@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { createDocumentEngine } from "../src/core/engine/createDocumentEngine";
+import { parseMarkdownDocument } from "../src/core/config/documentConfig";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
 import { resolveCrossReferences } from "../src/core/xref/resolveReferences";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
@@ -14,6 +15,7 @@ import {
   defaultNativeMathMetrics,
   defaultOpenMathMetrics,
   getDefaultOpenMathMetrics,
+  getDefaultOpenMathMetricsForProfile,
   layoutNativeMath,
   openMathMetricsFromConstants
 } from "../src/core/renderers/math/nativeMath";
@@ -321,6 +323,128 @@ See @sec:intro.
     expect(svg).toContain('id="sec:intro"');
     expect(svg).toContain('href="#sec:intro"');
     expect(annotations?.size()).toBeGreaterThan(0);
+  });
+
+  it("uses front matter cross-reference formats", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+crossref:
+  figure:
+    captionFormat: "Fig. {number}:"
+    referenceFormat: "Fig. {number}"
+  equation:
+    referenceFormat: "Eq. ({number})"
+---
+
+See @fig:phase and @eq:energy.
+
+$$
+E=mc^2
+$$
+{#eq:energy}
+
+![Phase](data:image/svg+xml,%3Csvg%2F%3E "Phase plot"){#fig:phase width=50%}
+`);
+    const text = layout.pages.flatMap((page) => page.objects)
+      .filter((object) => object.type === "text")
+      .map((object) => object.text)
+      .join("");
+
+    expect(text).toContain("See Fig. 1 and Eq. (1).");
+    expect(text).toContain("Fig. 1: Phase plot");
+  });
+
+  it("uses section captionFormat for visible heading numbers", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+crossref:
+  section:
+    captionFormat: "{number})"
+    referenceFormat: "Sec. {number}"
+---
+
+# Intro {#sec:intro}
+
+See @sec:intro.
+`);
+    const text = layout.pages[0].objects
+      .filter((object) => object.type === "text")
+      .map((object) => object.text)
+      .join("");
+
+    expect(text).toContain("1) Intro");
+    expect(text).toContain("See Sec. 1.");
+  });
+
+  it("allows section captionFormat to hide heading numbers", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+crossref:
+  section:
+    captionFormat: ""
+    referenceFormat: "Section {number}"
+---
+
+# Intro {#sec:intro}
+
+See @sec:intro.
+`);
+    const text = layout.pages[0].objects
+      .filter((object) => object.type === "text")
+      .map((object) => object.text)
+      .join("");
+
+    expect(text).toContain("Intro");
+    expect(text).not.toContain("1 Intro");
+    expect(text).toContain("See Section 1.");
+  });
+
+  it("lets front matter choose the supported native OpenMath path", async () => {
+    const engine = createDocumentEngine({
+      useWorker: false,
+      mathRenderer: "katex-raster",
+      nativeMathMetrics: {
+        ...defaultOpenMathMetrics,
+        displayPadding: 3,
+        inlineFractionScale: 0.42
+      }
+    });
+    const { layout } = await engine.layout(`---
+typography:
+  family: libertinus
+---
+
+Inline $x^2$.
+`);
+    const math = layout.pages[0].objects.find((object) => object.type === "math");
+
+    expect(layout.theme.fontFamily).toContain("Libertinus Serif");
+    expect(math?.type).toBe("math");
+    if (math?.type === "math") {
+      const defaults = getDefaultOpenMathMetricsForProfile("openmath-libertinus");
+      expect(math.renderer).toBe("native-openmath");
+      expect(math.nativeMathProfile).toBe("openmath-libertinus");
+      expect(math.nativeMetrics?.displayPadding).toBe(defaults.displayPadding);
+      expect(math.nativeMetrics?.inlineFractionScale).toBe(defaults.inlineFractionScale);
+    }
+  });
+
+  it("parses typography front matter as the document font family", () => {
+    const document = parseMarkdownDocument(`---
+typography:
+  family: new-computer-modern
+  fontSize: 11
+  lineHeight: 1.5
+---
+
+Body
+`);
+
+    expect(document.frontMatter?.typography).toEqual({
+      family: "new-computer-modern",
+      fontSize: 11,
+      lineHeight: 1.5
+    });
   });
 
   it("renders markdown images with captions into SVG pages", async () => {

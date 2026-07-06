@@ -4,6 +4,7 @@ import type { PageSizeName } from "../layout/pageConfig";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
+import type { CrossRefConfig } from "../xref/xrefTypes";
 
 export type EngineOptions = {
   pageSize?: PageSizeName;
@@ -13,6 +14,7 @@ export type EngineOptions = {
   mathRenderer?: MathRendererName;
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
+  crossRef?: Partial<CrossRefConfig>;
 };
 
 export type MathRendererName =

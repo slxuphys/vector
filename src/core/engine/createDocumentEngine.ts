@@ -1,5 +1,6 @@
 import { buildDisplayList } from "../display-list/buildDisplayList";
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
+import { applyDocumentFrontMatter, mergeCrossRefConfig, parseMarkdownDocument } from "../config/documentConfig";
 import { createPageConfig } from "../layout/pageConfig";
 import { paginate } from "../layout/paginate";
 import { collectMathMeasureRequests, type MathMeasurementMap } from "../layout/mathMetrics";
@@ -16,6 +17,7 @@ import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProf
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
 import type { EngineOptions, MathRendererName } from "./workerProtocol";
+import type { CrossRefConfig } from "../xref/xrefTypes";
 
 export type DocumentEngine = {
   layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
@@ -28,6 +30,7 @@ export type PreparedLayout = {
   mathRenderer: MathRendererName;
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
+  crossRef: CrossRefConfig;
   parseMs: number;
   totalStart: number;
 };
@@ -35,9 +38,10 @@ export type PreparedLayout = {
 export function createDocumentEngine(options: EngineOptions = {}): DocumentEngine {
   return {
     async layout(markdown: string) {
-      await loadTextFontsForTheme({ ...defaultTheme, ...(options.theme ?? {}) });
-      if (isNativeMathRenderer(options.mathRenderer)) await loadNativeMathFonts();
-      return layoutMarkdown(markdown, options);
+      const prepared = prepareMarkdownLayout(markdown, options);
+      await loadTextFontsForTheme(prepared.theme);
+      if (isNativeMathRenderer(prepared.mathRenderer)) await loadNativeMathFonts();
+      return finishMarkdownLayout(prepared);
     }
   };
 }
@@ -54,16 +58,20 @@ export function layoutMarkdown(
 export function prepareMarkdownLayout(markdown: string, options: EngineOptions = {}): PreparedLayout {
   const totalStart = now();
   const parseStart = now();
-  const ast = resolveCrossReferences(parseMarkdown(markdown));
+  const document = parseMarkdownDocument(markdown);
+  const resolvedOptions = applyDocumentFrontMatter(options, document.frontMatter);
+  warnFrontMatter(document.warnings);
+  const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
+  const ast = resolveCrossReferences(parseMarkdown(document.markdown), crossRef);
   const blocks = normalizeAst(ast);
   const parseMs = now() - parseStart;
-  const page = createPageConfig(options.pageSize ?? "letter", options.margin ?? 72);
-  const theme: DocumentTheme = { ...defaultTheme, ...(options.theme ?? {}) };
-  const mathRenderer = options.mathRenderer ?? "katex-raster";
-  const nativeMathMetrics = options.nativeMathMetrics;
-  const nativeMathProfile = options.nativeMathProfile;
+  const page = createPageConfig(resolvedOptions.pageSize ?? "letter", resolvedOptions.margin ?? 72);
+  const theme: DocumentTheme = { ...defaultTheme, ...(resolvedOptions.theme ?? {}) };
+  const mathRenderer = resolvedOptions.mathRenderer ?? "katex-raster";
+  const nativeMathMetrics = resolvedOptions.nativeMathMetrics;
+  const nativeMathProfile = resolvedOptions.nativeMathProfile;
 
-  return { blocks, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, parseMs, totalStart };
+  return { blocks, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, parseMs, totalStart };
 }
 
 export function finishMarkdownLayout(
@@ -71,7 +79,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 
@@ -89,4 +97,9 @@ export function finishMarkdownLayout(
 
 export function collectPreparedMathRequests(prepared: PreparedLayout) {
   return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile);
+}
+
+function warnFrontMatter(warnings: string[]): void {
+  if (typeof console === "undefined") return;
+  for (const warning of warnings) console.warn("[front-matter]", warning);
 }

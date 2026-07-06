@@ -119,19 +119,19 @@ async function layoutWithPremeasuredMath(
   measurements: MathMeasurementMap;
   result?: { layout: PagedDisplayList; stats: PreviewStats };
 }> {
-  await waitForTextFonts(options);
   const prepared = prepareMarkdownLayout(markdown, options);
+  await waitForTextFonts(prepared);
   const requests = collectPreparedMathRequests(prepared);
   const measurements = await measureMathInDom(requests, prepared.mathRenderer);
   const result = deferFinish ? undefined : finishMarkdownLayout(prepared, measurements);
   return { prepared, measurements, result };
 }
 
-async function waitForTextFonts(options: EngineOptions): Promise<void> {
-  await loadTextFontsForTheme({ ...defaultTheme, ...(options.theme ?? {}) });
+async function waitForTextFonts(prepared: PreparedLayout): Promise<void> {
+  await loadTextFontsForTheme(prepared.theme);
   if (typeof document === "undefined" || !document.fonts) return;
-  const fontFamily = options.theme?.fontFamily;
-  const installedFontFace = ensureDocumentFontFaceCss(options.theme?.fontFaceCss);
+  const fontFamily = prepared.theme.fontFamily;
+  const installedFontFace = ensureDocumentFontFaceCss(prepared.theme.fontFaceCss);
   const openMathTextFamily = fontFamily?.includes(libertinusSerifFontFamily)
     ? libertinusSerifFontFamily
     : fontFamily?.includes(newComputerModernFontFamily)
