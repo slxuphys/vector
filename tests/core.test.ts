@@ -32,6 +32,7 @@ import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetri
 import { measureText } from "../src/core/layout/measureText";
 import { normalizeAst } from "../src/core/markdown/normalizeAst";
 import { paginate } from "../src/core/layout/paginate";
+import { breakRunsIntoLines } from "../src/core/layout/lineBreaking";
 import { loadHarfbuzzTextShaper, loadTextFontFromBytes, shapeTextWithFontFile } from "../src/core/renderers/text/textFontMetrics";
 import { latinModernRomanFontFamily, newComputerModernFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
 import { defaultTheme } from "../src/core/theme/defaultTheme";
@@ -445,6 +446,120 @@ Body
       fontSize: 11,
       lineHeight: 1.5
     });
+  });
+
+  it("parses layout front matter for line breaking and text alignment", () => {
+    const document = parseMarkdownDocument(`---
+layout:
+  textAlign: justify
+  lineBreaking:
+    algorithm: greedy
+    hyphenation: false
+    language: en-US
+---
+
+Body
+`);
+
+    expect(document.frontMatter?.layout).toEqual({
+      textAlign: "justify",
+      lineBreaking: {
+        algorithm: "greedy",
+        hyphenation: false,
+        language: "en-US"
+      }
+    });
+  });
+
+  it("keeps closing punctuation with the previous linked run", () => {
+    const word = "reference";
+    const wordWidth = measureText(word, {
+      fontSize: 12,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    });
+    const lines = breakRunsIntoLines(
+      [
+        { text: word, link: "#sec:intro" },
+        { text: "." }
+      ],
+      wordWidth + 1,
+      12,
+      defaultTheme
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0].runs.map((run) => run.text).join("")).toBe("reference.");
+  });
+
+  it("hyphenates long words when enabled", () => {
+    const lines = breakRunsIntoLines(
+      [{ text: "electromagnetohydrodynamics" }],
+      92,
+      12,
+      defaultTheme,
+      undefined,
+      "native-openmath",
+      undefined,
+      undefined,
+      {
+        textAlign: "left",
+        lineBreaking: {
+          algorithm: "greedy",
+          hyphenation: true,
+          language: "en-US"
+        }
+      }
+    );
+
+    const rendered = lines.map((line) => line.runs.map((run) => run.text).join(""));
+    expect(rendered.length).toBeGreaterThan(1);
+    expect(rendered.some((line) => line.endsWith("-"))).toBe(true);
+  });
+
+  it("does not hyphenate URL-like words", () => {
+    const lines = breakRunsIntoLines(
+      [{ text: "https://example.com/electromagnetohydrodynamics" }],
+      92,
+      12,
+      defaultTheme,
+      undefined,
+      "native-openmath",
+      undefined,
+      undefined,
+      {
+        textAlign: "left",
+        lineBreaking: {
+          algorithm: "greedy",
+          hyphenation: true,
+          language: "en-US"
+        }
+      }
+    );
+
+    const rendered = lines.map((line) => line.runs.map((run) => run.text).join(""));
+    expect(rendered.some((line) => line.endsWith("-"))).toBe(false);
+  });
+
+  it("stretches non-final paragraph lines when textAlign is justify", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+page:
+  size: letter
+  margin: 72
+layout:
+  textAlign: justify
+---
+
+This paragraph has enough words to wrap into more than one line and the first rendered line should stretch to the content width.
+`);
+    const contentWidth = layout.page.width - layout.page.margin.left - layout.page.margin.right;
+    const firstLineText = layout.pages[0].objects.find((object) => object.type === "text" && object.text.startsWith("This paragraph"));
+
+    expect(firstLineText?.type).toBe("text");
+    if (firstLineText?.type === "text") {
+      expect(firstLineText.width).toBeCloseTo(contentWidth, 1);
+    }
   });
 
   it("renders markdown images with captions into SVG pages", async () => {

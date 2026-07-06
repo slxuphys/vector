@@ -58,7 +58,7 @@ function drawUnshapedPdfText(
       font: runFont,
       color: hexToRgb(object.color)
     });
-    cursorX += runFont.widthOfTextAtSize(run, object.fontSize);
+    cursorX += runFont.widthOfTextAtSize(run, object.fontSize) + justifyExtraForText(run, object, fonts);
     run = "";
     runFont = undefined;
   };
@@ -85,6 +85,7 @@ function drawShapedPdfText(
   shaped: ShapedTextRun
 ): void {
   const clusters = shapedClusters(object.text || " ", shaped);
+  const extraBySpace = justifyExtraBySpace(object, shaped.width);
   let cursorX = object.x;
   for (const cluster of clusters) {
     const selectedFont = fonts.find((candidate) => canEncode(candidate, cluster.text));
@@ -99,7 +100,7 @@ function drawShapedPdfText(
     } else {
       logMissingPdfGlyph("text", cluster.text, object.fontFamily);
     }
-    cursorX += cluster.advance;
+    cursorX += cluster.advance + (isStretchCluster(cluster.text) ? extraBySpace : 0);
   }
 }
 
@@ -115,6 +116,33 @@ function shapedClusters(text: string, shaped: ShapedTextRun): Array<{ text: stri
       advance: designAdvance * shaped.fontSize / shaped.unitsPerEm
     };
   });
+}
+
+function justifyExtraBySpace(object: Extract<DisplayObject, { type: "text" }>, naturalWidth: number | undefined): number {
+  const target = object.width;
+  if (!target || !naturalWidth || target <= naturalWidth) return 0;
+  const spaces = countStretchSpaces(object.text || "");
+  return spaces > 0 ? (target - naturalWidth) / spaces : 0;
+}
+
+function justifyExtraForText(
+  text: string,
+  object: Extract<DisplayObject, { type: "text" }>,
+  fonts: PDFFont[]
+): number {
+  const target = object.width;
+  if (!target) return 0;
+  const naturalWidth = measurePdfTextWidth(object.text || "", fonts, object.fontSize, object.fontFamily);
+  if (target <= naturalWidth) return 0;
+  return countStretchSpaces(text) * ((target - naturalWidth) / Math.max(1, countStretchSpaces(object.text || "")));
+}
+
+function countStretchSpaces(text: string): number {
+  return (text.match(/ +/g) ?? []).length;
+}
+
+function isStretchCluster(text: string): boolean {
+  return / +/.test(text);
 }
 
 export function measurePdfTextWidth(text: string, fonts: PDFFont | PDFFont[], fontSize: number, fontFamily = ""): number {

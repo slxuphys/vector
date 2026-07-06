@@ -10,7 +10,7 @@ export function renderSvgText(object: Extract<DisplayObject, { type: "text" }>):
     bold: object.bold,
     italic: object.italic
   });
-  const shapedWidth = shaped?.width ?? object.width;
+  const shapedWidth = object.width ?? shaped?.width;
   const attrs = [
     `x="${round(object.x)}"`,
     `y="${round(object.y)}"`,

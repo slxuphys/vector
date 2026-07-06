@@ -12,6 +12,7 @@ export type {
   PreviewStats
 } from "./core/display-list/displayTypes";
 export type { PageConfig } from "./core/layout/pageConfig";
+export type { LayoutConfig, LineBreakingAlgorithm, TextAlign } from "./core/layout/layoutConfig";
 export type { DocumentTheme } from "./core/theme/themeTypes";
 export type { LayoutBlock } from "./core/layout/layoutBlocks";
 export type { DocumentFrontMatter } from "./core/config/documentConfig";

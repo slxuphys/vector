@@ -5,6 +5,7 @@ import type { LayoutBlock, InlineRun } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
 import { breakRunsIntoLines } from "./lineBreaking";
 import type { LayoutLine } from "./lineBreaking";
+import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
@@ -39,7 +40,8 @@ export function paginate(
   mathRenderer: MathRendererName = "katex-raster",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName,
-  crossRef: CrossRefConfig = defaultCrossRefConfig
+  crossRef: CrossRefConfig = defaultCrossRefConfig,
+  layoutConfig: LayoutConfig = defaultLayoutConfig
 ): DisplayPage[] {
   const pages: DisplayPage[] = [];
   const newPage = (): Cursor => {
@@ -85,7 +87,7 @@ export function paginate(
       const before = block.level === 1 ? 4 : 10;
       const after = block.level <= 2 ? 10 : 7;
       const runs = sectionHeadingRuns(block, crossRef);
-      const lines = breakRunsIntoLines(runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      const lines = breakRunsIntoLines(runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
       ensure(before + lines.length * fontSize * 1.2 + after);
       if (block.label) pushAnchor(cursor, block.label);
       cursor.y += before;
@@ -96,10 +98,16 @@ export function paginate(
 
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
-      for (const line of lines) {
+      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
         ensure(Math.max(line.height, fontSize * theme.lineHeight));
-        drawLines(cursor, [line], fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+        drawLines(cursor, [line], fontSize, theme, {
+          color: theme.text,
+          lineHeight: theme.lineHeight,
+          textAlign: index === lines.length - 1 ? "left" : layoutConfig.textAlign,
+          maxWidth: cursor.contentWidth
+        }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       }
       cursor.y += 10;
       continue;
@@ -114,7 +122,7 @@ export function paginate(
             ? `${index + 1}.`
             : "•";
         const markerWidth = 28;
-        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
         ensure(lines.length * fontSize * theme.lineHeight + 4);
         cursor.page.objects.push(textObject(marker, cursor.x, cursor.y + fontSize, fontSize, theme, { color: theme.mutedText }));
         drawLines(cursor, lines, fontSize, theme, {
@@ -443,7 +451,7 @@ function drawLines(
   lines: LayoutLine[],
   fontSize: number,
   theme: DocumentTheme,
-  options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number; align?: "left" | "center" | "right"; maxWidth?: number },
+  options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number; align?: "left" | "center" | "right"; maxWidth?: number; textAlign?: "left" | "justify" },
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
   nativeMathMetrics?: NativeMathMetrics,
@@ -456,6 +464,11 @@ function drawLines(
         ? Math.max(0, options.maxWidth - line.width)
         : 0;
     let x = cursor.x + (options.xOffset ?? 0) + alignOffset;
+    const justifyExtra = options.textAlign === "justify" && options.maxWidth !== undefined
+      ? Math.max(0, options.maxWidth - line.width)
+      : 0;
+    const stretchCount = justifyExtra > 0 ? countStretchOpportunities(line.runs) : 0;
+    const stretch = stretchCount > 0 ? justifyExtra / stretchCount : 0;
     const baseline = cursor.y + fontSize;
     let pendingText: Extract<DisplayObject, { type: "text" }> | undefined;
     let pendingKey = "";
@@ -503,12 +516,13 @@ function drawLines(
         ...run,
         bold: options.bold || run.bold
       });
+      const stretchedWidth = textWidth + stretch * countStretchOpportunities([run]);
       const textObject: Extract<DisplayObject, { type: "text" }> = {
         type: "text",
         text: run.text,
         x,
         y: baseline,
-        width: textWidth,
+        width: stretchedWidth,
         fontSize,
         fontFamily: font,
         color: run.link ? theme.link : options.color,
@@ -526,17 +540,24 @@ function drawLines(
       ].join("\u0000");
       if (pendingText && pendingKey === textKey) {
         pendingText.text += run.text;
-        pendingText.width = (pendingText.width ?? 0) + textWidth;
+        pendingText.width = (pendingText.width ?? 0) + stretchedWidth;
       } else {
         flushText();
         pendingText = textObject;
         pendingKey = textKey;
       }
-      x += textWidth;
+      x += stretchedWidth;
     }
     flushText();
     cursor.y += Math.max(line.height, fontSize * options.lineHeight);
   }
+}
+
+function countStretchOpportunities(runs: InlineRun[]): number {
+  return runs.reduce((count, run) => {
+    if (run.math || run.code) return count;
+    return count + (run.text.match(/ +/g) ?? []).length;
+  }, 0);
 }
 
 function measureInlineMathBoxWidth(text: string, fontSize: number, theme: DocumentTheme): number {

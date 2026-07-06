@@ -1,5 +1,6 @@
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
 import type { MathMeasurementMap } from "../layout/mathMetrics";
+import type { LayoutConfig } from "../layout/layoutConfig";
 import type { PageSizeName } from "../layout/pageConfig";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
@@ -15,6 +16,7 @@ export type EngineOptions = {
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
   crossRef?: Partial<CrossRefConfig>;
+  layout?: Partial<LayoutConfig>;
 };
 
 export type MathRendererName =

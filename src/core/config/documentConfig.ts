@@ -1,4 +1,5 @@
 import type { MathRendererName, EngineOptions } from "../engine/workerProtocol";
+import { defaultLayoutConfig, type LayoutConfig } from "../layout/layoutConfig";
 import type { PageSizeName } from "../layout/pageConfig";
 import { getDefaultOpenMathMetricsForProfile } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
@@ -18,6 +19,7 @@ export type DocumentFrontMatter = {
     lineHeight?: number;
   };
   theme?: Partial<DocumentTheme>;
+  layout?: Partial<LayoutConfig>;
   math?: {
     renderer?: "native-openmath";
   };
@@ -90,7 +92,24 @@ export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: Do
     mathRenderer: typographyFamily || frontMatter.math?.renderer ? "native-openmath" : options.mathRenderer,
     nativeMathMetrics,
     nativeMathProfile,
-    crossRef: mergeCrossRefConfig(options.crossRef, frontMatter.crossref)
+    crossRef: mergeCrossRefConfig(options.crossRef, frontMatter.crossref),
+    layout: mergeLayoutConfig(options.layout, frontMatter.layout)
+  };
+}
+
+export function mergeLayoutConfig(
+  base: Partial<LayoutConfig> | undefined,
+  override: Partial<LayoutConfig> | undefined
+): LayoutConfig {
+  return {
+    ...defaultLayoutConfig,
+    ...(base ?? {}),
+    ...(override ?? {}),
+    lineBreaking: {
+      ...defaultLayoutConfig.lineBreaking,
+      ...(base?.lineBreaking ?? {}),
+      ...(override?.lineBreaking ?? {})
+    }
   };
 }
 
@@ -161,6 +180,7 @@ function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]
   const theme = readObject(raw.theme);
   const math = readObject(raw.math);
   const crossref = readObject(raw.crossref);
+  const layout = readObject(raw.layout);
 
   if (page) {
     const size = readString(page.size);
@@ -207,6 +227,33 @@ function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]
   }
 
   if (crossref) config.crossref = normalizeCrossRef(crossref, warnings);
+  if (layout) config.layout = normalizeLayoutConfig(layout, warnings);
+  return config;
+}
+
+function normalizeLayoutConfig(raw: Record<string, YamlValue>, warnings: string[]): Partial<LayoutConfig> {
+  const config: Partial<LayoutConfig> = {};
+  const textAlign = readString(raw.textAlign);
+  if (textAlign === "left" || textAlign === "justify") config.textAlign = textAlign;
+  else if (textAlign) warnings.push(`Unsupported layout.textAlign "${textAlign}". Use "left" or "justify".`);
+
+  const lineBreaking = readObject(raw.lineBreaking);
+  if (lineBreaking) {
+    const algorithm = readString(lineBreaking.algorithm);
+    const hyphenation = readBoolean(lineBreaking.hyphenation);
+    const language = readString(lineBreaking.language);
+    config.lineBreaking = { ...defaultLayoutConfig.lineBreaking };
+    if (algorithm === "greedy" || algorithm === "knuth-plass") config.lineBreaking.algorithm = algorithm;
+    else if (algorithm) warnings.push(`Unsupported layout.lineBreaking.algorithm "${algorithm}". Use "greedy" or "knuth-plass".`);
+    if (hyphenation !== undefined) {
+      config.lineBreaking.hyphenation = hyphenation;
+    }
+    if (language) config.lineBreaking.language = language;
+    if (config.lineBreaking.algorithm === "knuth-plass") {
+      warnings.push("layout.lineBreaking.algorithm = knuth-plass is parsed but not implemented yet; using greedy line breaking.");
+    }
+  }
+
   return config;
 }
 
@@ -261,6 +308,10 @@ function readString(value: YamlValue | undefined): string | undefined {
 
 function readNumber(value: YamlValue | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readBoolean(value: YamlValue | undefined): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function copyThemeString(source: Record<string, YamlValue>, target: Partial<DocumentTheme>, key: keyof DocumentTheme): void {

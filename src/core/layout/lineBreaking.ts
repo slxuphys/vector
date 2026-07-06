@@ -2,7 +2,9 @@ import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
+import { createFallbackHyphenator, type Hyphenator } from "./hyphenation";
 import type { InlineRun } from "./layoutBlocks";
+import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 import { getMeasuredMath, type MathMeasurementMap } from "./mathMetrics";
 import { measureText } from "./measureText";
 
@@ -20,13 +22,17 @@ export function breakRunsIntoLines(
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
   nativeMathMetrics?: NativeMathMetrics,
-  nativeMathProfile?: NativeMathFontProfileName
+  nativeMathProfile?: NativeMathFontProfileName,
+  layoutConfig: LayoutConfig = defaultLayoutConfig
 ): LayoutLine[] {
   const lines: LayoutLine[] = [];
   let current: InlineRun[] = [];
   let currentWidth = 0;
   const lineHeight = fontSize * theme.lineHeight;
   let currentHeight = lineHeight;
+  const hyphenator = layoutConfig.lineBreaking.hyphenation
+    ? createFallbackHyphenator(layoutConfig.lineBreaking.language)
+    : undefined;
 
   const pushLine = () => {
     lines.push({ runs: current, width: currentWidth, height: currentHeight });
@@ -34,10 +40,40 @@ export function breakRunsIntoLines(
     currentWidth = 0;
     currentHeight = lineHeight;
   };
+  const pushSpecificLine = (runs: InlineRun[], width: number, height: number) => {
+    lines.push({ runs, width, height });
+  };
+
+  const algorithm = layoutConfig.lineBreaking.algorithm;
+  if (algorithm === "knuth-plass" && typeof console !== "undefined") {
+    console.warn("[line-breaking]", "knuth-plass is not implemented yet; using greedy line breaking.");
+  }
 
   for (const run of runs) {
     const words = run.math ? [run.text.trim()] : run.text.match(/\S+\s*|\s+/g) ?? [];
     for (const word of words) {
+      if (!run.math && hyphenator && !run.code && !run.link) {
+        const placed = placeHyphenatedToken({
+          token: word,
+          run,
+          hyphenator,
+          maxWidth,
+          fontSize,
+          theme,
+          current,
+          currentWidth,
+          currentHeight,
+          lineHeight,
+          pushSpecificLine
+        });
+        if (placed) {
+          current = placed.current;
+          currentWidth = placed.currentWidth;
+          currentHeight = placed.currentHeight;
+          continue;
+        }
+      }
+
       const width = run.math
         ? measureMathChunk(word, fontSize, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile)
         : measureText(word, {
@@ -47,7 +83,8 @@ export function breakRunsIntoLines(
         ...run
       });
       const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile) : lineHeight;
-      if (current.length > 0 && currentWidth + width > maxWidth) pushLine();
+      const sticky = isNoBreakBeforeToken(word);
+      if (current.length > 0 && currentWidth + width > maxWidth && !sticky) pushLine();
       if (run.math) {
         current.push({ ...run, text: word });
         currentWidth += width;
@@ -77,6 +114,107 @@ export function breakRunsIntoLines(
 
   if (current.length > 0) pushLine();
   return lines.length > 0 ? lines : [{ runs: [], width: 0, height: lineHeight }];
+}
+
+type HyphenatedPlacement = {
+  current: InlineRun[];
+  currentWidth: number;
+  currentHeight: number;
+};
+
+function placeHyphenatedToken(options: {
+  token: string;
+  run: InlineRun;
+  hyphenator: Hyphenator;
+  maxWidth: number;
+  fontSize: number;
+  theme: DocumentTheme;
+  current: InlineRun[];
+  currentWidth: number;
+  currentHeight: number;
+  lineHeight: number;
+  pushSpecificLine: (runs: InlineRun[], width: number, height: number) => void;
+}): HyphenatedPlacement | undefined {
+  const { token, run, hyphenator, maxWidth, fontSize, theme, lineHeight, pushSpecificLine } = options;
+  const match = token.match(/^(\S+)(\s*)$/);
+  if (!match) return undefined;
+  const [, word, trailingSpace] = match;
+  const points = hyphenator.points(word);
+  if (!points.length) return undefined;
+
+  let current = options.current;
+  let currentWidth = options.currentWidth;
+  let currentHeight = options.currentHeight;
+  let remaining = word;
+  let remainingOffset = 0;
+  let handled = false;
+
+  while (remaining) {
+    const remainingWidth = measureText(remaining + trailingSpace, textMeasureOptions(run, fontSize, theme));
+    if (current.length === 0 && remainingWidth <= maxWidth) {
+      current.push({ ...run, text: remaining + trailingSpace });
+      currentWidth += remainingWidth;
+      currentHeight = Math.max(currentHeight, lineHeight);
+      handled = true;
+      break;
+    }
+    if (current.length > 0 && currentWidth + remainingWidth <= maxWidth) {
+      current.push({ ...run, text: remaining + trailingSpace });
+      currentWidth += remainingWidth;
+      currentHeight = Math.max(currentHeight, lineHeight);
+      handled = true;
+      break;
+    }
+
+    const available = current.length > 0 ? maxWidth - currentWidth : maxWidth;
+    const localPoints = points
+      .map((point) => point - remainingOffset)
+      .filter((point) => point >= 3 && point <= remaining.length - 3);
+    const breakPoint = [...localPoints].reverse().find((point) => {
+      const prefix = `${remaining.slice(0, point)}-`;
+      return measureText(prefix, textMeasureOptions(run, fontSize, theme)) <= available;
+    });
+
+    if (breakPoint === undefined) {
+      if (current.length > 0) {
+        pushSpecificLine(current, currentWidth, currentHeight);
+        current = [];
+        currentWidth = 0;
+        currentHeight = lineHeight;
+        handled = true;
+        continue;
+      }
+      return handled ? { current, currentWidth, currentHeight } : undefined;
+    }
+
+    const prefix = `${remaining.slice(0, breakPoint)}-`;
+    const prefixWidth = measureText(prefix, textMeasureOptions(run, fontSize, theme));
+    current.push({ ...run, text: prefix });
+    currentWidth += prefixWidth;
+    currentHeight = Math.max(currentHeight, lineHeight);
+    handled = true;
+    pushSpecificLine(current, currentWidth, currentHeight);
+    current = [];
+    currentWidth = 0;
+    currentHeight = lineHeight;
+    remainingOffset += breakPoint;
+    remaining = remaining.slice(breakPoint);
+  }
+
+  return handled ? { current, currentWidth, currentHeight } : undefined;
+}
+
+function textMeasureOptions(run: InlineRun, fontSize: number, theme: DocumentTheme) {
+  return {
+    fontSize,
+    fontFamily: theme.fontFamily,
+    monoFontFamily: theme.monoFontFamily,
+    ...run
+  };
+}
+
+function isNoBreakBeforeToken(text: string): boolean {
+  return /^[,.;:!?%)}\]”’]+/.test(text);
 }
 
 function measureMathChunk(

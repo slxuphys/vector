@@ -1,7 +1,8 @@
 import { buildDisplayList } from "../display-list/buildDisplayList";
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
-import { applyDocumentFrontMatter, mergeCrossRefConfig, parseMarkdownDocument } from "../config/documentConfig";
+import { applyDocumentFrontMatter, mergeCrossRefConfig, mergeLayoutConfig, parseMarkdownDocument } from "../config/documentConfig";
 import { createPageConfig } from "../layout/pageConfig";
+import type { LayoutConfig } from "../layout/layoutConfig";
 import { paginate } from "../layout/paginate";
 import { collectMathMeasureRequests, type MathMeasurementMap } from "../layout/mathMetrics";
 import type { LayoutBlock } from "../layout/layoutBlocks";
@@ -31,6 +32,7 @@ export type PreparedLayout = {
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
   crossRef: CrossRefConfig;
+  layoutConfig: LayoutConfig;
   parseMs: number;
   totalStart: number;
 };
@@ -70,8 +72,9 @@ export function prepareMarkdownLayout(markdown: string, options: EngineOptions =
   const mathRenderer = resolvedOptions.mathRenderer ?? "katex-raster";
   const nativeMathMetrics = resolvedOptions.nativeMathMetrics;
   const nativeMathProfile = resolvedOptions.nativeMathProfile;
+  const layoutConfig = mergeLayoutConfig(resolvedOptions.layout, undefined);
 
-  return { blocks, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, parseMs, totalStart };
+  return { blocks, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
 }
 
 export function finishMarkdownLayout(
@@ -79,7 +82,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef, prepared.layoutConfig);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 

@@ -239,6 +239,11 @@ typography:
   family: libertinus
   fontSize: 12
   lineHeight: 1.45
+layout:
+  textAlign: justify
+  lineBreaking:
+    algorithm: greedy
+    hyphenation: false
 crossref:
   figure:
     captionFormat: "Fig. {number}:"
