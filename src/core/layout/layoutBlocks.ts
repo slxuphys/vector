@@ -17,14 +17,14 @@ export type TableCellBlock = {
 };
 
 export type LayoutBlock =
-  | { type: "heading"; level: number; runs: InlineRun[] }
+  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string }
   | { type: "paragraph"; runs: InlineRun[] }
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined> }
   | { type: "code"; language?: string; code: string }
-  | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[] }
-  | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign }
-  | { type: "graphsx"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign }
-  | { type: "math"; text: string }
+  | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string }
+  | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string }
+  | { type: "graphsx"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string }
+  | { type: "math"; text: string; label?: string; labelNumber?: string }
   | { type: "rule" }
   | { type: "pageBreak" };
 

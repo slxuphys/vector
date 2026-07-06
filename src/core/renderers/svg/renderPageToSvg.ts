@@ -21,6 +21,11 @@ export function renderPageToSvg(page: DisplayPage, options: SvgRenderOptions = {
 }
 
 function renderObject(object: DisplayObject): string {
+  const rendered = renderObjectBody(object);
+  return object.anchorId ? `<g id="${escapeXml(object.anchorId)}">${rendered}</g>` : rendered;
+}
+
+function renderObjectBody(object: DisplayObject): string {
   if (object.type === "math") {
     if (isNativeMathRenderer(object.renderer)) return renderNativeMathSvg(object);
     if (object.renderer === "mathjax-vector" || object.renderer === "mathjax-glyph") {

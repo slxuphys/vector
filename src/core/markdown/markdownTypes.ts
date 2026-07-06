@@ -20,15 +20,20 @@ export type TableCellNode = {
   rowSpan: number;
 };
 
+export type LabeledNode = {
+  label?: string;
+  labelNumber?: string;
+};
+
 export type MarkdownNode =
-  | { type: "heading"; level: number; children: InlineNode[] }
+  | ({ type: "heading"; level: number; children: InlineNode[] } & LabeledNode)
   | { type: "paragraph"; children: InlineNode[] }
   | { type: "list"; ordered: boolean; items: InlineNode[][]; checked?: Array<boolean | undefined> }
   | { type: "codeBlock"; language?: string; code: string }
-  | { type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] }
+  | ({ type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] } & LabeledNode)
   | ImageNode
   | GraphSXNode
-  | { type: "mathBlock"; text: string }
+  | ({ type: "mathBlock"; text: string } & LabeledNode)
   | { type: "thematicBreak" }
   | { type: "pageBreak" };
 
@@ -40,7 +45,7 @@ export type ImageNode = {
   width?: ImageLength;
   height?: ImageLength;
   align?: ImageAlign;
-};
+} & LabeledNode;
 
 export type GraphSXNode = {
   type: "graphsx";
@@ -48,7 +53,7 @@ export type GraphSXNode = {
   caption?: string;
   width?: ImageLength;
   align?: ImageAlign;
-};
+} & LabeledNode;
 
 export type MarkdownAst = {
   type: "document";

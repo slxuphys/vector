@@ -84,6 +84,7 @@ export function paginate(
       const after = block.level <= 2 ? 10 : 7;
       const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       ensure(before + lines.length * fontSize * 1.2 + after);
+      if (block.label) pushAnchor(cursor, block.label);
       cursor.y += before;
       drawLines(cursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       cursor.y += after;
@@ -150,6 +151,17 @@ export function paginate(
     }
 
     if (block.type === "table") {
+      if (block.label) pushAnchor(cursor, block.label);
+      if (block.labelNumber) {
+        const label = `Table ${block.labelNumber}`;
+        const fontSize = theme.fontSize * 0.9;
+        ensure(fontSize * 1.4);
+        cursor.page.objects.push(textObject(label, cursor.x, cursor.y + fontSize, fontSize, theme, {
+          bold: true,
+          color: theme.mutedText
+        }));
+        cursor.y += fontSize * 1.6;
+      }
       cursor = drawTable(cursor, block, theme, ensure, newPage, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       continue;
     }
@@ -165,12 +177,19 @@ export function paginate(
         x,
         y: cursor.y,
         width: image.width,
-        height: image.height
+        height: image.height,
+        anchorId: block.label
       });
       if (block.caption) {
+        const caption = block.labelNumber ? `Figure ${block.labelNumber}. ${block.caption}` : block.caption;
+        const captionWidth = measureText(caption, {
+          fontSize: image.captionFontSize,
+          fontFamily: theme.fontFamily,
+          monoFontFamily: theme.monoFontFamily
+        });
         cursor.page.objects.push(textObject(
-          block.caption,
-          x + image.width / 2 - image.captionWidth / 2,
+          caption,
+          x + image.width / 2 - captionWidth / 2,
           cursor.y + image.height + image.captionFontSize + 6,
           image.captionFontSize,
           theme,
@@ -198,12 +217,19 @@ export function paginate(
         y: cursor.y,
         width: graph.width,
         height: graph.height,
-        warnings: graph.warnings
+        warnings: graph.warnings,
+        anchorId: block.label
       });
       if (block.caption) {
+        const caption = block.labelNumber ? `Figure ${block.labelNumber}. ${block.caption}` : block.caption;
+        const captionWidth = measureText(caption, {
+          fontSize: graph.captionFontSize,
+          fontFamily: theme.fontFamily,
+          monoFontFamily: theme.monoFontFamily
+        });
         cursor.page.objects.push(textObject(
-          block.caption,
-          x + graph.width / 2 - graph.captionWidth / 2,
+          caption,
+          x + graph.width / 2 - captionWidth / 2,
           cursor.y + graph.height + graph.captionFontSize + 6,
           graph.captionFontSize,
           theme,
@@ -238,9 +264,26 @@ export function paginate(
         mathRenderer,
         nativeMathMetrics,
         nativeMathProfile,
-        nativeLayout: measured?.nativeLayout
+        nativeLayout: measured?.nativeLayout,
+        anchorId: block.label
       });
       cursor.page.objects.push(mathObject);
+      if (block.labelNumber) {
+        const label = `(${block.labelNumber})`;
+        const labelWidth = measureText(label, {
+          fontSize,
+          fontFamily: theme.fontFamily,
+          monoFontFamily: theme.monoFontFamily
+        });
+        cursor.page.objects.push(textObject(
+          label,
+          cursor.x + cursor.contentWidth - labelWidth,
+          cursor.y + height / 2 + fontSize * 0.35,
+          fontSize,
+          theme,
+          { color: theme.text }
+        ));
+      }
       cursor.y += height + 12;
       continue;
     }
@@ -549,6 +592,7 @@ function createMathObject(options: {
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
   nativeLayout?: ReturnType<typeof layoutNativeMath>;
+  anchorId?: string;
 }): Extract<DisplayObject, { type: "math" }> {
   if (isMathJaxRenderer(options.mathRenderer)) {
     const artifact = getCachedMathJaxSvgArtifact(options.latex, options.displayMode, options.fontSize, options.color);
@@ -569,7 +613,8 @@ function createMathObject(options: {
       advance: options.advance ?? artifact.width,
       baseline: artifact.baseline,
       fontSize: options.fontSize,
-      color: options.color
+      color: options.color,
+      anchorId: options.anchorId
     };
   }
 
@@ -595,7 +640,8 @@ function createMathObject(options: {
       color: options.color,
       nativeMetrics,
       nativeMathProfile: profile,
-      nativeLayout: layout
+      nativeLayout: layout,
+      anchorId: options.anchorId
     };
   }
 
@@ -621,7 +667,8 @@ function createMathObject(options: {
     height: options.height,
     advance: options.advance,
     fontSize: options.fontSize,
-    color: options.color
+    color: options.color,
+    anchorId: options.anchorId
   };
 }
 
@@ -683,6 +730,20 @@ function textObject(
     bold: options.bold,
     italic: options.italic
   };
+}
+
+function pushAnchor(cursor: Cursor, anchorId: string): void {
+  cursor.page.objects.push({
+    type: "rect",
+    x: cursor.x,
+    y: cursor.y,
+    width: 1,
+    height: 1,
+    fill: "none",
+    stroke: "none",
+    strokeWidth: 0,
+    anchorId
+  });
 }
 
 function drawTable(

@@ -3,7 +3,7 @@ import type { DisplayObject } from "../../display-list/displayTypes";
 import { layoutNativeMath, nativeMathProfileForRenderer, type NativeGlyph } from "../math/nativeMath";
 import { getOpenMathFontProfile, openMathFontProfiles } from "../math/openMathFont";
 import type { PdfFontSet } from "./pdfFonts";
-import { hexToRgb } from "./pdfText";
+import { canEncodePdfText, hexToRgb, logMissingPdfGlyph } from "./pdfText";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -63,11 +63,17 @@ export function drawPdfNativeMath(
     }
 
     const font = selectNativeGlyphFont(node, fonts, object.renderer !== "native-openmath");
-    const text = encodeWithFallback(font, node.text);
-    if (!text) continue;
+    if (!font) {
+      logMissingPdfGlyph("native-math-font", node.text, node.fontFamily);
+      continue;
+    }
+    if (!canEncodePdfText(font, node.text)) {
+      logMissingPdfGlyph("native-math", node.text, node.fontFamily);
+      continue;
+    }
     const x = object.x + node.x;
     const y = pageHeight - object.y - node.y;
-    page.drawText(text, {
+    page.drawText(node.text, {
       x,
       y,
       size: node.fontSize,
@@ -82,7 +88,7 @@ function selectNativeGlyphFont(
   glyph: NativeGlyph,
   fonts: PdfFontSet,
   preferTexFonts: boolean
-): PDFFont {
+): PDFFont | undefined {
   if (glyph.fontFamily?.includes(openMathFontProfiles["new-computer-modern"].family) && fonts.openMathNewComputerModern) return fonts.openMathNewComputerModern;
   if (glyph.fontFamily?.includes(openMathFontProfiles.libertinus.family) && fonts.openMathLibertinus) return fonts.openMathLibertinus;
   if (glyph.fontFamily?.includes(getOpenMathFontProfile("latin-modern").family) && fonts.openMath) return fonts.openMath;
@@ -105,23 +111,7 @@ function selectNativeGlyphFont(
   if (glyph.italic && texFonts?.mathItalic) return texFonts.mathItalic;
   if (glyph.italic) return fonts.italic;
   if (glyph.fontFamily?.includes("KaTeX") && texFonts) return texFonts.regular;
-  return fonts.regular;
-}
-
-function encodeWithFallback(font: PDFFont, text: string): string {
-  try {
-    font.encodeText(text);
-    return text;
-  } catch {
-    return Array.from(text).filter((char) => {
-      try {
-        font.encodeText(char);
-        return true;
-      } catch {
-        return false;
-      }
-    }).join("");
-  }
+  return preferTexFonts ? fonts.regular : undefined;
 }
 
 function flipSvgPathY(path: string): string {

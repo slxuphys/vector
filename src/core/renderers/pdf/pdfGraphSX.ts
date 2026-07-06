@@ -7,8 +7,8 @@ import {
 } from "../math/nativeMath";
 import { svgToDataUrl } from "../math/renderKatex";
 import { drawPdfNativeMath } from "./pdfNativeMath";
-import type { PdfFontSet } from "./pdfFonts";
-import { hexToRgb } from "./pdfText";
+import { selectPdfTextFontFallbacks, type PdfFontSet } from "./pdfFonts";
+import { drawPdfText, hexToRgb, measurePdfTextWidth } from "./pdfText";
 
 type GraphSXObject = Extract<DisplayObject, { type: "graphsx" }>;
 type ClipRect = { x: number; y: number; width: number; height: number };
@@ -194,21 +194,32 @@ function drawGraphSXElement(
     const text = String(item.text ?? "");
     if (text) {
       const fontSize = numberAttr(attrs["font-size"] ?? attrs.fontSize, 12) * scale;
+      const fontFamily = stringAttr(attrs["font-family"] ?? attrs.fontFamily, "");
+      const fontWeight = String(attrs["font-weight"] ?? attrs.fontWeight ?? "");
+      const fontStyle = String(attrs["font-style"] ?? attrs.fontStyle ?? "");
+      const textObject = {
+        type: "text" as const,
+        text,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: fontSize,
+        fontSize,
+        fontFamily,
+        color: stringAttr(attrs.fill, "#111111"),
+        bold: fontWeight === "700" || fontWeight === "bold",
+        italic: fontStyle === "italic"
+      };
+      const fontFallbacks = selectPdfTextFontFallbacks(textObject, fonts);
       const anchor = attrs["text-anchor"] ?? attrs.textAnchor ?? item.anchor;
-      const width = fontSize * text.length * 0.55;
+      const width = measurePdfTextWidth(text, fontFallbacks, fontSize, fontFamily);
       const xValue = attrs.x ?? item.x;
       const yValue = attrs.y ?? item.y;
       const baselineOffset = item.type === "text" && attrs.y === undefined ? 4 : 0;
       const dominantBaselineOffset = dominantBaselineToOffset(attrs["dominant-baseline"] ?? attrs.dominantBaseline, fontSize);
       const x = object.x + offsetX + numberAttr(xValue) * scale - (anchor === "middle" ? width / 2 : anchor === "end" ? width : 0);
       const y = pageHeight - object.y - offsetY - (numberAttr(yValue) + baselineOffset) * scale - dominantBaselineOffset;
-      page.drawText(text, {
-        x,
-        y,
-        size: fontSize,
-        font: fonts.regular,
-        color: colorAttr(attrs.fill) ?? hexToRgb("#111111")
-      });
+      drawPdfText(page, { ...textObject, x, y: pageHeight - y }, fontFallbacks, pageHeight);
     }
   }
 

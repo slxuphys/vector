@@ -6,7 +6,6 @@ import { loadPdfFonts, selectPdfTextFontFallbacks } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
 import { drawPdfKatexDomGlyphs } from "./pdfKatexDom";
-import { drawPdfMath } from "./pdfMath";
 import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
 import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
@@ -14,6 +13,7 @@ import { drawPdfNativeMath } from "./pdfNativeMath";
 import { drawPdfImage } from "./pdfImage";
 import { drawPdfGraphSX } from "./pdfGraphSX";
 import { isNativeMathRenderer } from "../math/nativeMath";
+import { collectPdfLinkTargets } from "./pdfLinks";
 
 export type PdfRenderOptions = {
   rasterizeMath?: boolean;
@@ -73,12 +73,16 @@ async function renderToPdfAttempt(
     shape: 0
   };
 
-  for (const displayPage of layout.pages) {
-    const page = pdf.addPage([displayPage.width, displayPage.height]);
+  const pages = layout.pages.map((displayPage) => pdf.addPage([displayPage.width, displayPage.height]));
+  const linkTargets = collectPdfLinkTargets(layout, pages);
+
+  for (let pageIndex = 0; pageIndex < layout.pages.length; pageIndex += 1) {
+    const displayPage = layout.pages[pageIndex];
+    const page = pages[pageIndex];
     for (const object of displayPage.objects) {
       if (object.type === "text") {
         objectCounts.text += 1;
-        drawPdfText(page, object, selectPdfTextFontFallbacks(object, fonts), displayPage.height);
+        drawPdfText(page, object, selectPdfTextFontFallbacks(object, fonts), displayPage.height, linkTargets);
       } else if (object.type === "math") {
         objectCounts.math += 1;
         let drewArtifact = false;
@@ -88,16 +92,13 @@ async function renderToPdfAttempt(
           drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
         } else if (mathPdfMode === "glyph" && object.renderer === "katex-glyph") {
           drewArtifact = await drawPdfKatexDomGlyphs(page, object, fonts, displayPage.height);
-          if (!drewArtifact) drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
         } else if (mathPdfMode === "glyph" && object.renderer === "mathjax-glyph") {
           drewArtifact = drawPdfMathGlyphs(page, object, fonts, displayPage.height);
-          if (!drewArtifact) drewArtifact = drawPdfMathJaxVector(page, object, displayPage.height);
         } else if (object.renderer === "mathjax-vector" || object.renderer === "mathjax-glyph") {
           drewArtifact = drawPdfMathJaxVector(page, object, displayPage.height);
         }
         if (!drewArtifact) {
-          const mathFonts = fonts.tex ?? fonts;
-          drawPdfMath(page, object, { regular: mathFonts.regular, italic: mathFonts.italic }, displayPage.height);
+          logUndrawnMath(object.renderer, object.latex);
         }
       } else if (object.type === "image") {
         objectCounts.image += 1;
@@ -141,6 +142,14 @@ async function renderToPdfAttempt(
   });
   Object.defineProperty(bytes, "__pdfMs", { value: totalMs, enumerable: false });
   return bytes;
+}
+
+function logUndrawnMath(renderer: string | undefined, latex: string): void {
+  if (!isDebugLogEnabled("pdf")) return;
+  console.warn("[pdf-math-undrawn]", {
+    renderer,
+    latex
+  });
 }
 
 export async function downloadPdf(layout: PagedDisplayList, filename: string, options: PdfRenderOptions = {}): Promise<void> {

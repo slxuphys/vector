@@ -5,7 +5,13 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
   return ast.children.map((node): LayoutBlock => {
     switch (node.type) {
       case "heading":
-        return { type: "heading", level: node.level, runs: flattenInline(node.children) };
+        return {
+          type: "heading",
+          level: node.level,
+          runs: flattenInline(node.labelNumber ? [{ type: "text", text: `${node.labelNumber} ` }, ...node.children] : node.children),
+          label: node.label,
+          labelNumber: node.labelNumber
+        };
       case "paragraph":
         return { type: "paragraph", runs: flattenInline(node.children) };
       case "list":
@@ -30,7 +36,9 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
             colSpan: cell.colSpan,
             rowSpan: cell.rowSpan
           }))),
-          align: node.align
+          align: node.align,
+          label: node.label,
+          labelNumber: node.labelNumber
         };
       case "image":
         return {
@@ -40,7 +48,9 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           caption: node.caption,
           width: node.width,
           height: node.height,
-          align: node.align
+          align: node.align,
+          label: node.label,
+          labelNumber: node.labelNumber
         };
       case "graphsx":
         return {
@@ -48,10 +58,12 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           source: node.source,
           caption: node.caption,
           width: node.width,
-          align: node.align
+          align: node.align,
+          label: node.label,
+          labelNumber: node.labelNumber
         };
       case "mathBlock":
-        return { type: "math", text: node.text };
+        return { type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber };
       case "thematicBreak":
         return { type: "rule" };
       case "pageBreak":

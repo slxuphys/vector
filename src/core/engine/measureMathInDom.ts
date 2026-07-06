@@ -12,11 +12,13 @@ import {
 } from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
 import { getOpenMathFontProfile, openMathFontFaceCss } from "../renderers/math/openMathFont";
+import { isDebugLogEnabled } from "../utils/debugSettings";
 
 let root: HTMLDivElement | undefined;
 const loadedFontSizes = new Set<number>();
 const measurementCache = new Map<string, MathMeasurement>();
 const openMathFontStyleIds = new Set<string>();
+const browserMeasureLogKeys = new Set<string>();
 
 export async function measureMathInDom(
   requests: MathMeasureRequest[],
@@ -49,6 +51,7 @@ export async function measureMathInDom(
     container.appendChild(node);
 
     const mathNode = node.querySelector(".katex, .katex-display") ?? node;
+    logBrowserMathMeasurement("katex-dom", request);
     const rect = mathNode.getBoundingClientRect();
     const wrapperRect = node.getBoundingClientRect();
     const marker = node.querySelector(".svg-md-baseline-marker");
@@ -119,6 +122,7 @@ function ensureOpenMathFontFace(profileName: "latin-modern" | "libertinus" | "ne
 async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {
   const measurements: Record<string, MathMeasurement> = {};
   for (const request of requests) {
+    logBrowserMathMeasurement("mathjax-svg-artifact", request);
     const artifact = await renderMathJaxSvgArtifact(request.latex, request.displayMode, request.fontSize, request.color);
     measurements[request.key] = {
       width: artifact.width,
@@ -127,6 +131,21 @@ async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<st
     };
   }
   return measurements;
+}
+
+function logBrowserMathMeasurement(path: "katex-dom" | "mathjax-svg-artifact", request: MathMeasureRequest): void {
+  if (!isDebugLogEnabled("math")) return;
+  const normalized = request.latex.length > 80 ? `${request.latex.slice(0, 80)}...` : request.latex;
+  const key = `${path}:${request.key}`;
+  if (browserMeasureLogKeys.has(key)) return;
+  browserMeasureLogKeys.add(key);
+  if (browserMeasureLogKeys.size > 120) return;
+  console.log("[math-browser-measure]", {
+    path,
+    latex: normalized,
+    displayMode: request.displayMode,
+    fontSize: request.fontSize
+  });
 }
 
 async function waitForKatexFonts(fontSize: number): Promise<void> {

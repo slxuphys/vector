@@ -32,13 +32,16 @@ export function parseMarkdown(markdown: string): MarkdownAst {
         i += 1;
       }
       if (language === "graphsx") {
-        children.push({
+        const node: MarkdownNode = {
           type: "graphsx",
           source: code.join("\n"),
           caption: fenceInfo.caption,
           width: fenceInfo.width,
-          align: fenceInfo.align
-        });
+          align: fenceInfo.align,
+          label: fenceInfo.label
+        };
+        children.push(withFollowingLabel(node, lines, i + 1));
+        if (followingLabel(lines[i + 1])) i += 1;
       } else {
         children.push({ type: "codeBlock", language, code: code.join("\n") });
       }
@@ -53,17 +56,21 @@ export function parseMarkdown(markdown: string): MarkdownAst {
         math.push(lines[i]);
         i += 1;
       }
-      children.push({ type: "mathBlock", text: math.join("\n") });
+      const node: MarkdownNode = { type: "mathBlock", text: math.join("\n") };
+      children.push(withFollowingLabel(node, lines, i + 1));
+      if (followingLabel(lines[i + 1])) i += 1;
       i += 1;
       continue;
     }
 
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
+      const labeled = stripTrailingLabel(heading[2].replace(/\s+#+\s*$/, ""));
       children.push({
         type: "heading",
         level: heading[1].length,
-        children: parseInline(heading[2].replace(/\s+#+\s*$/, ""))
+        children: parseInline(labeled.text),
+        label: labeled.label
       });
       i += 1;
       continue;
@@ -85,8 +92,10 @@ export function parseMarkdown(markdown: string): MarkdownAst {
     if (isTableStart(lines, i)) {
       const table = parseTableAt(lines, i);
       if (!table) throw new Error("Expected table parser to accept a table start");
-      children.push({ type: "table", headers: table.headers, rows: table.rows, align: table.align });
+      const node: MarkdownNode = { type: "table", headers: table.headers, rows: table.rows, align: table.align };
+      children.push(withFollowingLabel(node, lines, table.end));
       i = table.end;
+      if (followingLabel(lines[table.end])) i += 1;
       continue;
     }
 
@@ -129,11 +138,31 @@ function parseFenceInfo(language: string | undefined, rest: string): {
   caption?: string;
   width?: ReturnType<typeof parseImageAttributes>["width"];
   align?: ReturnType<typeof parseImageAttributes>["align"];
+  label?: string;
 } {
   if (language !== "graphsx" || !rest.trim()) return {};
   const body = rest.trim().startsWith("{") ? rest.trim() : `{${rest.trim()}}`;
   const attrs = parseImageAttributes(body);
   const captionMatch = rest.match(/(?:^|\s)caption=("([^"]*)"|'([^']*)'|[^\s]+)/);
   const caption = captionMatch?.[2] ?? captionMatch?.[3] ?? captionMatch?.[1]?.replace(/^["']|["']$/g, "");
-  return { caption, width: attrs.width, align: attrs.align };
+  return { caption, width: attrs.width, align: attrs.align, label: attrs.label };
+}
+
+function stripTrailingLabel(text: string): { text: string; label?: string } {
+  const match = text.match(/\s*\{#([A-Za-z][\w:.-]*)}\s*$/);
+  if (!match) return { text };
+  return {
+    text: text.slice(0, match.index).trimEnd(),
+    label: match[1]
+  };
+}
+
+function followingLabel(line: string | undefined): string | undefined {
+  const match = line?.trim().match(/^\{:\s*#([A-Za-z][\w:.-]*)\s*}$|^\{#([A-Za-z][\w:.-]*)}$/);
+  return match?.[1] ?? match?.[2];
+}
+
+function withFollowingLabel<T extends MarkdownNode>(node: T, lines: string[], index: number): T {
+  const label = followingLabel(lines[index]);
+  return label ? { ...node, label } : node;
 }

@@ -4,6 +4,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { createDocumentEngine } from "../src/core/engine/createDocumentEngine";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
+import { resolveCrossReferences } from "../src/core/xref/resolveReferences";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
@@ -94,6 +95,67 @@ const x = 1
       expect(image.caption).toBe("Figure 1. Phase space");
       expect(image.width).toEqual({ value: 70, unit: "percent" });
       expect(image.align).toBe("center");
+    }
+  });
+
+  it("parses labels on headings, math, images, and tables", () => {
+    const ast = parseMarkdown(`# Intro {#sec:intro}
+
+$$
+E=mc^2
+$$
+{#eq:energy}
+
+![Phase](plot.svg "Phase portrait"){#fig:phase width=70%}
+
+| A |
+| - |
+| B |
+{: #tbl:data}
+`);
+
+    expect(ast.children[0]).toMatchObject({ type: "heading", label: "sec:intro" });
+    expect(ast.children[1]).toMatchObject({ type: "mathBlock", label: "eq:energy" });
+    expect(ast.children[2]).toMatchObject({ type: "image", label: "fig:phase" });
+    expect(ast.children[3]).toMatchObject({ type: "table", label: "tbl:data" });
+  });
+
+  it("resolves section, equation, figure, and table references", () => {
+    const ast = resolveCrossReferences(parseMarkdown(`# Intro {#sec:intro}
+
+See @sec:intro, @eq:energy, @fig:phase, and @tbl:data.
+
+$$
+E=mc^2
+$$
+{#eq:energy}
+
+![Phase](plot.svg "Phase portrait"){#fig:phase}
+
+| A |
+| - |
+| B |
+{: #tbl:data}
+`));
+    const paragraph = ast.children[1];
+
+    expect(ast.children[0]).toMatchObject({ type: "heading", labelNumber: "1" });
+    expect(ast.children[2]).toMatchObject({ type: "mathBlock", labelNumber: "1" });
+    expect(ast.children[3]).toMatchObject({ type: "image", labelNumber: "1" });
+    expect(ast.children[4]).toMatchObject({ type: "table", labelNumber: "1" });
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toEqual([
+        { type: "text", text: "See " },
+        { type: "link", href: "#sec:intro", children: [{ type: "text", text: "Section 1" }] },
+        { type: "text", text: ", " },
+        { type: "link", href: "#eq:energy", children: [{ type: "text", text: "(1)" }] },
+        { type: "text", text: ", " },
+        { type: "link", href: "#fig:phase", children: [{ type: "text", text: "Figure 1" }] },
+        { type: "text", text: ", and " },
+        { type: "link", href: "#tbl:data", children: [{ type: "text", text: "Table 1" }] },
+        { type: "text", text: "." }
+      ]);
     }
   });
 
@@ -194,6 +256,22 @@ describe("document engine", () => {
     expect(svg).toContain("Markdown ");
     expect(svg).toContain("Preview");
     expect(textObjects.some((object) => object.type === "text" && object.text.includes("Markdown "))).toBe(true);
+  });
+
+  it("renders cross references as SVG links and PDF link annotations", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`# Intro {#sec:intro}
+
+See @sec:intro.
+`);
+    const svg = renderPageToSvg(layout.pages[0]);
+    const pdfBytes = await renderToPdf(layout);
+    const pdf = await PDFDocument.load(pdfBytes);
+    const annotations = pdf.getPages()[0].node.Annots();
+
+    expect(svg).toContain('id="sec:intro"');
+    expect(svg).toContain('href="#sec:intro"');
+    expect(annotations?.size()).toBeGreaterThan(0);
   });
 
   it("renders markdown images with captions into SVG pages", async () => {

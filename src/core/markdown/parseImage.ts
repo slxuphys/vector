@@ -10,6 +10,7 @@ export function parseImageBlock(line: string): ImageNode | undefined {
     alt: match[1],
     src: stripAngleBrackets(match[2]),
     caption: match[3],
+    label: attributes.label,
     width: attributes.width,
     height: attributes.height,
     align: attributes.align
@@ -20,6 +21,7 @@ export function parseImageAttributes(raw: string | undefined): {
   width?: ImageLength;
   height?: ImageLength;
   align?: ImageAlign;
+  label?: string;
 } {
   if (!raw) return {};
   const body = raw.replace(/^\{\s*/, "").replace(/\s*}$/, "");
@@ -32,8 +34,15 @@ export function parseImageAttributes(raw: string | undefined): {
     if (key === "width") attributes.width = parseLength(value);
     else if (key === "height") attributes.height = parseLength(value);
     else if (key === "align" && isImageAlign(value)) attributes.align = value;
+    else if ((key === "id" || key === "#") && isLabelId(value)) attributes.label = value.replace(/^#/, "");
   }
+  const shorthand = body.match(/(?:^|\s)#([A-Za-z][\w:.-]*)/);
+  if (shorthand) attributes.label = shorthand[1];
   return attributes;
+}
+
+function isLabelId(value: string): boolean {
+  return /^#?[A-Za-z][\w:.-]*$/.test(value);
 }
 
 function parseLength(value: string): ImageLength | undefined {

@@ -13,6 +13,12 @@ import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
 import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
 import { openMathFontProfiles, openMathFontUrl } from "../math/openMathFont";
 import {
+  getDefaultOpenMathMetricsForProfile,
+  layoutNativeMath,
+  type NativeGlyph
+} from "../math/nativeMath";
+import type { NativeMathFontProfileName } from "../math/nativeMathProfiles";
+import {
   latinModernRomanFontFamily,
   latinModernRomanFontUrls,
   libertinusSerifFontFamily,
@@ -424,12 +430,13 @@ function openMathFontUrlForProfile(profile: string | undefined): string {
 function collectGraphSXFontUsage(
   displayList: Record<string, any>,
   usage: PdfFontUsage,
-  nativeMathProfile = "openmath"
+  nativeMathProfile: NativeMathFontProfileName = "openmath"
 ): void {
   const visit = (item: Record<string, any> | undefined) => {
     if (!item) return;
     if (item.type === "math" || item.tag === "math") {
       collectOpenMathProfileUsage(nativeMathProfile, usage);
+      collectGraphSXMathSubsetText(item, nativeMathProfile, usage);
     }
     const props = item.props ?? {};
     const style = item.style ?? {};
@@ -460,6 +467,26 @@ function collectOpenMathProfileUsage(profile: string | undefined, usage: PdfFont
   if (profile === "openmath-libertinus" || profile === "libertinus") usage.openMathLibertinus = true;
   else if (profile === "openmath-new-computer-modern" || profile === "new-computer-modern") usage.openMathNewComputerModern = true;
   else usage.openMath = true;
+}
+
+function collectGraphSXMathSubsetText(
+  item: Record<string, any>,
+  nativeMathProfile: NativeMathFontProfileName,
+  usage: PdfFontUsage
+): void {
+  const source = String(item.source ?? item.fallback ?? "");
+  if (!source) return;
+  const openMathUrl = openMathFontUrlForProfile(nativeMathProfile);
+  const metrics = getDefaultOpenMathMetricsForProfile(nativeMathProfile);
+  const fontSize = Number(item.fontSize);
+  const layout = layoutNativeMath(source, false, Number.isFinite(fontSize) ? fontSize : 12, metrics, nativeMathProfile);
+  for (const node of layout.nodes) {
+    if (isNativeGlyphNode(node)) addSubsetText(usage, openMathUrl, node.text);
+  }
+}
+
+function isNativeGlyphNode(node: unknown): node is NativeGlyph {
+  return Boolean(node && typeof node === "object" && "type" in node && node.type === "glyph" && "text" in node && typeof node.text === "string");
 }
 
 function collectOpenMathFamilyUsage(fontFamily: string, usage: PdfFontUsage): void {

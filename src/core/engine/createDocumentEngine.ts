@@ -7,6 +7,7 @@ import type { LayoutBlock } from "../layout/layoutBlocks";
 import type { PageConfig } from "../layout/pageConfig";
 import { normalizeAst } from "../markdown/normalizeAst";
 import { parseMarkdown } from "../markdown/parseMarkdown";
+import { resolveCrossReferences } from "../xref/resolveReferences";
 import { defaultTheme } from "../theme/defaultTheme";
 import { isNativeMathRenderer, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
@@ -53,7 +54,7 @@ export function layoutMarkdown(
 export function prepareMarkdownLayout(markdown: string, options: EngineOptions = {}): PreparedLayout {
   const totalStart = now();
   const parseStart = now();
-  const ast = parseMarkdown(markdown);
+  const ast = resolveCrossReferences(parseMarkdown(markdown));
   const blocks = normalizeAst(ast);
   const parseMs = now() - parseStart;
   const page = createPageConfig(options.pageSize ?? "letter", options.margin ?? 72);

@@ -15,11 +15,16 @@ export type DisplayTextRun = {
   bold?: boolean;
   italic?: boolean;
   link?: string;
+  anchorId?: string;
+};
+
+export type DisplayAnchor = {
+  anchorId?: string;
 };
 
 export type DisplayObject =
   | ({ type: "text" } & DisplayTextRun)
-  | {
+  | ({
       type: "math";
       renderer?: "katex-raster" | "katex-glyph" | "mathjax-vector" | "mathjax-glyph" | "native" | "native-openmath";
       latex: string;
@@ -39,8 +44,8 @@ export type DisplayObject =
       nativeMetrics?: NativeMathMetrics;
       nativeMathProfile?: NativeMathFontProfileName;
       nativeLayout?: NativeMathLayout;
-    }
-  | {
+    } & DisplayAnchor)
+  | ({
       type: "rect";
       x: number;
       y: number;
@@ -50,8 +55,8 @@ export type DisplayObject =
       stroke?: string;
       strokeWidth?: number;
       radius?: number;
-    }
-  | {
+    } & DisplayAnchor)
+  | ({
       type: "image";
       src: string;
       alt: string;
@@ -59,8 +64,8 @@ export type DisplayObject =
       y: number;
       width: number;
       height: number;
-    }
-  | {
+    } & DisplayAnchor)
+  | ({
       type: "graphsx";
       source: string;
       svg: string;
@@ -74,8 +79,8 @@ export type DisplayObject =
       width: number;
       height: number;
       warnings?: string[];
-    }
-  | {
+    } & DisplayAnchor)
+  | ({
       type: "line";
       x1: number;
       y1: number;
@@ -83,7 +88,7 @@ export type DisplayObject =
       y2: number;
       stroke: string;
       strokeWidth: number;
-    };
+    } & DisplayAnchor);
 
 export type DisplayPage = {
   index: number;

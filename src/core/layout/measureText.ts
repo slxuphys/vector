@@ -27,15 +27,16 @@ export function measureText(text: string, style: TextStyle): number {
     cache.set(cacheKey, fontFileWidth);
     return fontFileWidth;
   }
-  logTextMeasureFallback(text, style);
 
   if (canvasContext) {
+    logTextMeasureFallback(text, style, "canvas");
     canvasContext.font = font;
     const width = canvasContext.measureText(text).width;
     cache.set(cacheKey, width);
     return width;
   }
 
+  logTextMeasureFallback(text, style, "heuristic");
   const base = style.code ? 0.61 : 0.57;
   const weight = style.bold ? 1.14 : 1;
   let width = 0;
@@ -51,10 +52,10 @@ export function measureText(text: string, style: TextStyle): number {
   return measured;
 }
 
-function logTextMeasureFallback(text: string, style: TextStyle): void {
+function logTextMeasureFallback(text: string, style: TextStyle, measurementPath: "canvas" | "heuristic"): void {
   if (typeof console === "undefined" || !isDebugLogEnabled("text")) return;
   const normalized = text.length > 40 ? `${text.slice(0, 40)}...` : text;
-  const key = `${style.fontFamily}:${style.bold ? "b" : ""}${style.italic ? "i" : ""}:${style.code ? "code" : ""}:${normalized}`;
+  const key = `${measurementPath}:${style.fontFamily}:${style.bold ? "b" : ""}${style.italic ? "i" : ""}:${style.code ? "code" : ""}:${normalized}`;
   if (fallbackLogKeys.has(key)) return;
   fallbackLogKeys.add(key);
   if (fallbackLogKeys.size > 80) return;
@@ -65,6 +66,7 @@ function logTextMeasureFallback(text: string, style: TextStyle): void {
     bold: Boolean(style.bold),
     italic: Boolean(style.italic),
     code: Boolean(style.code),
+    measurementPath,
     reason: style.code ? "code font" : "font file metrics unavailable"
   });
 }
