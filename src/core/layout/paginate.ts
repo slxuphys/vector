@@ -94,8 +94,10 @@ export function paginate(
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
       const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
-      ensure(lines.length * fontSize * theme.lineHeight + 10);
-      drawLines(cursor, lines, fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      for (const line of lines) {
+        ensure(Math.max(line.height, fontSize * theme.lineHeight));
+        drawLines(cursor, [line], fontSize, theme, { color: theme.text, lineHeight: theme.lineHeight }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      }
       cursor.y += 10;
       continue;
     }

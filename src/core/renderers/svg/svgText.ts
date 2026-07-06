@@ -1,7 +1,16 @@
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { escapeXml, sanitizeUrl } from "../../utils/sanitize";
+import { shapeTextWithFontFile } from "../text/textFontMetrics";
 
 export function renderSvgText(object: Extract<DisplayObject, { type: "text" }>): string {
+  const shaped = shapeTextWithFontFile(object.text, {
+    fontSize: object.fontSize,
+    fontFamily: object.fontFamily,
+    monoFontFamily: object.fontFamily,
+    bold: object.bold,
+    italic: object.italic
+  });
+  const shapedWidth = shaped?.width ?? object.width;
   const attrs = [
     `x="${round(object.x)}"`,
     `y="${round(object.y)}"`,
@@ -9,6 +18,8 @@ export function renderSvgText(object: Extract<DisplayObject, { type: "text" }>):
     `font-family="${escapeXml(object.fontFamily)}"`,
     `fill="${escapeXml(object.color)}"`,
     `xml:space="preserve"`,
+    shapedWidth !== undefined && shapedWidth > 0 ? `textLength="${round(shapedWidth)}"` : "",
+    shapedWidth !== undefined && shapedWidth > 0 ? `lengthAdjust="spacing"` : "",
     object.bold ? `font-weight="700"` : "",
     object.italic ? `font-style="italic"` : ""
   ].filter(Boolean);

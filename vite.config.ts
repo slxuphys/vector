@@ -7,11 +7,14 @@ export default defineConfig({
     sourcemap: true,
     lib: {
       entry: "src/index.ts",
-      formats: ["es", "cjs"],
+      formats: ["es"],
       name: "SvgMdPreview"
     },
     rollupOptions: {
       external: ["react", "react-dom"]
     }
+  },
+  worker: {
+    format: "es"
   }
 });

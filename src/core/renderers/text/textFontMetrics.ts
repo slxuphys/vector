@@ -1,4 +1,5 @@
 import fontkit from "@pdf-lib/fontkit";
+import rawCreateHarfBuzz from "../../../../node_modules/harfbuzzjs/dist/harfbuzz.js";
 import type { TextStyle } from "../../layout/measureText";
 import type { DocumentTheme } from "../../theme/themeTypes";
 import {
@@ -9,6 +10,12 @@ import {
   newComputerModernFontFamily,
   newComputerModernFontUrls
 } from "./latinModernRomanFont";
+
+const harfbuzzWasmUrl = new URL("../../../../node_modules/harfbuzzjs/dist/harfbuzz.wasm", import.meta.url).href;
+const createHarfBuzz = rawCreateHarfBuzz as unknown as (options?: {
+  locateFile?: (path: string, prefix?: string) => string;
+  wasmBinary?: ArrayBuffer | Uint8Array;
+}) => Promise<unknown>;
 
 type TextFontFamily = "latin-modern" | "libertinus" | "new-computer-modern";
 type TextFontStyle = "regular" | "bold" | "italic" | "boldItalic";
@@ -21,6 +28,65 @@ type FontkitGlyphRun = {
 type FontkitFont = {
   unitsPerEm: number;
   layout(text: string): FontkitGlyphRun;
+  getGlyph(glyphId: number): { path: { toSVG(): string } };
+};
+
+export type ShapedGlyph = {
+  glyphId: number;
+  cluster: number;
+  xAdvance: number;
+  yAdvance: number;
+  xOffset: number;
+  yOffset: number;
+};
+
+export type ShapedTextRun = {
+  key: TextFontKey;
+  text: string;
+  fontSize: number;
+  unitsPerEm: number;
+  glyphs: ShapedGlyph[];
+  width: number;
+};
+
+export type ShapedGlyphPath = ShapedGlyph & {
+  d: string;
+  x: number;
+  y: number;
+  scale: number;
+};
+
+type HarfbuzzFontRecord = {
+  blob: number;
+  face: number;
+  font: number;
+  unitsPerEm: number;
+};
+
+type HarfbuzzModule = {
+  HEAPU8: Uint8Array;
+  HEAPU16: Uint16Array;
+  HEAPU32: Uint32Array;
+  HEAP32: Int32Array;
+  wasmExports: HarfbuzzExports;
+};
+
+type HarfbuzzExports = {
+  malloc(size: number): number;
+  free(ptr: number): void;
+  hb_blob_create(data: number, length: number, mode: number, userData: number, destroy: number): number;
+  hb_face_create(blob: number, index: number): number;
+  hb_face_get_upem(face: number): number;
+  hb_font_create(face: number): number;
+  hb_font_set_scale(font: number, xScale: number, yScale: number): void;
+  hb_buffer_create(): number;
+  hb_buffer_destroy(buffer: number): void;
+  hb_buffer_add_utf16(buffer: number, text: number, textLength: number, itemOffset: number, itemLength: number): void;
+  hb_buffer_guess_segment_properties(buffer: number): void;
+  hb_buffer_get_length(buffer: number): number;
+  hb_buffer_get_glyph_infos(buffer: number, length: number): number;
+  hb_buffer_get_glyph_positions(buffer: number, length: number): number;
+  hb_shape(font: number, buffer: number, features: number, numFeatures: number): void;
 };
 
 const fontkitApi = fontkit as unknown as {
@@ -43,12 +109,19 @@ const textFontUrls: Record<TextFontKey, string> = {
 };
 
 const fontCache = new Map<TextFontKey, FontkitFont>();
+const harfbuzzFontCache = new Map<TextFontKey, HarfbuzzFontRecord>();
+const fontBytesByKey = new Map<TextFontKey, Uint8Array>();
 const loadPromises = new Map<TextFontKey, Promise<void>>();
 const widthCache = new Map<string, number>();
+const shapedCache = new Map<string, ShapedTextRun>();
+const glyphPathCache = new Map<string, string>();
+let harfbuzzModule: HarfbuzzModule | undefined;
+let harfbuzzPromise: Promise<HarfbuzzModule> | undefined;
 
 export async function loadTextFontsForTheme(theme: DocumentTheme): Promise<void> {
   const family = textFontFamilyForCss(theme.fontFamily);
   if (!family) return;
+  await loadHarfbuzzTextShaper();
   await Promise.all([
     loadTextFont(`${family}:regular`),
     loadTextFont(`${family}:bold`),
@@ -57,28 +130,77 @@ export async function loadTextFontsForTheme(theme: DocumentTheme): Promise<void>
   ]);
 }
 
+export async function loadHarfbuzzTextShaper(): Promise<void> {
+  harfbuzzModule = await loadHarfbuzzModule();
+  for (const [key, bytes] of fontBytesByKey) {
+    if (!harfbuzzFontCache.has(key)) harfbuzzFontCache.set(key, createHarfbuzzFont(bytes));
+  }
+}
+
 export function loadTextFontFromBytes(key: TextFontKey, bytes: Uint8Array): void {
+  fontBytesByKey.set(key, bytes);
   fontCache.set(key, fontkitApi.create(bytes));
+  if (harfbuzzModule) harfbuzzFontCache.set(key, createHarfbuzzFont(bytes));
   widthCache.clear();
+  shapedCache.clear();
+  glyphPathCache.clear();
 }
 
 export function measureTextWithFontFile(text: string, style: TextStyle): number | undefined {
-  if (!text) return 0;
+  return shapeTextWithFontFile(text, style)?.width;
+}
+
+export function shapeTextWithFontFile(text: string, style: TextStyle): ShapedTextRun | undefined {
+  if (!text) {
+    const key = textFontKeyForStyle(style);
+    return key ? { key, text, fontSize: style.fontSize, unitsPerEm: 1000, glyphs: [], width: 0 } : undefined;
+  }
   if (style.code) return undefined;
   const key = textFontKeyForStyle(style);
   if (!key) return undefined;
-  const font = fontCache.get(key);
-  if (!font) return undefined;
+  const harfbuzzFont = harfbuzzFontCache.get(key);
+  if (!harfbuzzFont) return undefined;
 
-  const cacheKey = `${key}:${style.fontSize}:${text}`;
-  const cached = widthCache.get(cacheKey);
+  const cacheKey = `${key}:${style.fontSize}:${style.bold ? "b" : ""}${style.italic ? "i" : ""}:${text}`;
+  const cached = shapedCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
-  const run = font.layout(text);
-  const designWidth = run.positions.reduce((sum, position) => sum + position.xAdvance, 0);
-  const width = designWidth * style.fontSize / font.unitsPerEm;
+  const glyphs = shapeWithHarfbuzz(text, harfbuzzFont);
+  const designWidth = glyphs.reduce((sum, glyph) => sum + glyph.xAdvance, 0);
+  const width = designWidth * style.fontSize / harfbuzzFont.unitsPerEm;
+  const shaped = {
+    key,
+    text,
+    fontSize: style.fontSize,
+    unitsPerEm: harfbuzzFont.unitsPerEm,
+    glyphs,
+    width
+  };
+  shapedCache.set(cacheKey, shaped);
   widthCache.set(cacheKey, width);
-  return width;
+  return shaped;
+}
+
+export function getShapedGlyphPaths(shaped: ShapedTextRun): ShapedGlyphPath[] | undefined {
+  const font = fontCache.get(shaped.key);
+  if (!font) return undefined;
+
+  const scale = shaped.fontSize / shaped.unitsPerEm;
+  let cursorX = 0;
+  let cursorY = 0;
+  const paths: ShapedGlyphPath[] = [];
+  for (const glyph of shaped.glyphs) {
+    paths.push({
+      ...glyph,
+      d: glyphPathForId(shaped.key, font, glyph.glyphId),
+      x: cursorX + glyph.xOffset * scale,
+      y: cursorY + glyph.yOffset * scale,
+      scale
+    });
+    cursorX += glyph.xAdvance * scale;
+    cursorY += glyph.yAdvance * scale;
+  }
+  return paths;
 }
 
 function textFontKeyForStyle(style: TextStyle): TextFontKey | undefined {
@@ -99,6 +221,86 @@ function textFontFamilyForCss(fontFamily: string): TextFontFamily | undefined {
   if (fontFamily.includes(libertinusSerifFontFamily)) return "libertinus";
   if (fontFamily.includes(latinModernRomanFontFamily)) return "latin-modern";
   return undefined;
+}
+
+function glyphPathForId(key: TextFontKey, font: FontkitFont, glyphId: number): string {
+  const cacheKey = `${key}:${glyphId}`;
+  const cached = glyphPathCache.get(cacheKey);
+  if (cached) return cached;
+  const d = font.getGlyph(glyphId).path.toSVG();
+  glyphPathCache.set(cacheKey, d);
+  return d;
+}
+
+function createHarfbuzzFont(bytes: Uint8Array): HarfbuzzFontRecord {
+  const hb = getHarfbuzz();
+  const buffer = hb.exports.malloc(bytes.byteLength);
+  hb.module.HEAPU8.set(bytes, buffer);
+  const blob = hb.exports.hb_blob_create(buffer, bytes.byteLength, 2, 0, 0);
+  const face = hb.exports.hb_face_create(blob, 0);
+  const unitsPerEm = hb.exports.hb_face_get_upem(face);
+  const font = hb.exports.hb_font_create(face);
+  hb.exports.hb_font_set_scale(font, unitsPerEm, unitsPerEm);
+  return {
+    blob,
+    face,
+    font,
+    unitsPerEm
+  };
+}
+
+function shapeWithHarfbuzz(text: string, font: HarfbuzzFontRecord): ShapedGlyph[] {
+  const hb = getHarfbuzz();
+  const buffer = hb.exports.hb_buffer_create();
+  const textPtr = hb.exports.malloc(text.length * 2);
+  try {
+    const words = hb.module.HEAPU16.subarray(textPtr / 2, textPtr / 2 + text.length);
+    for (let index = 0; index < text.length; index += 1) words[index] = text.charCodeAt(index);
+    hb.exports.hb_buffer_add_utf16(buffer, textPtr, text.length, 0, text.length);
+    hb.exports.hb_buffer_guess_segment_properties(buffer);
+    hb.exports.hb_shape(font.font, buffer, 0, 0);
+    const length = hb.exports.hb_buffer_get_length(buffer);
+    const infos = hb.module.HEAPU32.subarray(hb.exports.hb_buffer_get_glyph_infos(buffer, 0) / 4, hb.exports.hb_buffer_get_glyph_infos(buffer, 0) / 4 + length * 5);
+    const positionsPtr = hb.exports.hb_buffer_get_glyph_positions(buffer, 0) / 4;
+    const positions = hb.module.HEAP32.subarray(positionsPtr, positionsPtr + length * 5);
+    const glyphs: ShapedGlyph[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const infoIndex = index * 5;
+      glyphs.push({
+        glyphId: infos[infoIndex],
+        cluster: infos[infoIndex + 2],
+        xAdvance: positions[infoIndex],
+        yAdvance: positions[infoIndex + 1],
+        xOffset: positions[infoIndex + 2],
+        yOffset: positions[infoIndex + 3]
+      });
+    }
+    return glyphs;
+  } finally {
+    hb.exports.free(textPtr);
+    hb.exports.hb_buffer_destroy(buffer);
+  }
+}
+
+function getHarfbuzz(): { module: HarfbuzzModule; exports: HarfbuzzExports; heap: Uint8Array } {
+  if (!harfbuzzModule) throw new Error("HarfBuzz text shaper is not loaded");
+  return {
+    module: harfbuzzModule,
+    exports: harfbuzzModule.wasmExports,
+    heap: harfbuzzModule.HEAPU8
+  };
+}
+
+async function loadHarfbuzzModule(): Promise<HarfbuzzModule> {
+  if (harfbuzzModule) return harfbuzzModule;
+  harfbuzzPromise ??= (async () => {
+    const module = await createHarfBuzz({
+      locateFile: (path: string) => path.endsWith(".wasm") ? harfbuzzWasmUrl : path
+    }) as unknown as HarfbuzzModule;
+    harfbuzzModule = module;
+    return module;
+  })();
+  return harfbuzzPromise;
 }
 
 async function loadTextFont(key: TextFontKey): Promise<void> {

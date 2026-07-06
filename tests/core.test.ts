@@ -30,8 +30,8 @@ import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetri
 import { measureText } from "../src/core/layout/measureText";
 import { normalizeAst } from "../src/core/markdown/normalizeAst";
 import { paginate } from "../src/core/layout/paginate";
-import { loadTextFontFromBytes } from "../src/core/renderers/text/textFontMetrics";
-import { newComputerModernFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
+import { loadHarfbuzzTextShaper, loadTextFontFromBytes, shapeTextWithFontFile } from "../src/core/renderers/text/textFontMetrics";
+import { latinModernRomanFontFamily, newComputerModernFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
 import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
 
@@ -223,7 +223,8 @@ $$
 });
 
 describe("document engine", () => {
-  it("measures bundled text fonts from font files", () => {
+  it("measures bundled text fonts from font files", async () => {
+    await loadHarfbuzzTextShaper();
     loadTextFontFromBytes("new-computer-modern:regular", readFileSync("src/assets/fonts/cmu-serif-regular.otf"));
     const width = measureText("This sample", {
       fontSize: 12,
@@ -234,6 +235,33 @@ describe("document engine", () => {
     expect(width).toBeCloseTo(63.408, 3);
   });
 
+  it("shapes bundled text fonts with HarfBuzz", async () => {
+    await loadHarfbuzzTextShaper();
+    loadTextFontFromBytes("latin-modern:regular", readFileSync("src/assets/fonts/lmroman10-regular.otf"));
+    const shaped = shapeTextWithFontFile("office", {
+      fontSize: 12,
+      fontFamily: "\"Latin Modern Roman\", \"Times New Roman\", serif",
+      monoFontFamily: defaultTheme.monoFontFamily
+    });
+
+    expect(shaped).toBeDefined();
+    expect(shaped?.glyphs.length).toBeLessThan("office".length);
+    expect(shaped?.width).toBeGreaterThan(0);
+  });
+
+  it("renders HarfBuzz-measured text as browser SVG text", async () => {
+    const engine = createDocumentEngine({
+      useWorker: false,
+      theme: { fontFamily: latinModernRomanFontFamily }
+    });
+    const { layout } = await engine.layout("office");
+    const svg = renderPageToSvg(layout.pages[0]);
+
+    expect(svg).toContain("<text");
+    expect(svg).toContain("textLength=");
+    expect(svg).toContain("office");
+  });
+
   it("creates a paged display list", async () => {
     const engine = createDocumentEngine({ useWorker: false });
     const { layout, stats } = await engine.layout("# Title\n\nBody text\n\n$$\nE = mc^2\n$$");
@@ -241,6 +269,27 @@ describe("document engine", () => {
     expect(stats.pageCount).toBeGreaterThan(0);
     expect(layout.pages[0].objects.some((object) => object.type === "text")).toBe(true);
     expect(layout.pages[0].objects.some((object) => object.type === "math")).toBe(true);
+  });
+
+  it("splits long paragraphs across pages by line", () => {
+    const words = Array.from({ length: 90 }, (_, index) => `word${index}`).join(" ");
+    const page: PageConfig = {
+      size: "letter",
+      width: 220,
+      height: 86,
+      margin: { top: 12, right: 12, bottom: 12, left: 12 }
+    };
+    const pages = paginate(normalizeAst(parseMarkdown(words)), page, defaultTheme);
+    const textPages = pages
+      .map((displayPage, index) => ({
+        index,
+        textCount: displayPage.objects.filter((object) => object.type === "text").length
+      }))
+      .filter((item) => item.textCount > 0);
+
+    expect(textPages.length).toBeGreaterThan(1);
+    expect(textPages[0].index).toBe(0);
+    expect(textPages[1].index).toBe(1);
   });
 
   it("renders selectable svg text", async () => {
