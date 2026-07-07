@@ -17,6 +17,22 @@ export type EngineOptions = {
   nativeMathProfile?: NativeMathFontProfileName;
   crossRef?: Partial<CrossRefConfig>;
   layout?: Partial<LayoutConfig>;
+  document?: Partial<DocumentOptions>;
+};
+
+export type DocumentOptions = {
+  titleFromFirstHeading: boolean;
+  title?: string;
+  titleFontSize?: number;
+  authors?: string[];
+  abstract?: string;
+  abstractTitle?: string;
+};
+
+export const defaultDocumentOptions: DocumentOptions = {
+  titleFromFirstHeading: true,
+  authors: [],
+  abstractTitle: "Abstract"
 };
 
 export type MathRendererName =

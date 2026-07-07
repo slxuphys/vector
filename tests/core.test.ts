@@ -28,11 +28,12 @@ import {
   getOpenTypeMathRadicalVariant,
   loadNativeFontFromBytes
 } from "../src/core/renderers/math/nativeFontMetrics";
-import { mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
+import { headingSize, mathMeasureKey, normalizeMathLatex } from "../src/core/layout/mathMetrics";
 import { measureText } from "../src/core/layout/measureText";
 import { normalizeAst } from "../src/core/markdown/normalizeAst";
 import { paginate } from "../src/core/layout/paginate";
 import { breakRunsIntoLines } from "../src/core/layout/lineBreaking";
+import { defaultLayoutConfig } from "../src/core/layout/layoutConfig";
 import { loadHarfbuzzTextShaper, loadTextFontFromBytes, shapeTextWithFontFile } from "../src/core/renderers/text/textFontMetrics";
 import { latinModernRomanFontFamily, newComputerModernFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
 import { defaultTheme } from "../src/core/theme/defaultTheme";
@@ -139,7 +140,7 @@ $$
 | - |
 | B |
 {: #tbl:data}
-`));
+`), undefined, { titleFromFirstHeading: false });
     const paragraph = ast.children[1];
 
     expect(ast.children[0]).toMatchObject({ type: "heading", labelNumber: "1" });
@@ -312,7 +313,12 @@ describe("document engine", () => {
 
   it("renders cross references as SVG links and PDF link annotations", async () => {
     const engine = createDocumentEngine({ useWorker: false });
-    const { layout } = await engine.layout(`# Intro {#sec:intro}
+    const { layout } = await engine.layout(`---
+document:
+  titleFromFirstHeading: false
+---
+
+# Intro {#sec:intro}
 
 See @sec:intro.
 `);
@@ -358,6 +364,8 @@ $$
   it("uses section captionFormat for visible heading numbers", async () => {
     const engine = createDocumentEngine({ useWorker: false });
     const { layout } = await engine.layout(`---
+document:
+  titleFromFirstHeading: false
 crossref:
   section:
     captionFormat: "{number})"
@@ -380,6 +388,8 @@ See @sec:intro.
   it("allows section captionFormat to hide heading numbers", async () => {
     const engine = createDocumentEngine({ useWorker: false });
     const { layout } = await engine.layout(`---
+document:
+  titleFromFirstHeading: false
 crossref:
   section:
     captionFormat: ""
@@ -398,6 +408,80 @@ See @sec:intro.
     expect(text).toContain("Intro");
     expect(text).not.toContain("1 Intro");
     expect(text).toContain("See Section 1.");
+  });
+
+  it("treats the first H1 as a full-width title before multi-column flow", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const repeated = Array.from({ length: 130 }, (_, index) => `body${index}`).join(" ");
+    const { layout } = await engine.layout(`---
+page:
+  size: letter
+  margin: 72
+layout:
+  columns: 2
+  columnGap: 24
+crossref:
+  section:
+    referenceFormat: "Sec. {number}"
+---
+
+# Document Title
+
+# First Section {#sec:first}
+
+See @sec:first.
+
+${repeated}
+`);
+    const textObjects = layout.pages[0].objects.filter((object) => object.type === "text");
+    const joinedText = textObjects.map((object) => object.text).join("");
+    const title = textObjects.find((object) => object.text === "Document Title");
+    const section = textObjects.find((object) => object.text.includes("1 First"));
+    const secondColumnX = 72 + ((612 - 144 - 24) / 2) + 24;
+    const secondColumnText = textObjects.find((object) => Math.abs(object.x - secondColumnX) < 1);
+
+    expect(title?.type).toBe("text");
+    expect(section?.type).toBe("text");
+    expect(joinedText).toContain("1 First Section");
+    expect(joinedText).toContain("See Sec. 1.");
+    expect(secondColumnText?.type).toBe("text");
+    if (title?.type === "text" && secondColumnText?.type === "text") {
+      expect(secondColumnText.y).toBeGreaterThan(title.y);
+    }
+  });
+
+  it("renders YAML title matter before normal section flow", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+document:
+  title: "YAML Title"
+  titleFontSize: 30
+  authors: ["Ada Lovelace", "Grace Hopper"]
+  abstract: "This abstract has inline math $x^2$."
+layout:
+  columns: 2
+  columnGap: 24
+---
+
+# First Section {#sec:first}
+
+See @sec:first.
+`);
+    const text = layout.pages[0].objects.filter((object) => object.type === "text");
+    const joinedText = text.map((object) => object.text).join("");
+    const title = text.find((object) => object.text === "YAML Title");
+    const author = text.find((object) => object.text === "Ada Lovelace");
+    const abstractLabel = text.find((object) => object.text === "Abstract");
+    const section = text.find((object) => object.text.includes("1 First"));
+
+    expect(title?.type).toBe("text");
+    expect(title?.fontSize).toBe(30);
+    expect(author?.type).toBe("text");
+    expect(abstractLabel?.type).toBe("text");
+    expect(joinedText).toContain("1 First Section");
+    if (title?.type === "text" && section?.type === "text") {
+      expect(section.y).toBeGreaterThan(title.y);
+    }
   });
 
   it("lets front matter choose the supported native OpenMath path", async () => {
@@ -448,10 +532,37 @@ Body
     });
   });
 
+  it("parses document title matter front matter", () => {
+    const document = parseMarkdownDocument(`---
+document:
+  title: "A Small Paper"
+  titleFontSize: 30
+  authors: ["Ada Lovelace", "Grace Hopper"]
+  abstractTitle: "Summary"
+  abstract: "A short abstract with $x$."
+---
+
+Body
+`);
+
+    expect(document.frontMatter?.document).toMatchObject({
+      title: "A Small Paper",
+      titleFontSize: 30,
+      authors: ["Ada Lovelace", "Grace Hopper"],
+      abstractTitle: "Summary",
+      abstract: "A short abstract with $x$."
+    });
+  });
+
   it("parses layout front matter for line breaking and text alignment", () => {
     const document = parseMarkdownDocument(`---
 layout:
   textAlign: justify
+  columns: 2
+  columnGap: 18
+  headingFontSizes:
+    h1: 16
+    h2: 13
   lineBreaking:
     algorithm: greedy
     hyphenation: false
@@ -463,12 +574,126 @@ Body
 
     expect(document.frontMatter?.layout).toEqual({
       textAlign: "justify",
+      columns: {
+        count: 2,
+        gap: 18
+      },
+      headingFontSizes: {
+        1: 16,
+        2: 13
+      },
       lineBreaking: {
         algorithm: "greedy",
         hyphenation: false,
         language: "en-US"
       }
     });
+  });
+
+  it("applies front matter heading font sizes during layout", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+document:
+  titleFromFirstHeading: false
+layout:
+  headingFontSizes: [16, 13, 11]
+---
+
+# First
+
+## Second
+
+### Third
+`);
+    const text = layout.pages[0].objects.filter((object) => object.type === "text");
+    const first = text.find((object) => object.text.includes("First"));
+    const second = text.find((object) => object.text.includes("Second"));
+    const third = text.find((object) => object.text.includes("Third"));
+
+    expect(first?.fontSize).toBe(16);
+    expect(second?.fontSize).toBe(13);
+    expect(third?.fontSize).toBe(11);
+  });
+
+  it("flows paragraph lines into multiple columns", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const repeated = Array.from({ length: 220 }, (_, index) => `word${index}`).join(" ");
+    const { layout } = await engine.layout(`---
+page:
+  size: letter
+  margin: 72
+layout:
+  columns: 2
+  columnGap: 24
+---
+
+${repeated}
+`);
+    const textObjects = layout.pages[0].objects.filter((object) => object.type === "text");
+    const firstColumnX = 72;
+    const secondColumnX = 72 + ((612 - 144 - 24) / 2) + 24;
+
+    expect(textObjects.some((object) => Math.abs(object.x - firstColumnX) < 1)).toBe(true);
+    expect(textObjects.some((object) => Math.abs(object.x - secondColumnX) < 1)).toBe(true);
+  });
+
+  it("moves headings to the next column with the new column x position", () => {
+    const page: PageConfig = {
+      size: "letter",
+      width: 320,
+      height: 180,
+      margin: { top: 20, right: 20, bottom: 20, left: 20 }
+    };
+    const pages = paginate([
+      { type: "code", code: ["a", "b", "c", "d", "e"].join("\n") },
+      { type: "heading", level: 2, runs: [{ text: "Boundary Heading" }] }
+    ], page, defaultTheme, undefined, "native-openmath", undefined, undefined, undefined, {
+      ...defaultLayoutConfig,
+      columns: { count: 2, gap: 20 }
+    });
+    const secondColumnX = 20 + ((320 - 40 - 20) / 2) + 20;
+    const heading = pages[0].objects.find(
+      (object) => object.type === "text" && object.text.includes("Boundary")
+    );
+
+    expect(heading?.type).toBe("text");
+    if (heading?.type === "text") {
+      expect(Math.abs(heading.x - secondColumnX)).toBeLessThan(1);
+    }
+  });
+
+  it("uses bold heading width when breaking heading lines", () => {
+    const text = "Second Column Pressure";
+    const fontSize = headingSize(2, defaultTheme.fontSize);
+    const regularWidth = measureText(text, {
+      fontSize,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    });
+    const boldWidth = measureText(text, {
+      fontSize,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily,
+      bold: true
+    });
+    const contentWidth = (regularWidth + boldWidth) / 2;
+    const page: PageConfig = {
+      size: "letter",
+      width: contentWidth + 40,
+      height: 180,
+      margin: { top: 20, right: 20, bottom: 20, left: 20 }
+    };
+    const pages = paginate([
+      { type: "heading", level: 2, runs: [{ text }] }
+    ], page, defaultTheme);
+    const headingText = pages[0].objects
+      .filter((object) => object.type === "text")
+      .map((object) => object.text);
+
+    expect(regularWidth).toBeLessThan(contentWidth);
+    expect(boldWidth).toBeGreaterThan(contentWidth);
+    expect(headingText).not.toContain(text);
+    expect(headingText.join("")).toBe(text);
   });
 
   it("keeps closing punctuation with the previous linked run", () => {
@@ -503,6 +728,7 @@ Body
       undefined,
       undefined,
       {
+        ...defaultLayoutConfig,
         textAlign: "left",
         lineBreaking: {
           algorithm: "greedy",
@@ -528,6 +754,7 @@ Body
       undefined,
       undefined,
       {
+        ...defaultLayoutConfig,
         textAlign: "left",
         lineBreaking: {
           algorithm: "greedy",
@@ -539,6 +766,25 @@ Body
 
     const rendered = lines.map((line) => line.runs.map((run) => run.text).join(""));
     expect(rendered.some((line) => line.endsWith("-"))).toBe(false);
+  });
+
+  it("breaks at explicit hyphens without automatic hyphenation", () => {
+    const maxWidth = measureText("document-", {
+      fontSize: 12,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    }) + 1;
+    const lines = breakRunsIntoLines(
+      [{ text: "document-level" }],
+      maxWidth,
+      12,
+      defaultTheme
+    );
+    const rendered = lines.map((line) => line.runs.map((run) => run.text).join(""));
+
+    expect(rendered[0]).toBe("document-");
+    expect(lines[0].runs).toHaveLength(1);
+    expect(rendered.join("")).toBe("document-level");
   });
 
   it("stretches non-final paragraph lines when textAlign is justify", async () => {

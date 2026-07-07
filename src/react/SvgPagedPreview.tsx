@@ -34,14 +34,17 @@ export function SvgPagedPreview({
       startedAt: performance.now()
     };
   }, [layout, numericZoom, start, end]);
+  const loggedUpdateIdRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!timing) return;
     if (!isDebugLogEnabled("preview")) return;
+    if (loggedUpdateIdRef.current === timing.id) return;
+    loggedUpdateIdRef.current = timing.id;
     requestAnimationFrame(() => {
       const paintedAt = performance.now();
       const renderMs = paintedAt - refresh.startedAt;
-      const totalMs = paintedAt - timing.editedAt;
+      const totalMs = timing.debounceMs + timing.layoutDelayMs + timing.layoutMs + renderMs;
       console.log(
         `[preview-update] total ${totalMs.toFixed(1)} ms`,
         {

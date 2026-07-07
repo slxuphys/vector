@@ -119,10 +119,12 @@ export function App() {
             <select value={sample} onChange={(event) => setSample(event.target.value as keyof typeof playgroundSamples)}>
               <option value="short">Short</option>
               <option value="long">Long</option>
-              <option value="hundred">100 pages</option>
-              <option value="mathHeavy">Math heavy</option>
-              <option value="graphsxDebug">GraphSX debug</option>
-            </select>
+                <option value="hundred">100 pages</option>
+                <option value="mathHeavy">Math heavy</option>
+                <option value="multiColumn">Multi-column</option>
+                <option value="transformerReplica">Transformer paper replica</option>
+                <option value="graphsxDebug">GraphSX debug</option>
+              </select>
           </label>
           <label>
             Math

@@ -10,7 +10,8 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           level: node.level,
           runs: flattenInline(node.children),
           label: node.label,
-          labelNumber: node.labelNumber
+          labelNumber: node.labelNumber,
+          title: node.title
         };
       case "paragraph":
         return { type: "paragraph", runs: flattenInline(node.children) };

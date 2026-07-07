@@ -1,8 +1,9 @@
-import type { LayoutBlock, InlineRun } from "./layoutBlocks";
+import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
 import { isNativeMathRenderer, type NativeMathLayout, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
+import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 
 export type MathMeasureRequest = {
   key: string;
@@ -46,7 +47,9 @@ export function collectMathMeasureRequests(
   theme: DocumentTheme,
   renderer: MathRendererName = "katex-raster",
   nativeMetrics?: NativeMathMetrics,
-  nativeMathProfile?: NativeMathFontProfileName
+  nativeMathProfile?: NativeMathFontProfileName,
+  titleMatter?: TitleMatter,
+  layoutConfig: LayoutConfig = defaultLayoutConfig
 ): MathMeasureRequest[] {
   const requests = new Map<string, MathMeasureRequest>();
 
@@ -59,7 +62,7 @@ export function collectMathMeasureRequests(
 
   for (const block of blocks) {
     if (block.type === "heading") {
-      block.runs.forEach((run) => addRun(run, headingSize(block.level, theme.fontSize), theme.text));
+      block.runs.forEach((run) => addRun(run, headingSize(block.level, theme.fontSize, block.title, layoutConfig.headingFontSizes), theme.text));
     } else if (block.type === "paragraph") {
       block.runs.forEach((run) => addRun(run, theme.fontSize, theme.text));
     } else if (block.type === "list") {
@@ -74,6 +77,14 @@ export function collectMathMeasureRequests(
       const key = mathMeasureKey(latex, true, fontSize, renderer, nativeMetrics, nativeMathProfile);
       requests.set(key, { key, latex, displayMode: true, fontSize, color: theme.text, nativeMetrics, nativeMathProfile });
     }
+  }
+
+  if (titleMatter) {
+    const titleFontSize = titleMatter.titleFontSize ?? headingSize(1, theme.fontSize, true, layoutConfig.headingFontSizes);
+    titleMatter.title?.forEach((run) => addRun(run, titleFontSize, theme.text));
+    const authorFontSize = theme.fontSize * 1.05;
+    titleMatter.authors.forEach((author) => author.forEach((run) => addRun(run, authorFontSize, theme.mutedText)));
+    titleMatter.abstract?.forEach((run) => addRun(run, theme.fontSize, theme.text));
   }
 
   return [...requests.values()];
@@ -91,8 +102,14 @@ export function getMeasuredMath(
   return measurements?.[mathMeasureKey(latex, displayMode, fontSize, renderer, nativeMetrics, nativeMathProfile)];
 }
 
-export function headingSize(level: number, base: number): number {
-  return [0, 28, 22, 18, 15, 13, 12][level] ?? base;
+export function headingSize(
+  level: number,
+  base: number,
+  title = false,
+  headingFontSizes: LayoutConfig["headingFontSizes"] = defaultLayoutConfig.headingFontSizes
+): number {
+  if (title) return Math.max(32, base * 2.7);
+  return headingFontSizes[level as keyof LayoutConfig["headingFontSizes"]] ?? [0, 28, 22, 18, 15, 13, 12][level] ?? base;
 }
 
 function round(value: number): string {

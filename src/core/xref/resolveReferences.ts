@@ -3,12 +3,24 @@ import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefAnchor, type C
 
 const refPattern = /@((?:eq|fig|tbl|sec):[A-Za-z][\w:-]*(?:\.[A-Za-z0-9_-]+)*)/g;
 
-export function resolveCrossReferences(ast: MarkdownAst, config: CrossRefConfig = defaultCrossRefConfig): MarkdownAst {
-  const anchors = collectAnchors(ast.children);
+export function resolveCrossReferences(
+  ast: MarkdownAst,
+  config: CrossRefConfig = defaultCrossRefConfig,
+  options: { titleFromFirstHeading?: boolean } = {}
+): MarkdownAst {
+  const children = markTitleHeading(ast.children, options.titleFromFirstHeading ?? true);
+  const anchors = collectAnchors(children);
   return {
     type: "document",
-    children: ast.children.map((node) => resolveNodeReferences(annotateNode(node, anchors), anchors, config))
+    children: children.map((node) => resolveNodeReferences(annotateNode(node, anchors), anchors, config))
   };
+}
+
+function markTitleHeading(nodes: MarkdownNode[], titleFromFirstHeading: boolean): MarkdownNode[] {
+  if (!titleFromFirstHeading) return nodes;
+  const first = nodes[0];
+  if (first?.type !== "heading" || first.level !== 1) return nodes;
+  return nodes.map((node, index) => index === 0 ? { ...node, title: true } : node);
 }
 
 function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
@@ -20,6 +32,7 @@ function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
 
   for (const node of nodes) {
     if (node.type === "heading") {
+      if (node.title) continue;
       const level = Math.max(1, Math.min(6, node.level));
       sectionCounters[level - 1] += 1;
       for (let index = level; index < sectionCounters.length; index += 1) sectionCounters[index] = 0;

@@ -193,10 +193,11 @@ function drawGraphSXElement(
   } else if (tag === "text") {
     const text = String(item.text ?? "");
     if (text) {
-      const fontSize = numberAttr(attrs["font-size"] ?? attrs.fontSize, 12) * scale;
-      const fontFamily = stringAttr(attrs["font-family"] ?? attrs.fontFamily, "");
-      const fontWeight = String(attrs["font-weight"] ?? attrs.fontWeight ?? "");
-      const fontStyle = String(attrs["font-style"] ?? attrs.fontStyle ?? "");
+      const textAttrs = { ...styleObject(item.textStyle), ...attrs };
+      const fontSize = numberAttr(textAttrs["font-size"] ?? textAttrs.fontSize, 12) * scale;
+      const fontFamily = stringAttr(textAttrs["font-family"] ?? textAttrs.fontFamily, "");
+      const fontWeight = String(textAttrs["font-weight"] ?? textAttrs.fontWeight ?? "");
+      const fontStyle = String(textAttrs["font-style"] ?? textAttrs.fontStyle ?? "");
       const textObject = {
         type: "text" as const,
         text,
@@ -211,12 +212,12 @@ function drawGraphSXElement(
         italic: fontStyle === "italic"
       };
       const fontFallbacks = selectPdfTextFontFallbacks(textObject, fonts);
-      const anchor = attrs["text-anchor"] ?? attrs.textAnchor ?? item.anchor;
+      const anchor = textAttrs["text-anchor"] ?? textAttrs.textAnchor ?? item.anchor;
       const width = measurePdfTextWidth(text, fontFallbacks, fontSize, fontFamily);
-      const xValue = attrs.x ?? item.x;
-      const yValue = attrs.y ?? item.y;
-      const baselineOffset = item.type === "text" && attrs.y === undefined ? 4 : 0;
-      const dominantBaselineOffset = dominantBaselineToOffset(attrs["dominant-baseline"] ?? attrs.dominantBaseline, fontSize);
+      const xValue = textAttrs.x ?? item.x;
+      const yValue = textAttrs.y ?? item.y;
+      const baselineOffset = item.type === "text" && textAttrs.y === undefined ? 4 : 0;
+      const dominantBaselineOffset = dominantBaselineToOffset(textAttrs["dominant-baseline"] ?? textAttrs.dominantBaseline, fontSize);
       const x = object.x + offsetX + numberAttr(xValue) * scale - (anchor === "middle" ? width / 2 : anchor === "end" ? width : 0);
       const y = pageHeight - object.y - offsetY - (numberAttr(yValue) + baselineOffset) * scale - dominantBaselineOffset;
       drawPdfText(page, { ...textObject, x, y: pageHeight - y }, fontFallbacks, pageHeight);

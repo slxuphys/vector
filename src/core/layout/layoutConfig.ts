@@ -8,6 +8,11 @@ export type LayoutConfig = {
     language?: string;
   };
   textAlign: TextAlign;
+  columns: {
+    count: number;
+    gap: number;
+  };
+  headingFontSizes: Partial<Record<1 | 2 | 3 | 4 | 5 | 6, number>>;
 };
 
 export const defaultLayoutConfig: LayoutConfig = {
@@ -15,5 +20,10 @@ export const defaultLayoutConfig: LayoutConfig = {
     algorithm: "greedy",
     hyphenation: false
   },
-  textAlign: "left"
+  textAlign: "left",
+  columns: {
+    count: 1,
+    gap: 24
+  },
+  headingFontSizes: {}
 };

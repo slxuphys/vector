@@ -1,7 +1,7 @@
 import type { DisplayObject, DisplayPage } from "../display-list/displayTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
 import type { DocumentTheme } from "../theme/themeTypes";
-import type { LayoutBlock, InlineRun } from "./layoutBlocks";
+import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
 import { breakRunsIntoLines } from "./lineBreaking";
 import type { LayoutLine } from "./lineBreaking";
@@ -28,8 +28,10 @@ type Cursor = {
   page: DisplayPage;
   x: number;
   y: number;
+  top: number;
   contentWidth: number;
   bottom: number;
+  column: number;
 };
 
 export function paginate(
@@ -41,10 +43,27 @@ export function paginate(
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName,
   crossRef: CrossRefConfig = defaultCrossRefConfig,
-  layoutConfig: LayoutConfig = defaultLayoutConfig
+  layoutConfig: LayoutConfig = defaultLayoutConfig,
+  titleMatter?: TitleMatter
 ): DisplayPage[] {
   const pages: DisplayPage[] = [];
+  const columnCount = Math.max(1, Math.min(4, Math.floor(layoutConfig.columns.count)));
+  const columnGap = Math.max(0, layoutConfig.columns.gap);
+  const fullContentWidth = page.width - page.margin.left - page.margin.right;
+  const columnWidth = (fullContentWidth - columnGap * (columnCount - 1)) / columnCount;
+  const columnX = (column: number) => page.margin.left + column * (columnWidth + columnGap);
+  let columnFlowTop = page.margin.top;
+  const cursorForPage = (displayPage: DisplayPage, column = 0): Cursor => ({
+    page: displayPage,
+    x: columnX(column),
+    y: columnFlowTop,
+    top: columnFlowTop,
+    contentWidth: columnWidth,
+    bottom: page.height - page.margin.bottom,
+    column
+  });
   const newPage = (): Cursor => {
+    columnFlowTop = page.margin.top;
     const displayPage: DisplayPage = {
       index: pages.length,
       width: page.width,
@@ -61,18 +80,26 @@ export function paginate(
       ]
     };
     pages.push(displayPage);
-    return {
-      page: displayPage,
-      x: page.margin.left,
-      y: page.margin.top,
-      contentWidth: page.width - page.margin.left - page.margin.right,
-      bottom: page.height - page.margin.bottom
-    };
+    return cursorForPage(displayPage);
+  };
+  const advanceFlow = (from: Cursor = cursor): Cursor => {
+    if (from.column + 1 < columnCount) return cursorForPage(from.page, from.column + 1);
+    return newPage();
   };
 
   let cursor = newPage();
+  if (titleMatter) {
+    const titleCursor = {
+      ...cursor,
+      x: page.margin.left,
+      contentWidth: fullContentWidth
+    };
+    drawTitleMatter(titleCursor, titleMatter, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+    columnFlowTop = titleCursor.y;
+    cursor = cursorForPage(titleCursor.page, 0);
+  }
   const ensure = (height: number): Cursor => {
-    if (cursor.y + height > cursor.bottom) cursor = newPage();
+    if (cursor.y + height > cursor.bottom && cursor.y > cursor.top) cursor = advanceFlow();
     return cursor;
   };
 
@@ -83,16 +110,35 @@ export function paginate(
     }
 
     if (block.type === "heading") {
-      const fontSize = headingSize(block.level, theme.fontSize);
-      const before = block.level === 1 ? 4 : 10;
-      const after = block.level <= 2 ? 10 : 7;
+      const fontSize = headingSize(block.level, theme.fontSize, block.title, layoutConfig.headingFontSizes);
+      const before = block.title ? 0 : block.level === 1 ? 4 : 10;
+      const after = block.title ? 18 : block.level <= 2 ? 10 : 7;
       const runs = sectionHeadingRuns(block, crossRef);
-      const lines = breakRunsIntoLines(runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
-      ensure(before + lines.length * fontSize * 1.2 + after);
-      if (block.label) pushAnchor(cursor, block.label);
-      cursor.y += before;
-      drawLines(cursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
-      cursor.y += after;
+      const measuredRuns = runs.map((run) => ({ ...run, bold: true }));
+      const titleSpan = Boolean(block.title && columnCount > 1);
+      if (titleSpan && (cursor.column !== 0 || cursor.y > cursor.top)) cursor = newPage();
+      const headingCursor = titleSpan
+        ? { ...cursor, x: page.margin.left, contentWidth: fullContentWidth }
+        : cursor;
+      const lines = breakRunsIntoLines(measuredRuns, headingCursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+      cursor = ensure(before + lines.length * fontSize * 1.2 + after);
+      headingCursor.page = cursor.page;
+      headingCursor.x = titleSpan ? page.margin.left : cursor.x;
+      headingCursor.y = cursor.y;
+      headingCursor.bottom = cursor.bottom;
+      headingCursor.top = cursor.top;
+      headingCursor.contentWidth = titleSpan ? fullContentWidth : cursor.contentWidth;
+      headingCursor.column = cursor.column;
+      if (block.label) pushAnchor(headingCursor, block.label);
+      headingCursor.y += before;
+      drawLines(headingCursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      headingCursor.y += after;
+      if (titleSpan) {
+        columnFlowTop = headingCursor.y;
+        cursor = cursorForPage(headingCursor.page, 0);
+      } else {
+        cursor = headingCursor;
+      }
       continue;
     }
 
@@ -175,7 +221,7 @@ export function paginate(
         }));
         cursor.y += fontSize * 1.6;
       }
-      cursor = drawTable(cursor, block, theme, ensure, newPage, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      cursor = drawTable(cursor, block, theme, ensure, advanceFlow, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       continue;
     }
 
@@ -317,6 +363,81 @@ export function paginate(
   }
 
   return pages;
+}
+
+function drawTitleMatter(
+  cursor: Cursor,
+  titleMatter: TitleMatter,
+  theme: DocumentTheme,
+  mathMeasurements: MathMeasurementMap | undefined,
+  mathRenderer: MathRendererName,
+  nativeMathMetrics: NativeMathMetrics | undefined,
+  nativeMathProfile: NativeMathFontProfileName | undefined,
+  layoutConfig: LayoutConfig
+): void {
+  if (titleMatter.title?.length) {
+    const fontSize = titleMatter.titleFontSize ?? headingSize(1, theme.fontSize, true, layoutConfig.headingFontSizes);
+    const titleRuns = titleMatter.title.map((run) => ({ ...run, bold: true }));
+    const lines = breakRunsIntoLines(titleRuns, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+    drawLines(cursor, lines, fontSize, theme, {
+      bold: true,
+      color: theme.text,
+      lineHeight: 1.12,
+      align: "center",
+      maxWidth: cursor.contentWidth
+    }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    cursor.y += 8;
+  }
+
+  if (titleMatter.authors.length) {
+    const fontSize = theme.fontSize * 1.05;
+    for (const author of titleMatter.authors) {
+      const lines = breakRunsIntoLines(author, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+      drawLines(cursor, lines, fontSize, theme, {
+        color: theme.mutedText,
+        lineHeight: 1.25,
+        align: "center",
+        maxWidth: cursor.contentWidth
+      }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    }
+    cursor.y += 12;
+  }
+
+  if (titleMatter.abstract?.length) {
+    const titleFontSize = theme.fontSize * 0.95;
+    const abstractFontSize = theme.fontSize;
+    const labelWidth = measureText(titleMatter.abstractTitle, {
+      fontSize: titleFontSize,
+      fontFamily: theme.fontFamily,
+      monoFontFamily: theme.monoFontFamily,
+      bold: true
+    });
+    cursor.page.objects.push(textObject(
+      titleMatter.abstractTitle,
+      cursor.x + cursor.contentWidth / 2 - labelWidth / 2,
+      cursor.y + titleFontSize,
+      titleFontSize,
+      theme,
+      { color: theme.text, bold: true }
+    ));
+    cursor.y += titleFontSize * 1.45;
+    const abstractWidth = Math.min(cursor.contentWidth, 420);
+    const abstractCursor = {
+      ...cursor,
+      x: cursor.x + (cursor.contentWidth - abstractWidth) / 2,
+      contentWidth: abstractWidth
+    };
+    const lines = breakRunsIntoLines(titleMatter.abstract, abstractWidth, abstractFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+    for (let index = 0; index < lines.length; index += 1) {
+      drawLines(abstractCursor, [lines[index]], abstractFontSize, theme, {
+        color: theme.text,
+        lineHeight: theme.lineHeight,
+        textAlign: index === lines.length - 1 ? "left" : layoutConfig.textAlign,
+        maxWidth: abstractWidth
+      }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    }
+    cursor.y = abstractCursor.y + 18;
+  }
 }
 
 function sectionHeadingRuns(
@@ -796,7 +917,7 @@ function drawTable(
   block: Extract<LayoutBlock, { type: "table" }>,
   theme: DocumentTheme,
   ensure: (height: number) => Cursor,
-  newPage: () => Cursor,
+  advanceFlow: (from: Cursor) => Cursor,
   mathMeasurements?: MathMeasurementMap,
   mathRenderer: MathRendererName = "katex-raster",
   nativeMathMetrics?: NativeMathMetrics,
@@ -846,7 +967,7 @@ function drawTable(
     const groupRows = table.rows.slice(rowIndex, groupEnd + 1);
     const groupHeight = groupRows.reduce((sum, row) => sum + row.height, 0);
     if (cursor.y + groupHeight > cursor.bottom) {
-      cursor = newPage();
+      cursor = advanceFlow(cursor);
       drawRow(header, 0, cursor.y);
       cursor.y += header.height;
     }

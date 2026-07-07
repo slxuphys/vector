@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   collectPreparedMathRequests,
   finishMarkdownLayout,
-  prepareMarkdownLayout,
+  prepareMarkdownLayoutWithFonts,
   type PreparedLayout
 } from "../core/engine/createDocumentEngine";
 import { createWorkerClient } from "../core/engine/workerClient";
@@ -119,7 +119,7 @@ async function layoutWithPremeasuredMath(
   measurements: MathMeasurementMap;
   result?: { layout: PagedDisplayList; stats: PreviewStats };
 }> {
-  const prepared = prepareMarkdownLayout(markdown, options);
+  const prepared = await prepareMarkdownLayoutWithFonts(markdown, options);
   await waitForTextFonts(prepared);
   const requests = collectPreparedMathRequests(prepared);
   const measurements = await measureMathInDom(requests, prepared.mathRenderer);

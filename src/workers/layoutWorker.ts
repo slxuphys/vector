@@ -1,7 +1,5 @@
-import { finishMarkdownLayout, prepareMarkdownLayout } from "../core/engine/createDocumentEngine";
+import { finishMarkdownLayout, prepareMarkdownLayoutWithFonts } from "../core/engine/createDocumentEngine";
 import type { WorkerRequest, WorkerResponse } from "../core/engine/workerProtocol";
-import { isNativeMathRenderer } from "../core/renderers/math/nativeMath";
-import { loadNativeMathFonts } from "../core/renderers/math/nativeFontMetrics";
 import { loadTextFontsForTheme } from "../core/renderers/text/textFontMetrics";
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
@@ -10,9 +8,8 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
 
 async function handleLayout(request: WorkerRequest) {
   try {
-    const prepared = prepareMarkdownLayout(request.markdown, request.options);
+    const prepared = await prepareMarkdownLayoutWithFonts(request.markdown, request.options);
     await loadTextFontsForTheme(prepared.theme);
-    if (isNativeMathRenderer(prepared.mathRenderer)) await loadNativeMathFonts();
     const result = finishMarkdownLayout(prepared, request.mathMeasurements);
     const response: WorkerResponse = {
       id: request.id,

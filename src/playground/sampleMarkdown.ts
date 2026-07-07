@@ -235,6 +235,11 @@ export const mathHeavySampleMarkdown = `---
 page:
   size: letter
   margin: 64
+document:
+  title: "Native Math Stress"
+  titleFontSize: 34
+  authors: ["SVG Markdown Preview Lab", "OpenType Math Engine"]
+  abstract: "This sample exercises the native OpenMath path, cross references, GraphSX figures, tables, and multi-page pagination. It also demonstrates YAML-controlled title matter rendered before the document columns."
 typography:
   family: libertinus
   fontSize: 12
@@ -258,7 +263,7 @@ crossref:
     referenceFormat: "Sec. {number}"
 ---
 
-# Native Math Stress {#sec:native-math}
+# Overview {#sec:native-math}
 
 This sample is meant to be used with the **Native engine** math mode. It does not hide unsupported TeX behind KaTeX, so red markers show where our own parser/layout still needs work.
 
@@ -445,10 +450,304 @@ This page is intentionally small so the GraphSX display list and PDF coordinates
 \`\`\`
 `;
 
+export const multiColumnSampleMarkdown = `---
+page:
+  size: letter
+  margin: 64
+typography:
+  family: libertinus
+  fontSize: 11
+  lineHeight: 1.42
+layout:
+  columns:
+    count: 2
+    gap: 28
+  textAlign: justify
+  lineBreaking:
+    algorithm: greedy
+    hyphenation: true
+---
+
+# Two Column Note
+
+This sample uses front matter to flow the document into two columns. The layout engine still generates positioned SVG page objects, so the preview and PDF export share the same page geometry. The point of this page is to exercise regular prose, inline math like $E = mc^2$, and ordinary headings inside a narrower measure.
+
+## Motivation
+
+Multi-column text is useful for compact notes, handouts, abstracts, and papers where a single wide measure would make each line too long. A good column layout should keep paragraphs readable, move to the next column when the current one fills, and continue onto the next page only after the last column is full.
+
+The current implementation is intentionally document-level: the YAML option controls the whole page flow. Later we can add block-level spans for wide figures, tables, and display equations, but this version keeps the behavior predictable.
+
+## Example Flow
+
+Long paragraphs should wrap within the active column width. When hyphenation is enabled, extremely long words such as electromagnetohydrodynamics and pseudopseudohypoparathyroidism can break more gracefully instead of forcing awkward character-level wrapping.
+
+Inline equations such as $x_i^2 + y_i^2 = r^2$, $\\alpha + \\beta = \\gamma$, and $\\frac{a}{b}$ should stay on the same baseline as the surrounding text. Display math is centered within the current column:
+
+$$
+\\int_0^1 x^2 dx = \\frac{1}{3}
+$$
+
+## Second Column Pressure
+
+This paragraph exists to push the flow across the first column boundary. The preview should fill the left column first, continue at the top of the right column, and then create another page only when both columns have been used. The behavior should be visible in both the SVG preview and the downloaded PDF.
+
+Tables and figures currently fit inside the active column rather than spanning across the page. That is conservative but useful for testing:
+
+| Item | Value |
+| --- | ---: |
+| Width | column |
+| Flow | sequential |
+| Math | $\\sqrt{x}$ |
+
+More prose fills out the remaining space. A balanced final page is not implemented yet; this is newspaper-style sequential flow rather than a balancing pass. That keeps live preview fast and makes pagination stable while editing.
+`;
+
+export const transformerReplicaSampleMarkdown = `---
+page:
+  size: letter
+  margin: 54
+document:
+  title: "Sparse Attention Blocks for Sequence Modeling"
+  titleFontSize: 24
+  authors: ["Mira Chen    Theo Alvarez    Priya Nandakumar    Elias Hart", "Jun Park    Sofia Marin    Rowan Keller    Anika Bose", "Synthetic conference-paper layout replica for SVG Markdown Preview"]
+  abstract: "This playground page mimics the visual shape of a Transformer-style research paper with our own text engine: title block, abstract, two-column flow, equations, figures, tables, captions, and references. The title, authors, and prose are synthetic so the example stresses layout without copying the original paper."
+typography:
+  family: latin-modern
+  fontSize: 10
+  lineHeight: 1.22
+layout:
+  columns:
+    count: 2
+    gap: 18
+  headingFontSizes:
+    h1: 13
+    h2: 11.5
+    h3: 10.5
+  textAlign: justify
+  lineBreaking:
+    algorithm: greedy
+    hyphenation: true
+crossref:
+  figure:
+    captionFormat: "Figure {number}:"
+    referenceFormat: "Figure {number}"
+  table:
+    captionFormat: "Table {number}:"
+    referenceFormat: "Table {number}"
+  equation:
+    captionFormat: "({number})"
+    referenceFormat: "Equation ({number})"
+  section:
+    captionFormat: "{number}"
+    referenceFormat: "Section {number}"
+---
+
+# Introduction {#sec:introduction}
+
+Sequence transduction systems traditionally process tokens through recurrent or convolutional structures. A compact alternative is to compare every position with every other position through attention, then use pointwise transformations to refine the representation. This replica is written to exercise page-level typography rather than to reproduce the paper text word for word.
+
+The important visual target is the paper shape: narrow justified columns, small mathematical displays, numbered sections, figure captions below wide diagrams, and tables that sit naturally in a column. The example references @fig:architecture, @fig:attention, @tbl:complexity, and @eq:attention to test cross references.
+
+The model maps an input sequence $(x_1, \\ldots, x_n)$ to latent states $(z_1, \\ldots, z_n)$ and then generates outputs $(y_1, \\ldots, y_m)$ autoregressively. The notation is intentionally close to the source paper because it exercises subscripts, ellipses, and inline math spacing.
+
+# Background {#sec:background}
+
+The synthetic discussion in this section is dense on purpose. A line breaker that works for notes can still show weaknesses in conference-paper columns, especially when a sentence contains citations, long technical words, or repeated inline variables such as $d_{model}$, $d_k$, and $d_v$.
+
+Self-attention relates positions inside one sequence. Multi-head attention repeats that operation in several learned subspaces. The paper format places this explanation before the architecture figure, which means the first page must balance title matter, abstract, prose, and a figure anchor.
+
+\`\`\`graphsx width=100% align=center caption="The Transformer - model architecture."
+<Graph route="auto" corner={6}>
+  <Style id="block" fill="#f8fafc" stroke="#334155" strokeWidth={1.2} />
+  <Style id="attention" fill="#eef6ff" stroke="#2563eb" strokeWidth={1.3} />
+  <Style id="ffn" fill="#fff7ed" stroke="#ea580c" strokeWidth={1.3} />
+  <Style id="wire" stroke="#475569" strokeWidth={1.1} />
+
+  <Rect id="input" at={[38, 250]} size={[110, 28]} label="Input Embedding" useStyle="block">
+    <Port id="out" top />
+  </Rect>
+  <Rect id="pos" at={[38, 210]} size={[110, 28]} label="Positional Encoding" useStyle="block">
+    <Port id="in" bottom />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="enc1" at={[38, 150]} size={[110, 36]} label="Multi-Head Attention" useStyle="attention">
+    <Port id="in" bottom />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="enc2" at={[38, 92]} size={[110, 36]} label="Feed Forward" useStyle="ffn">
+    <Port id="in" bottom />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="encN" at={[38, 38]} size={[110, 30]} label="$N\\\\times$" useStyle="block">
+    <Port id="in" bottom />
+    <Port id="toDecoder" right />
+  </Rect>
+
+  <Rect id="out" at={[230, 250]} size={[120, 28]} label="Output Embedding" useStyle="block">
+    <Port id="out" top />
+  </Rect>
+  <Rect id="opos" at={[230, 210]} size={[120, 28]} label="Positional Encoding" useStyle="block">
+    <Port id="in" bottom />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="dec1" at={[230, 162]} size={[120, 34]} label="Masked Attention" useStyle="attention">
+    <Port id="in" bottom />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="dec2" at={[230, 112]} size={[120, 34]} label="Encoder Attention" useStyle="attention">
+    <Port id="in" bottom />
+    <Port id="memory" left />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="dec3" at={[230, 62]} size={[120, 34]} label="Feed Forward" useStyle="ffn">
+    <Port id="in" bottom />
+    <Port id="out" top />
+  </Rect>
+  <Rect id="softmax" at={[230, 16]} size={[120, 28]} label="Linear + Softmax" useStyle="block">
+    <Port id="in" bottom />
+  </Rect>
+
+  <Link headArrow from="input.out" to="pos.in" useStyle="wire" />
+  <Link headArrow from="pos.out" to="enc1.in" useStyle="wire" />
+  <Link headArrow from="enc1.out" to="enc2.in" useStyle="wire" />
+  <Link headArrow from="enc2.out" to="encN.in" useStyle="wire" />
+  <Link headArrow from="out.out" to="opos.in" useStyle="wire" />
+  <Link headArrow from="opos.out" to="dec1.in" useStyle="wire" />
+  <Link headArrow from="dec1.out" to="dec2.in" useStyle="wire" />
+  <Link headArrow from="dec2.out" to="dec3.in" useStyle="wire" />
+  <Link headArrow from="dec3.out" to="softmax.in" useStyle="wire" />
+  <Link headArrow from="encN.toDecoder" to="dec2.memory" useStyle="wire" />
+</Graph>
+\`\`\`
+{#fig:architecture}
+
+# Model Architecture {#sec:architecture}
+
+The encoder and decoder are built from repeated layers. Each layer combines an attention sublayer, a position-wise feed-forward sublayer, residual connections, and normalization. The exact graphical fidelity is not the point here; the engine target is whether a figure of this size occupies one column, carries a caption, and can be referenced later.
+
+The residual pattern is compact enough to expose inline formula spacing:
+
+$$
+LayerNorm(x + Sublayer(x))
+$$
+
+Both encoder and decoder use learned projections. The display equations below test stacked scripts, matrix products, and equation numbering.
+
+# Attention {#sec:attention}
+
+The scaled dot-product attention equation is one of the key stressors. It combines uppercase matrices, a transpose, a square root in the denominator, and a softmax expression.
+
+$$
+Attention(Q, K, V) = softmax\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V
+$$
+{#eq:attention}
+
+Multi-head attention concatenates separate attention results and applies a final output projection:
+
+$$
+MultiHead(Q, K, V) = Concat(head_1, \\ldots, head_h)W^O
+$$
+
+$$
+head_i = Attention(QW_i^Q, KW_i^K, VW_i^V)
+$$
+
+\`\`\`graphsx width=100% align=center caption="Scaled dot-product attention and multi-head attention blocks."
+<Graph route="auto" corner={8}>
+  <Style id="box" fill="#f8fafc" stroke="#334155" strokeWidth={1.1} />
+  <Style id="blue" fill="#eff6ff" stroke="#2563eb" strokeWidth={1.2} />
+  <Style id="green" fill="#ecfdf5" stroke="#16a34a" strokeWidth={1.2} />
+  <Style id="wire" stroke="#475569" strokeWidth={1.0} />
+  <Rect id="qk" at={[34, 58]} size={[92, 28]} label="$QK^T$" useStyle="blue">
+    <Port id="out" bottom />
+  </Rect>
+  <Rect id="scale" at={[34, 104]} size={[92, 28]} label="$1/\\\\sqrt{d_k}$" useStyle="box">
+    <Port id="in" top />
+    <Port id="out" bottom />
+  </Rect>
+  <Rect id="soft" at={[34, 150]} size={[92, 28]} label="Softmax" useStyle="green">
+    <Port id="in" top />
+    <Port id="out" bottom />
+  </Rect>
+  <Rect id="v" at={[34, 196]} size={[92, 28]} label="$V$" useStyle="box">
+    <Port id="in" top />
+  </Rect>
+
+  <Rect id="heads" at={[200, 58]} size={[120, 36]} label="$h$ attention heads" useStyle="blue">
+    <Port id="out" bottom />
+  </Rect>
+  <Rect id="concat" at={[200, 120]} size={[120, 30]} label="Concat" useStyle="green">
+    <Port id="in" top />
+    <Port id="out" bottom />
+  </Rect>
+  <Rect id="linear" at={[200, 176]} size={[120, 30]} label="Linear" useStyle="box">
+    <Port id="in" top />
+  </Rect>
+  <Link headArrow from="qk.out" to="scale.in" useStyle="wire" />
+  <Link headArrow from="scale.out" to="soft.in" useStyle="wire" />
+  <Link headArrow from="soft.out" to="v.in" useStyle="wire" />
+  <Link headArrow from="heads.out" to="concat.in" useStyle="wire" />
+  <Link headArrow from="concat.out" to="linear.in" useStyle="wire" />
+</Graph>
+\`\`\`
+{#fig:attention}
+
+# Why Self-Attention {#sec:why}
+
+The conference paper includes a comparison table for layer types. Here the values are compactly reproduced as a layout target: centered formulas, row borders, and narrow text in a two-column measure.
+
+| Layer Type | Complexity per Layer | Sequential Operations | Maximum Path Length |
+| --- | ---: | ---: | ---: |
+| Self-Attention | $O(n^2 d)$ | $O(1)$ | $O(1)$ |
+| Recurrent | $O(n d^2)$ | $O(n)$ | $O(n)$ |
+| Convolutional | $O(k n d^2)$ | $O(1)$ | $O(log_k(n))$ |
+| Restricted Self-Attention | $O(r n d)$ | $O(1)$ | $O(n/r)$ |
+{: #tbl:complexity}
+
+Narrow tables are particularly useful here because their columns invite overflow. If the text engine can keep this table readable while preserving math baselines, it is getting closer to a usable paper-writing tool.
+
+# Training {#sec:training}
+
+The original paper reports results for translation tasks and uses compact hyperparameter prose. This replica uses similar density without copying the original paragraphs. A training step consumes mini-batches of token pairs, computes cross-entropy, applies label smoothing, and updates parameters with Adam.
+
+The learning-rate schedule is a useful equation test:
+
+$$
+lrate = d_{model}^{-0.5} \\cdot min(step^{-0.5}, step \\cdot warmup^{-1.5})
+$$
+
+The notation includes negative exponents, a function-like minimum, and products that should not collide in the small font size.
+
+# Results {#sec:results}
+
+| Model | EN-DE BLEU | EN-FR BLEU | Training Cost |
+| --- | ---: | ---: | ---: |
+| Base Transformer | 27.3 | 38.1 | 12 hours |
+| Big Transformer | 28.4 | 41.8 | 3.5 days |
+| Prior ensembles | 26-28 | 40-41 | larger |
+
+This table is not intended as a source of truth for new research results; it is here to match the visual density of the paper and to test right-aligned numeric columns, captions, and multi-column flow.
+
+# Conclusion {#sec:conclusion}
+
+The Transformer paper format is a good target for the previewer because it combines almost every feature a technical text engine needs: title matter, dense columns, equations, diagrams, numbered captions, tables, references, and PDF export. A faithful production reproduction would still need footnotes, bibliography styling, figure spanning, better float placement, and richer math coverage.
+
+# References
+
+[1] A. Author. A compact reference entry with a title, venue, and year.
+
+[2] B. Researcher and C. Collaborator. Another reference line that wraps across columns and tests hanging indentation in a future version.
+
+[3] The real source for this layout target is arXiv:1706.03762, "Attention Is All You Need". This example is a structural replica, not a full-text copy.
+`;
+
 export const playgroundSamples = {
   short: sampleMarkdown,
   long: longSampleMarkdown,
   hundred: hundredPageSampleMarkdown,
   mathHeavy: mathHeavySampleMarkdown,
-  graphsxDebug: graphsxDebugSampleMarkdown
+  graphsxDebug: graphsxDebugSampleMarkdown,
+  multiColumn: multiColumnSampleMarkdown,
+  transformerReplica: transformerReplicaSampleMarkdown
 } as const;

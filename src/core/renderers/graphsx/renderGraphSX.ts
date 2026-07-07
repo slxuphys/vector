@@ -30,6 +30,9 @@ export function renderGraphSX(
   try {
     const model = parseGraphSXDocument(source);
     const defaults = graphSXDefaults(theme, nativeMathProfile);
+    if (typeof console !== "undefined" && isDebugLogEnabled("graph")) {
+      console.log("[graphsx-defaults]", defaults);
+    }
     const displayList = model.type === "graph"
       ? buildGraphDisplayList(model, {
           minWidth: 0,

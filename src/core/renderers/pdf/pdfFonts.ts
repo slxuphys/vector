@@ -440,11 +440,29 @@ function collectGraphSXFontUsage(
     }
     const props = item.props ?? {};
     const style = item.style ?? {};
-    const fontFamily = props.fontFamily ?? props["font-family"] ?? style.fontFamily ?? style["font-family"];
+    const textStyle = item.textStyle ?? {};
+    const fontFamily = props.fontFamily
+      ?? props["font-family"]
+      ?? style.fontFamily
+      ?? style["font-family"]
+      ?? textStyle.fontFamily
+      ?? textStyle["font-family"];
     if (typeof fontFamily === "string") {
       collectTextFontUsage(fontFamily, usage);
-      const fontWeight = String(props.fontWeight ?? props["font-weight"] ?? style.fontWeight ?? style["font-weight"] ?? "");
-      const fontStyle = String(props.fontStyle ?? props["font-style"] ?? style.fontStyle ?? style["font-style"] ?? "");
+      const fontWeight = String(props.fontWeight
+        ?? props["font-weight"]
+        ?? style.fontWeight
+        ?? style["font-weight"]
+        ?? textStyle.fontWeight
+        ?? textStyle["font-weight"]
+        ?? "");
+      const fontStyle = String(props.fontStyle
+        ?? props["font-style"]
+        ?? style.fontStyle
+        ?? style["font-style"]
+        ?? textStyle.fontStyle
+        ?? textStyle["font-style"]
+        ?? "");
       const url = textFontUrlForStyle(fontFamily, fontWeight === "700" || fontWeight === "bold", fontStyle === "italic");
       const text = typeof props.text === "string"
         ? props.text

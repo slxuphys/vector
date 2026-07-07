@@ -77,14 +77,17 @@ function renderItem(
 }
 
 function renderTextItem(item: GraphSXDisplayItem): string {
+  const textStyle = item.textStyle ?? {};
   const attrs = displayPropsToSvgAttrs({
     class: item.className,
     x: item.x,
     y: item.y == null ? undefined : item.y + 4,
     textAnchor: item.anchor ?? "middle",
-    fill: "#111111",
-    fontSize: item.fontSize ?? 12,
-    fontFamily: "ui-sans-serif, system-ui, sans-serif"
+    fill: stringProp(textStyle.fill, "#111111"),
+    fontSize: item.fontSize ?? numberProp(textStyle.fontSize, 12),
+    fontFamily: stringProp(textStyle.fontFamily ?? textStyle["font-family"], "ui-sans-serif, system-ui, sans-serif"),
+    fontWeight: textStyle.fontWeight ?? textStyle["font-weight"],
+    fontStyle: textStyle.fontStyle ?? textStyle["font-style"]
   }, item.style);
   return `<text${attrsToString(attrs)}>${escapeXml(item.text ?? "")}</text>`;
 }

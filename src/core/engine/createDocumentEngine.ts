@@ -1,6 +1,6 @@
 import { buildDisplayList } from "../display-list/buildDisplayList";
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
-import { applyDocumentFrontMatter, mergeCrossRefConfig, mergeLayoutConfig, parseMarkdownDocument } from "../config/documentConfig";
+import { applyDocumentFrontMatter, mergeCrossRefConfig, mergeLayoutConfig, parseMarkdownDocument, type ParsedMarkdownDocument } from "../config/documentConfig";
 import { createPageConfig } from "../layout/pageConfig";
 import type { LayoutConfig } from "../layout/layoutConfig";
 import { paginate } from "../layout/paginate";
@@ -17,8 +17,10 @@ import { loadTextFontsForTheme } from "../renderers/text/textFontMetrics";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
-import type { EngineOptions, MathRendererName } from "./workerProtocol";
+import { defaultDocumentOptions, type EngineOptions, type MathRendererName } from "./workerProtocol";
 import type { CrossRefConfig } from "../xref/xrefTypes";
+import { flattenInline, type TitleMatter } from "../layout/layoutBlocks";
+import { parseInline } from "../markdown/parseInline";
 
 export type DocumentEngine = {
   layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
@@ -26,6 +28,7 @@ export type DocumentEngine = {
 
 export type PreparedLayout = {
   blocks: LayoutBlock[];
+  titleMatter?: TitleMatter;
   page: PageConfig;
   theme: DocumentTheme;
   mathRenderer: MathRendererName;
@@ -40,9 +43,8 @@ export type PreparedLayout = {
 export function createDocumentEngine(options: EngineOptions = {}): DocumentEngine {
   return {
     async layout(markdown: string) {
-      const prepared = prepareMarkdownLayout(markdown, options);
+      const prepared = await prepareMarkdownLayoutWithFonts(markdown, options);
       await loadTextFontsForTheme(prepared.theme);
-      if (isNativeMathRenderer(prepared.mathRenderer)) await loadNativeMathFonts();
       return finishMarkdownLayout(prepared);
     }
   };
@@ -61,11 +63,37 @@ export function prepareMarkdownLayout(markdown: string, options: EngineOptions =
   const totalStart = now();
   const parseStart = now();
   const document = parseMarkdownDocument(markdown);
+  return prepareMarkdownLayoutFromDocument(document, options, totalStart, parseStart);
+}
+
+export async function prepareMarkdownLayoutWithFonts(markdown: string, options: EngineOptions = {}): Promise<PreparedLayout> {
+  const totalStart = now();
+  const parseStart = now();
+  const document = parseMarkdownDocument(markdown);
+  if (needsNativeMathFontsBeforeFrontMatter(document, options)) {
+    await loadNativeMathFonts();
+  }
+  return prepareMarkdownLayoutFromDocument(document, options, totalStart, parseStart);
+}
+
+function prepareMarkdownLayoutFromDocument(
+  document: ParsedMarkdownDocument,
+  options: EngineOptions,
+  totalStart: number,
+  parseStart: number
+): PreparedLayout {
   const resolvedOptions = applyDocumentFrontMatter(options, document.frontMatter);
   warnFrontMatter(document.warnings);
+  const documentOptions = {
+    ...defaultDocumentOptions,
+    ...(resolvedOptions.document ?? {})
+  };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const ast = resolveCrossReferences(parseMarkdown(document.markdown), crossRef);
+  const ast = resolveCrossReferences(parseMarkdown(document.markdown), crossRef, {
+    titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title
+  });
   const blocks = normalizeAst(ast);
+  const titleMatter = buildTitleMatter(documentOptions);
   const parseMs = now() - parseStart;
   const page = createPageConfig(resolvedOptions.pageSize ?? "letter", resolvedOptions.margin ?? 72);
   const theme: DocumentTheme = { ...defaultTheme, ...(resolvedOptions.theme ?? {}) };
@@ -74,7 +102,15 @@ export function prepareMarkdownLayout(markdown: string, options: EngineOptions =
   const nativeMathProfile = resolvedOptions.nativeMathProfile;
   const layoutConfig = mergeLayoutConfig(resolvedOptions.layout, undefined);
 
-  return { blocks, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
+  return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
+}
+
+function needsNativeMathFontsBeforeFrontMatter(document: ParsedMarkdownDocument, options: EngineOptions): boolean {
+  return Boolean(
+    document.frontMatter?.typography?.family ||
+    document.frontMatter?.math?.renderer ||
+    isNativeMathRenderer(options.mathRenderer)
+  );
 }
 
 export function finishMarkdownLayout(
@@ -82,7 +118,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef, prepared.layoutConfig);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef, prepared.layoutConfig, prepared.titleMatter);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 
@@ -98,8 +134,24 @@ export function finishMarkdownLayout(
   };
 }
 
+function buildTitleMatter(documentOptions: typeof defaultDocumentOptions): TitleMatter | undefined {
+  const hasTitleMatter = Boolean(
+    documentOptions.title ||
+    documentOptions.authors?.length ||
+    documentOptions.abstract
+  );
+  if (!hasTitleMatter) return undefined;
+  return {
+    title: documentOptions.title ? flattenInline(parseInline(documentOptions.title)) : undefined,
+    titleFontSize: documentOptions.titleFontSize,
+    authors: (documentOptions.authors ?? []).map((author) => flattenInline(parseInline(author))),
+    abstract: documentOptions.abstract ? flattenInline(parseInline(documentOptions.abstract)) : undefined,
+    abstractTitle: documentOptions.abstractTitle ?? defaultDocumentOptions.abstractTitle ?? "Abstract"
+  };
+}
+
 export function collectPreparedMathRequests(prepared: PreparedLayout) {
-  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile);
+  return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.titleMatter, prepared.layoutConfig);
 }
 
 function warnFrontMatter(warnings: string[]): void {

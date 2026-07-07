@@ -2,7 +2,7 @@ import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/workerProtocol";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
-import { createFallbackHyphenator, type Hyphenator } from "./hyphenation";
+import { createFallbackHyphenator, explicitHyphenBreakPoints, type Hyphenator } from "./hyphenation";
 import type { InlineRun } from "./layoutBlocks";
 import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 import { getMeasuredMath, type MathMeasurementMap } from "./mathMetrics";
@@ -33,6 +33,10 @@ export function breakRunsIntoLines(
   const hyphenator = layoutConfig.lineBreaking.hyphenation
     ? createFallbackHyphenator(layoutConfig.lineBreaking.language)
     : undefined;
+  const explicitHyphenBreaker: Hyphenator = {
+    language: "explicit",
+    points: explicitHyphenBreakPoints
+  };
 
   const pushLine = () => {
     lines.push({ runs: current, width: currentWidth, height: currentHeight });
@@ -52,6 +56,27 @@ export function breakRunsIntoLines(
   for (const run of runs) {
     const words = run.math ? [run.text.trim()] : run.text.match(/\S+\s*|\s+/g) ?? [];
     for (const word of words) {
+      if (!run.math && !run.code && !run.link) {
+        const placed = placeHyphenatedToken({
+          token: word,
+          run,
+          hyphenator: explicitHyphenBreaker,
+          maxWidth,
+          fontSize,
+          theme,
+          current,
+          currentWidth,
+          currentHeight,
+          lineHeight,
+          pushSpecificLine
+        });
+        if (placed) {
+          current = placed.current;
+          currentWidth = placed.currentWidth;
+          currentHeight = placed.currentHeight;
+          continue;
+        }
+      }
       if (!run.math && hyphenator && !run.code && !run.link) {
         const placed = placeHyphenatedToken({
           token: word,
@@ -171,7 +196,7 @@ function placeHyphenatedToken(options: {
       .map((point) => point - remainingOffset)
       .filter((point) => point >= 3 && point <= remaining.length - 3);
     const breakPoint = [...localPoints].reverse().find((point) => {
-      const prefix = `${remaining.slice(0, point)}-`;
+      const prefix = hyphenatedPrefix(remaining, point);
       return measureText(prefix, textMeasureOptions(run, fontSize, theme)) <= available;
     });
 
@@ -187,7 +212,7 @@ function placeHyphenatedToken(options: {
       return handled ? { current, currentWidth, currentHeight } : undefined;
     }
 
-    const prefix = `${remaining.slice(0, breakPoint)}-`;
+    const prefix = hyphenatedPrefix(remaining, breakPoint);
     const prefixWidth = measureText(prefix, textMeasureOptions(run, fontSize, theme));
     current.push({ ...run, text: prefix });
     currentWidth += prefixWidth;
@@ -202,6 +227,11 @@ function placeHyphenatedToken(options: {
   }
 
   return handled ? { current, currentWidth, currentHeight } : undefined;
+}
+
+function hyphenatedPrefix(word: string, breakPoint: number): string {
+  const prefix = word.slice(0, breakPoint);
+  return prefix.endsWith("-") ? prefix : `${prefix}-`;
 }
 
 function textMeasureOptions(run: InlineRun, fontSize: number, theme: DocumentTheme) {

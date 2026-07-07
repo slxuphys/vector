@@ -16,8 +16,16 @@ export type TableCellBlock = {
   rowSpan: number;
 };
 
+export type TitleMatter = {
+  title?: InlineRun[];
+  titleFontSize?: number;
+  authors: InlineRun[][];
+  abstract?: InlineRun[];
+  abstractTitle: string;
+};
+
 export type LayoutBlock =
-  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string }
+  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean }
   | { type: "paragraph"; runs: InlineRun[] }
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined> }
   | { type: "code"; language?: string; code: string }

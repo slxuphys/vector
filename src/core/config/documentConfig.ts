@@ -1,4 +1,4 @@
-import type { MathRendererName, EngineOptions } from "../engine/workerProtocol";
+import { defaultDocumentOptions, type MathRendererName, type EngineOptions } from "../engine/workerProtocol";
 import { defaultLayoutConfig, type LayoutConfig } from "../layout/layoutConfig";
 import type { PageSizeName } from "../layout/pageConfig";
 import { getDefaultOpenMathMetricsForProfile } from "../renderers/math/nativeMath";
@@ -9,6 +9,14 @@ import type { DocumentTheme } from "../theme/themeTypes";
 import { defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 
 export type DocumentFrontMatter = {
+  document?: {
+    titleFromFirstHeading?: boolean;
+    title?: string;
+    titleFontSize?: number;
+    authors?: string[];
+    abstract?: string;
+    abstractTitle?: string;
+  };
   page?: {
     size?: PageSizeName;
     margin?: number;
@@ -92,6 +100,11 @@ export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: Do
     mathRenderer: typographyFamily || frontMatter.math?.renderer ? "native-openmath" : options.mathRenderer,
     nativeMathMetrics,
     nativeMathProfile,
+    document: {
+      ...defaultDocumentOptions,
+      ...(options.document ?? {}),
+      ...(frontMatter.document ?? {})
+    },
     crossRef: mergeCrossRefConfig(options.crossRef, frontMatter.crossref),
     layout: mergeLayoutConfig(options.layout, frontMatter.layout)
   };
@@ -109,6 +122,16 @@ export function mergeLayoutConfig(
       ...defaultLayoutConfig.lineBreaking,
       ...(base?.lineBreaking ?? {}),
       ...(override?.lineBreaking ?? {})
+    },
+    columns: {
+      ...defaultLayoutConfig.columns,
+      ...(base?.columns ?? {}),
+      ...(override?.columns ?? {})
+    },
+    headingFontSizes: {
+      ...defaultLayoutConfig.headingFontSizes,
+      ...(base?.headingFontSizes ?? {}),
+      ...(override?.headingFontSizes ?? {})
     }
   };
 }
@@ -176,11 +199,28 @@ function parseSimpleYaml(lines: string[], warnings: string[]): Record<string, Ya
 function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]): DocumentFrontMatter {
   const config: DocumentFrontMatter = {};
   const page = readObject(raw.page);
+  const document = readObject(raw.document);
   const typography = readObject(raw.typography);
   const theme = readObject(raw.theme);
   const math = readObject(raw.math);
   const crossref = readObject(raw.crossref);
   const layout = readObject(raw.layout);
+
+  if (document) {
+    const titleFromFirstHeading = readBoolean(document.titleFromFirstHeading);
+    const title = readString(document.title);
+    const titleFontSize = readNumber(document.titleFontSize ?? document.fontSize);
+    const authors = readStringList(document.authors);
+    const abstract = readString(document.abstract);
+    const abstractTitle = readString(document.abstractTitle);
+    config.document = {};
+    if (titleFromFirstHeading !== undefined) config.document.titleFromFirstHeading = titleFromFirstHeading;
+    if (title !== undefined) config.document.title = title;
+    if (titleFontSize !== undefined) config.document.titleFontSize = titleFontSize;
+    if (authors !== undefined) config.document.authors = authors;
+    if (abstract !== undefined) config.document.abstract = abstract;
+    if (abstractTitle !== undefined) config.document.abstractTitle = abstractTitle;
+  }
 
   if (page) {
     const size = readString(page.size);
@@ -237,6 +277,12 @@ function normalizeLayoutConfig(raw: Record<string, YamlValue>, warnings: string[
   if (textAlign === "left" || textAlign === "justify") config.textAlign = textAlign;
   else if (textAlign) warnings.push(`Unsupported layout.textAlign "${textAlign}". Use "left" or "justify".`);
 
+  const columns = normalizeColumns(raw, warnings);
+  if (columns) config.columns = columns;
+
+  const headingFontSizes = normalizeHeadingFontSizes(raw.headingFontSizes ?? raw.headings, warnings);
+  if (headingFontSizes) config.headingFontSizes = headingFontSizes;
+
   const lineBreaking = readObject(raw.lineBreaking);
   if (lineBreaking) {
     const algorithm = readString(lineBreaking.algorithm);
@@ -255,6 +301,69 @@ function normalizeLayoutConfig(raw: Record<string, YamlValue>, warnings: string[
   }
 
   return config;
+}
+
+function normalizeColumns(raw: Record<string, YamlValue>, warnings: string[]): Partial<LayoutConfig>["columns"] | undefined {
+  const columnValue = raw.columns ?? raw.columnCount;
+  const columnGap = readNumber(raw.columnGap);
+  if (columnValue === undefined && columnGap === undefined) return undefined;
+
+  let count: number | undefined;
+  let gap = columnGap;
+  if (typeof columnValue === "number") {
+    count = columnValue;
+  } else if (typeof columnValue === "string") {
+    const parsed = Number(columnValue);
+    if (Number.isFinite(parsed)) count = parsed;
+  } else if (columnValue && typeof columnValue === "object") {
+    const object = columnValue as YamlObject;
+    count = readNumber(object.count);
+    gap = readNumber(object.gap) ?? gap;
+  }
+
+  const normalizedCount = count === undefined
+    ? defaultLayoutConfig.columns.count
+    : Math.floor(count);
+  if (normalizedCount < 1 || normalizedCount > 4) {
+    warnings.push("layout.columns must be between 1 and 4.");
+    return undefined;
+  }
+  if (gap !== undefined && gap < 0) {
+    warnings.push("layout.columnGap/layout.columns.gap must be non-negative.");
+    return undefined;
+  }
+  return {
+    count: normalizedCount,
+    gap: gap ?? defaultLayoutConfig.columns.gap
+  };
+}
+
+function normalizeHeadingFontSizes(
+  value: YamlValue | undefined,
+  warnings: string[]
+): LayoutConfig["headingFontSizes"] | undefined {
+  const object = readObject(value);
+  if (!object) return undefined;
+
+  const sizes: LayoutConfig["headingFontSizes"] = {};
+  const entries = Object.entries(object);
+  const arrayLike = entries.length > 0 && entries.every(([key]) => /^\d+$/.test(key));
+  for (const [rawKey, rawValue] of entries) {
+    const key = rawKey.toLowerCase();
+    const level = key.startsWith("h") ? Number(key.slice(1)) : arrayLike ? Number(key) + 1 : Number(key);
+    const size = readNumber(rawValue);
+    if (!Number.isInteger(level) || level < 1 || level > 6) {
+      warnings.push(`Unsupported layout.headingFontSizes key "${rawKey}". Use h1 through h6.`);
+      continue;
+    }
+    if (size === undefined || size <= 0) {
+      warnings.push(`layout.headingFontSizes.${rawKey} must be a positive number.`);
+      continue;
+    }
+    sizes[level as keyof LayoutConfig["headingFontSizes"]] = size;
+  }
+
+  return Object.keys(sizes).length ? sizes : undefined;
 }
 
 function normalizeCrossRef(raw: Record<string, YamlValue>, warnings: string[]): DocumentFrontMatter["crossref"] {
@@ -291,6 +400,14 @@ function stripYamlComment(line: string): string {
 function parseScalar(value: string): YamlValue {
   if (value === "true") return true;
   if (value === "false") return false;
+  if (value.startsWith("[") && value.endsWith("]")) {
+    const items = value.slice(1, -1)
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => parseScalar(item));
+    return Object.fromEntries(items.map((item, index) => [String(index), item]));
+  }
   if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
   if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
     return value.slice(1, -1);
@@ -312,6 +429,17 @@ function readNumber(value: YamlValue | undefined): number | undefined {
 
 function readBoolean(value: YamlValue | undefined): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
+}
+
+function readStringList(value: YamlValue | undefined): string[] | undefined {
+  if (typeof value === "string") return [value];
+  const object = readObject(value);
+  if (!object) return undefined;
+  const items = Object.entries(object)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, item]) => readString(item))
+    .filter((item): item is string => item !== undefined);
+  return items.length ? items : undefined;
 }
 
 function copyThemeString(source: Record<string, YamlValue>, target: Partial<DocumentTheme>, key: keyof DocumentTheme): void {

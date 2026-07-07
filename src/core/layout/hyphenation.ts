@@ -14,9 +14,10 @@ export function fallbackHyphenationPoints(word: string): number[] {
   const normalized = word.replace(/\u00AD/g, "");
   if (normalized.length < 8) return [];
   if (!/^[A-Za-z][A-Za-z'-]*[A-Za-z]$/.test(normalized)) return [];
-  if (/https?:|www\.|[@_/\\]/i.test(normalized)) return [];
+  if (isUrlLikeWord(normalized)) return [];
 
   const points = new Set<number>();
+  for (const point of explicitHyphenBreakPoints(normalized)) points.add(point);
   const minPrefix = 3;
   const minSuffix = 3;
   const vowels = /[aeiouy]/i;
@@ -39,4 +40,17 @@ export function fallbackHyphenationPoints(word: string): number[] {
   }
 
   return [...points].sort((a, b) => a - b);
+}
+
+export function explicitHyphenBreakPoints(word: string): number[] {
+  if (isUrlLikeWord(word)) return [];
+  const points: number[] = [];
+  for (let index = 1; index < word.length - 1; index += 1) {
+    if (word[index] === "-") points.push(index + 1);
+  }
+  return points;
+}
+
+function isUrlLikeWord(word: string): boolean {
+  return /https?:|www\.|[@_/\\]/i.test(word);
 }
