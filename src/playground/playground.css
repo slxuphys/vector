@@ -36,6 +36,16 @@ button:disabled {
   opacity: 0.5;
 }
 
+.app-lab-link {
+  border: 1px solid #a9b4c1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #344054;
+  padding: 7px 10px;
+  font-size: 13px;
+  text-decoration: none;
+}
+
 .svg-md-download-button {
   display: inline-flex;
   align-items: center;

@@ -252,8 +252,7 @@ E = mc^2
   it("lays out latex through the document engine", async () => {
     const engine = createDocumentEngine({
       sourceFormat: "latex",
-      mathRenderer: "native-openmath",
-      useWorker: false
+      mathRenderer: "native-openmath"
     });
     const result = await engine.layout(`\\title{Vector}
 \\begin{document}
@@ -276,6 +275,31 @@ Greek inline math $\\alpha + \\beta = \\gamma$ should survive.
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type === "paragraph") {
       expect(paragraph.children).toContainEqual({ type: "math", text: "\\alpha + \\beta = \\gamma" });
+    }
+  });
+
+  it("parses latex tilde as a non-breaking space", () => {
+    const ast = parseLatex(`\\begin{document}
+Figure~1 stays together.
+\\end{document}`);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toContainEqual({ type: "text", text: " ", nonBreak: true });
+    }
+  });
+
+  it("parses latex citations as pending red placeholders", () => {
+    const ast = parseLatex(`\\begin{document}
+Prior work\\cite{einstein1905} is pending bibliography support.
+\\end{document}`);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toContainEqual({ type: "text", text: "[ ]", nonBreak: true, color: "#b42318" });
+      expect(paragraph.children.map((node) => node.type === "text" ? node.text : "").join("")).not.toContain("einstein1905");
     }
   });
 
@@ -369,7 +393,7 @@ Text.
   });
 
   it("renders revtex section numbers and headings", async () => {
-    const engine = createDocumentEngine({ sourceFormat: "latex", useWorker: false });
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
     const { layout } = await engine.layout(`\\documentclass{revtex4-2}
 \\begin{document}
 \\section{Introduction}
@@ -389,8 +413,19 @@ Text.
     expect(text).toContain("MATH");
   });
 
+  it("renders latex cite placeholders in red", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
+    const { layout } = await engine.layout(`\\begin{document}
+Text with citation\\cite{future}.
+\\end{document}`);
+    const citation = layout.pages[0].objects.find((object) => object.type === "text" && object.text === "[ ]");
+
+    expect(citation?.type).toBe("text");
+    if (citation?.type === "text") expect(citation.color).toBe("#b42318");
+  });
+
   it("keeps revtex figure captions inside the active column with normal text color", async () => {
-    const engine = createDocumentEngine({ sourceFormat: "latex", useWorker: false });
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
     const source = `\\documentclass[twocolumn]{revtex4-2}
 \\begin{document}
 \\section{Figures}
@@ -423,7 +458,7 @@ Text.
   });
 
   it("applies paragraph indentation from the resolved latex stylesheet", async () => {
-    const engine = createDocumentEngine({ sourceFormat: "latex", useWorker: false });
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
     const { layout } = await engine.layout(`\\documentclass{revtex4-2}
 \\begin{document}
 \\section{Intro}
@@ -443,7 +478,7 @@ Second paragraph should use the resolved stylesheet indent.
   });
 
   it("accepts separate page margins from front matter", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 page:
   margin:
@@ -493,7 +528,6 @@ describe("document engine", () => {
 
   it("renders HarfBuzz-measured text as browser SVG text", async () => {
     const engine = createDocumentEngine({
-      useWorker: false,
       theme: { fontFamily: latinModernRomanFontFamily }
     });
     const { layout } = await engine.layout("office");
@@ -505,7 +539,7 @@ describe("document engine", () => {
   });
 
   it("creates a paged display list", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout, stats } = await engine.layout("# Title\n\nBody text\n\n$$\nE = mc^2\n$$");
 
     expect(stats.pageCount).toBeGreaterThan(0);
@@ -535,7 +569,7 @@ describe("document engine", () => {
   });
 
   it("renders selectable svg text", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout("# SVG Markdown Preview");
     const svg = renderPageToSvg(layout.pages[0]);
     const textObjects = layout.pages[0].objects.filter((object) => object.type === "text");
@@ -570,7 +604,7 @@ describe("document engine", () => {
   });
 
   it("renders cross references as SVG links and PDF link annotations", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 document:
   titleFromFirstHeading: false
@@ -591,7 +625,7 @@ See @sec:intro.
   });
 
   it("uses front matter cross-reference formats", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 crossref:
   figure:
@@ -620,7 +654,7 @@ $$
   });
 
   it("uses section captionFormat for visible heading numbers", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 document:
   titleFromFirstHeading: false
@@ -644,7 +678,7 @@ See @sec:intro.
   });
 
   it("allows section captionFormat to hide heading numbers", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 document:
   titleFromFirstHeading: false
@@ -669,7 +703,7 @@ See @sec:intro.
   });
 
   it("treats the first H1 as a full-width title before multi-column flow", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const repeated = Array.from({ length: 130 }, (_, index) => `body${index}`).join(" ");
     const { layout } = await engine.layout(`---
 page:
@@ -709,7 +743,7 @@ ${repeated}
   });
 
   it("renders YAML title matter before normal section flow", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 document:
   title: "YAML Title"
@@ -743,9 +777,7 @@ See @sec:first.
   });
 
   it("lets front matter choose the supported native OpenMath path", async () => {
-    const engine = createDocumentEngine({
-      useWorker: false,
-      mathRenderer: "katex-raster",
+    const engine = createDocumentEngine({      mathRenderer: "katex-raster",
       nativeMathMetrics: {
         ...defaultOpenMathMetrics,
         displayPadding: 3,
@@ -849,7 +881,7 @@ Body
   });
 
   it("applies front matter heading font sizes during layout", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 document:
   titleFromFirstHeading: false
@@ -874,7 +906,7 @@ layout:
   });
 
   it("flows paragraph lines into multiple columns", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const repeated = Array.from({ length: 220 }, (_, index) => `word${index}`).join(" ");
     const { layout } = await engine.layout(`---
 page:
@@ -975,6 +1007,30 @@ ${repeated}
     expect(lines[0].runs.map((run) => run.text).join("")).toBe("reference.");
   });
 
+  it("keeps non-breaking spaces attached to the following token", () => {
+    const fontSize = 12;
+    const options = {
+      fontSize,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    };
+    const maxWidth = measureText("Figure ", options) + 1;
+    const lines = breakRunsIntoLines(
+      [
+        { text: "Figure" },
+        { text: " ", nonBreak: true },
+        { text: "1" }
+      ],
+      maxWidth,
+      fontSize,
+      defaultTheme
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0].runs.map((run) => run.text).join("")).toBe("Figure 1");
+    expect(lines[0].width).toBeGreaterThan(maxWidth);
+  });
+
   it("hyphenates long words when enabled", () => {
     const lines = breakRunsIntoLines(
       [{ text: "electromagnetohydrodynamics" }],
@@ -1046,7 +1102,7 @@ ${repeated}
   });
 
   it("stretches non-final paragraph lines when textAlign is justify", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`---
 page:
   size: letter
@@ -1067,7 +1123,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders markdown images with captions into SVG pages", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`![Plot](data:image/svg+xml,%3Csvg%2F%3E "Figure 1. Plot"){width=50% align=center}`);
     const svg = renderPageToSvg(layout.pages[0]);
     const image = layout.pages[0].objects.find((object) => object.type === "image");
@@ -1084,7 +1140,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders fenced GraphSX blocks into SVG pages", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout(`\`\`\`graphsx width=60% align=center caption="Figure 2. GraphSX"
 <Graph>
   <Rect id="A" at={[80, 80]} label="A" />
@@ -1103,7 +1159,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("keeps space after inline math", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout("$E=mc^2$ is inline math and $\\frac{a}{b}$ renders");
     const mathObjects = layout.pages[0].objects.filter((object) => object.type === "math");
     const firstMath = mathObjects[0];
@@ -1128,7 +1184,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("exports a PDF", async () => {
-    const engine = createDocumentEngine({ useWorker: false });
+    const engine = createDocumentEngine();
     const { layout } = await engine.layout("# Title");
     const bytes = await renderToPdf(layout);
 
@@ -1187,7 +1243,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders native math without falling back to KaTeX foreignObject", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native" });
+    const engine = createDocumentEngine({ mathRenderer: "native" });
     const { layout } = await engine.layout("Native $E = mc^2$ and unsupported $\\begin{pmatrix} a \\end{pmatrix}$");
     const svg = renderPageToSvg(layout.pages[0]);
 
@@ -1200,7 +1256,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders native OpenMath mode through the native display path", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const engine = createDocumentEngine({ mathRenderer: "native-openmath" });
     const { layout } = await engine.layout("OpenMath $\\sqrt{x^2 + y^2} = r$");
     const math = layout.pages[0].objects.find((object) => object.type === "math");
     const svg = renderPageToSvg(layout.pages[0]);
@@ -1218,7 +1274,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders table cell math through the selected math renderer", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const engine = createDocumentEngine({ mathRenderer: "native-openmath" });
     const { layout } = await engine.layout(`| Symbol | Value |
 | :--- | ---: |
 | radius | $r^2$ |
@@ -1235,7 +1291,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders inline pipe delimiters inside table math cells", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const engine = createDocumentEngine({ mathRenderer: "native-openmath" });
     const { layout } = await engine.layout(`| Formula | Meaning |
 | --- | --- |
 | $\\left|x\\right|$ | absolute value |
@@ -1252,7 +1308,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("renders table colspan and rowspan as larger cell rectangles", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const engine = createDocumentEngine({ mathRenderer: "native-openmath" });
     const { layout } = await engine.layout(`| Group {: colspan=2} | Status |
 | --- | --- | --- |
 | Alpha {: rowspan=2} | $x$ | ready |
@@ -1400,6 +1456,46 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(glyphs.every((node) => node.bold !== true)).toBe(true);
   });
 
+  it("maps OpenMath mathcal to mathematical script glyphs", () => {
+    const layout = layoutNativeMath("\\mathcal{E} + \\mathcal{R}", false, 12, defaultOpenMathMetrics, "openmath");
+    const text = layout.nodes
+      .filter((node) => node.type === "glyph")
+      .map((node) => node.text)
+      .join("");
+
+    expect(text).toContain("ℰ");
+    expect(text).toContain("ℛ");
+    expect(text).not.toContain("mathcal");
+  });
+
+  it("renders common symbolic commands as native glyphs", () => {
+    const layout = layoutNativeMath("A \\otimes B \\circ C^\\dagger", false, 12, defaultOpenMathMetrics, "openmath");
+    const text = layout.nodes
+      .filter((node) => node.type === "glyph")
+      .map((node) => node.text)
+      .join("");
+
+    expect(text).toContain("⊗");
+    expect(text).toContain("∘");
+    expect(text).toContain("†");
+    expect(text).not.toContain("otimes");
+    expect(text).not.toContain("dagger");
+  });
+
+  it("renders text command as upright math text", () => {
+    const layout = layoutNativeMath("F_{\\text{EPR}} = \\text{ok}", false, 12, defaultOpenMathMetrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+    const epr = glyphs.find((node) => node.text === "EPR");
+    const ok = glyphs.find((node) => node.text === "ok");
+
+    expect(text).toContain("EPR");
+    expect(text).toContain("ok");
+    expect(text).not.toContain("⟦text⟧");
+    expect(epr?.italic).toBe(false);
+    expect(ok?.italic).toBe(false);
+  });
+
   it("uses TeX-style atom spacing for binary operators", () => {
     const binary = layoutNativeMath("x+y", false, 12, defaultNativeMathMetrics, "katex");
     const unary = layoutNativeMath("+x", false, 12, defaultNativeMathMetrics, "katex");
@@ -1428,7 +1524,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("exports native math with the native PDF path", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native" });
+    const engine = createDocumentEngine({ mathRenderer: "native" });
     const { layout } = await engine.layout("Native $\\sqrt{x^2 + y^2} = r$ and $$\n\\frac{1}{3}\n$$");
     const bytes = await renderToPdf(layout);
 
@@ -1436,7 +1532,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("exports native OpenMath math-italic glyphs with the OpenMath PDF font", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native-openmath" });
+    const engine = createDocumentEngine({ mathRenderer: "native-openmath" });
     const { layout } = await engine.layout("OpenMath $x^2 + \\alpha = y$ and $\\sin x$ and $\\mathbf{B}$");
     const bytes = await renderToPdf(layout);
 
@@ -1463,7 +1559,7 @@ This paragraph has enough words to wrap into more than one line and the first re
   });
 
   it("keeps native inline math near the surrounding text baseline", async () => {
-    const engine = createDocumentEngine({ useWorker: false, mathRenderer: "native" });
+    const engine = createDocumentEngine({ mathRenderer: "native" });
     const { layout } = await engine.layout("Text before $E = mc^2$ and after");
     const math = layout.pages[0].objects.find((object) => object.type === "math");
     const text = layout.pages[0].objects.find(
@@ -1686,17 +1782,28 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(text).not.toContain("⟦begin⟧");
   });
 
-  it("marks unknown native math environments while still parsing their body", () => {
-    const layout = layoutNativeMath("\\begin{mystery} x + y \\end{mystery}", false, 12);
+  it("collapses unknown native math environments without parsing their body", () => {
+    const layout = layoutNativeMath("\\begin{unknownenv} q + z \\end{unknownenv}", false, 12);
     const glyphs = layout.nodes.filter((node) => node.type === "glyph");
     const text = glyphs.map((node) => node.text).join("");
     const marker = glyphs.find((node) => node.text.includes("unknown environment"));
 
-    expect(text).toContain("unknown environment: mystery");
-    expect(text).toContain("x");
-    expect(text).toContain("y");
+    expect(text).toContain("unknown environment: unknownenv");
+    expect(text).not.toContain("q");
+    expect(text).not.toContain("z");
     expect(marker?.type).toBe("glyph");
     if (marker?.type === "glyph") expect(marker.color).toBe("#b42318");
+  });
+
+  it("collapses tikzpicture math environments to a compact unsupported marker", () => {
+    const layout = layoutNativeMath("\\begin{tikzpicture}\\node at (0,0) {$x$};\\end{tikzpicture}", false, 12);
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+
+    expect(text).toContain("unsupported TikZ");
+    expect(text).not.toContain("node");
+    expect(glyphs.length).toBe(1);
+    expect(layout.width).toBeLessThan(120);
   });
 
   it("renders native left/right delimiters around tall content", () => {

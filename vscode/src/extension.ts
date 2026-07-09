@@ -70,6 +70,10 @@ export function activate(context: vscode.ExtensionContext) {
             rawSvgKB: round((timing.rawSvgBytes ?? 0) / 1024),
             sentSvgKB: round((timing.sentSvgBytes ?? 0) / 1024),
             fontCssKB: round((timing.fontCssBytes ?? 0) / 1024),
+            pageSvgKB: timing.pageSvgBytes?.map((entry) => ({
+              page: entry.page,
+              kb: round(entry.bytes / 1024)
+            })) ?? [],
             renderedPages: message.pages,
             totalPages: timing.totalPages ?? message.totalPages
           });
@@ -114,7 +118,7 @@ function activeTextDocument(): vscode.TextDocument | undefined {
 
 type VectorPreviewBundle = {
   loadNativeMathFonts(): Promise<void>;
-  createDocumentEngine(options: { sourceFormat: "markdown" | "latex"; useWorker: false }): {
+  createDocumentEngine(options: { sourceFormat: "markdown" | "latex" }): {
       layout(source: string): Promise<{
       layout: { pages: DisplayPage[] };
       stats: { pageCount: number; totalMs: number; parseMs?: number; layoutMs?: number };
@@ -137,7 +141,7 @@ async function renderPreview(
     const fontLoadStartedAt = performance.now();
     if (sourceFormat === "latex") await bundle.loadNativeMathFonts();
     if (timing) timing.fontLoadMs = performance.now() - fontLoadStartedAt;
-    const engine = bundle.createDocumentEngine({ sourceFormat, useWorker: false });
+    const engine = bundle.createDocumentEngine({ sourceFormat });
     const result = await engine.layout(document.getText());
     if (timing) {
       timing.parseMs = result.stats.parseMs ?? 0;
@@ -179,18 +183,21 @@ async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message
   let sentSvgBytes = 0;
   let fontCssBytes = 0;
   const pages: RenderedPagePayload[] = [];
+  const pageSvgBytes: Array<{ page: number; bytes: number }> = [];
 
   for (const index of uniqueIndexes) {
     const cached = activePreview.renderedCache.get(index);
     if (cached !== undefined) {
       pages.push({ index, svg: cached });
       sentSvgBytes += cached.length;
+      pageSvgBytes.push({ page: index, bytes: cached.length });
       continue;
     }
     const rawSvg = renderPageToSvg(activePreview.pages[index], { includeFontCss: false });
     rawSvgBytes += rawSvg.length;
     const svg = rawSvg;
     sentSvgBytes += svg.length;
+    pageSvgBytes.push({ page: index, bytes: svg.length });
     activePreview.renderedCache.set(index, svg);
     pages.push({ index, svg });
   }
@@ -201,6 +208,7 @@ async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message
     timing.rawSvgBytes = rawSvgBytes;
     timing.sentSvgBytes = sentSvgBytes;
     timing.fontCssBytes = fontCssBytes;
+    timing.pageSvgBytes = pageSvgBytes;
     timing.previewSentAt = performance.now();
   }
 
@@ -235,6 +243,7 @@ type PreviewTiming = {
   sentSvgBytes?: number;
   fontCssBytes?: number;
   totalPages?: number;
+  pageSvgBytes?: Array<{ page: number; bytes: number }>;
 };
 
 type DisplayPage = Parameters<typeof renderPageToSvg>[0];

@@ -1,4 +1,4 @@
-import { defaultDocumentOptions, type MathRendererName, type EngineOptions } from "../engine/workerProtocol";
+import { defaultDocumentOptions, type MathRendererName, type EngineOptions } from "../engine/engineTypes";
 import { defaultLayoutConfig, type LayoutConfig } from "../layout/layoutConfig";
 import type { PageMarginInput, PageSizeName } from "../layout/pageConfig";
 import { getDefaultOpenMathMetricsForProfile } from "../renderers/math/nativeMath";

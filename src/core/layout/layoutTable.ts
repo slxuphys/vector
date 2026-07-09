@@ -1,4 +1,4 @@
-import type { MathRendererName } from "../engine/workerProtocol";
+import type { MathRendererName } from "../engine/engineTypes";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";

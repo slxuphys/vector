@@ -1,5 +1,5 @@
 import type { MathMeasurement, MathMeasureRequest } from "../layout/mathMetrics";
-import type { MathRendererName } from "./workerProtocol";
+import type { MathRendererName } from "./engineTypes";
 import { renderMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";

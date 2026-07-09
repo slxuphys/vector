@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { PagedDisplayList } from "../core/display-list/displayTypes";
+import { renderPageToSvg } from "../core/renderers/svg/renderPageToSvg";
 import { isDebugLogEnabled } from "../core/utils/debugSettings";
 import { PageViewport } from "./PageViewport";
 import type { CompletedPreviewUpdateTiming } from "./useDocumentLayout";
@@ -27,11 +28,27 @@ export function SvgPagedPreview({
     ? layout.pages.length
     : Math.min(layout.pages.length, currentPage + overscanPages + 1);
   const renderIdRef = useRef(0);
-  const refresh = useMemo(() => {
+  const visiblePages = useMemo(() => {
+    const startedAt = performance.now();
+    const pages = layout.pages.map((page, index) => {
+      if (index < start || index >= end) return undefined;
+      return {
+        page,
+        svg: renderPageToSvg(page, {
+          className: "svg-md-page-svg",
+          includeFontCss: false
+        })
+      };
+    });
+    const finishedAt = performance.now();
     renderIdRef.current += 1;
     return {
       id: renderIdRef.current,
-      startedAt: performance.now()
+      startedAt,
+      finishedAt,
+      svgStringMs: finishedAt - startedAt,
+      svgBytes: pages.reduce((sum, entry) => sum + (entry?.svg.length ?? 0), 0),
+      pages
     };
   }, [layout, numericZoom, start, end]);
   const loggedUpdateIdRef = useRef<number | undefined>(undefined);
@@ -43,7 +60,8 @@ export function SvgPagedPreview({
     loggedUpdateIdRef.current = timing.id;
     requestAnimationFrame(() => {
       const paintedAt = performance.now();
-      const renderMs = paintedAt - refresh.startedAt;
+      const renderMs = paintedAt - visiblePages.startedAt;
+      const paintMs = paintedAt - visiblePages.finishedAt;
       const totalMs = timing.debounceMs + timing.layoutDelayMs + timing.layoutMs + renderMs;
       console.log(
         `[preview-update] total ${totalMs.toFixed(1)} ms`,
@@ -53,18 +71,24 @@ export function SvgPagedPreview({
           layoutDelayMs: round(timing.layoutDelayMs),
           layoutMs: round(timing.layoutMs),
           renderMs: round(renderMs),
+          svgStringMs: round(visiblePages.svgStringMs),
+          paintMs: round(paintMs),
+          svgKB: round(visiblePages.svgBytes / 1024),
+          pageSvgKB: visiblePages.pages
+            .map((entry, index) => entry ? { page: index, kb: round(entry.svg.length / 1024) } : undefined)
+            .filter(Boolean),
           totalPages: layout.pages.length,
           renderedPages: end - start
         }
       );
     });
-  }, [end, layout.pages.length, refresh, start, timing]);
+  }, [end, layout.pages.length, start, timing, visiblePages]);
 
   return (
     <div className="svg-md-preview" data-page-count={layout.pages.length}>
       {layout.pages.map((page, index) => (
         index >= start && index < end
-          ? <PageViewport key={page.index} page={page} zoom={numericZoom} />
+          ? <PageViewport key={page.index} page={page} svg={visiblePages.pages[index]?.svg ?? ""} zoom={numericZoom} />
           : (
             <div
               key={page.index}

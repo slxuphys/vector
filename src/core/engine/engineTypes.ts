@@ -1,5 +1,4 @@
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
-import type { MathMeasurementMap } from "../layout/mathMetrics";
 import type { LayoutConfig } from "../layout/layoutConfig";
 import type { PageMarginInput, PageSizeName } from "../layout/pageConfig";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
@@ -12,7 +11,6 @@ export type EngineOptions = {
   pageSize?: PageSizeName;
   margin?: PageMarginInput;
   theme?: Partial<DocumentTheme>;
-  useWorker?: boolean;
   mathRenderer?: MathRendererName;
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
@@ -50,26 +48,7 @@ export type MathRendererName =
   | "native"
   | "native-openmath";
 
-export type LayoutRequest = {
-  id: number;
-  type: "layout";
-  markdown: string;
-  options: EngineOptions;
-  mathMeasurements?: MathMeasurementMap;
-};
-
-export type LayoutResponse = {
-  id: number;
-  type: "layoutResult";
+export type LayoutResult = {
   layout: PagedDisplayList;
   stats: PreviewStats;
 };
-
-export type LayoutErrorResponse = {
-  id: number;
-  type: "layoutError";
-  message: string;
-};
-
-export type WorkerRequest = LayoutRequest;
-export type WorkerResponse = LayoutResponse | LayoutErrorResponse;

@@ -1,5 +1,5 @@
 export type InlineNode =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; nonBreak?: boolean; color?: string }
   | { type: "strong"; children: InlineNode[] }
   | { type: "emphasis"; children: InlineNode[] }
   | { type: "code"; text: string }

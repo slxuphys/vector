@@ -1,5 +1,8 @@
 import type { InlineNode } from "./markdownTypes";
 
+const nonBreakingSpaceMarker = "\uE110";
+const citationPlaceholderMarker = "\uE111";
+
 export function parseInline(text: string): InlineNode[] {
   const nodes: InlineNode[] = [];
   let rest = text;
@@ -7,11 +10,11 @@ export function parseInline(text: string): InlineNode[] {
   while (rest.length > 0) {
     const match = rest.match(/(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`|\[[^\]]+]\([^)]+\)|\$[^$]+\$)/);
     if (!match || match.index === undefined) {
-      nodes.push({ type: "text", text: rest });
+      nodes.push(...textNodes(rest));
       break;
     }
 
-    if (match.index > 0) nodes.push({ type: "text", text: rest.slice(0, match.index) });
+    if (match.index > 0) nodes.push(...textNodes(rest.slice(0, match.index)));
     const token = match[0];
     if (token.startsWith("**")) {
       nodes.push({ type: "strong", children: parseInline(token.slice(2, -2)) });
@@ -29,4 +32,15 @@ export function parseInline(text: string): InlineNode[] {
   }
 
   return nodes.filter((node) => node.type !== "text" || node.text.length > 0);
+}
+
+function textNodes(text: string): InlineNode[] {
+  return text
+    .split(new RegExp(`(${nonBreakingSpaceMarker}|${citationPlaceholderMarker})`, "g"))
+    .filter((part) => part.length > 0)
+    .map((part) => part === nonBreakingSpaceMarker
+      ? { type: "text", text: " ", nonBreak: true }
+      : part === citationPlaceholderMarker
+        ? { type: "text", text: "[ ]", nonBreak: true, color: "#b42318" }
+      : { type: "text", text: part });
 }

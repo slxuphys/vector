@@ -4,14 +4,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   build: {
+    outDir: "dist-playground",
     sourcemap: true,
-    lib: {
-      entry: "src/index.ts",
-      formats: ["es"],
-      name: "Vector"
-    },
     rollupOptions: {
-      external: ["react", "react-dom"]
+      input: "index.html"
     }
-  },
+  }
 });

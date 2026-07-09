@@ -7,6 +7,8 @@ export type InlineRun = {
   italic?: boolean;
   code?: boolean;
   math?: boolean;
+  nonBreak?: boolean;
+  color?: string;
   link?: string;
 };
 
@@ -40,7 +42,7 @@ export type LayoutBlock =
 
 export function flattenInline(nodes: InlineNode[], inherited: Partial<InlineRun> = {}): InlineRun[] {
   return nodes.flatMap((node): InlineRun[] => {
-    if (node.type === "text") return [{ ...inherited, text: node.text }];
+    if (node.type === "text") return [{ ...inherited, text: node.text, nonBreak: node.nonBreak, color: node.color }];
     if (node.type === "code") return [{ ...inherited, text: node.text, code: true }];
     if (node.type === "math") return [{ ...inherited, text: node.text, math: true }];
     if (node.type === "strong") return flattenInline(node.children, { ...inherited, bold: true });

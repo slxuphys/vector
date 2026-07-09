@@ -25,7 +25,7 @@ import { loadTextFontsForTheme } from "../renderers/text/textFontMetrics";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
-import { defaultDocumentOptions, type EngineOptions, type MathRendererName } from "./workerProtocol";
+import { defaultDocumentOptions, type EngineOptions, type MathRendererName } from "./engineTypes";
 import type { CrossRefConfig } from "../xref/xrefTypes";
 import { flattenInline, type TitleMatter } from "../layout/layoutBlocks";
 import { parseInline } from "../markdown/parseInline";

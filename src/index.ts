@@ -22,3 +22,10 @@ export type { DocumentTheme } from "./core/theme/themeTypes";
 export type { LayoutBlock } from "./core/layout/layoutBlocks";
 export type { DocumentFrontMatter } from "./core/config/documentConfig";
 export type { CrossRefConfig, CrossRefFormat } from "./core/xref/xrefTypes";
+export type {
+  DocumentOptions,
+  EngineOptions,
+  LayoutResult,
+  MathRendererName,
+  SourceFormat
+} from "./core/engine/engineTypes";

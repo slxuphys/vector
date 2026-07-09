@@ -329,6 +329,9 @@ const commandGlyphs: Record<string, string> = {
   "\\nabla": "∇",
   "\\partial": "∂",
   "\\cdot": "⋅",
+  "\\otimes": "⊗",
+  "\\circ": "∘",
+  "\\dagger": "†",
   "\\langle": "⟨",
   "\\rangle": "⟩",
   "\\vert": "|",
@@ -385,6 +388,9 @@ const uprightCommandGlyphs = new Set([
   "\\nabla",
   "\\partial",
   "\\infty",
+  "\\otimes",
+  "\\circ",
+  "\\dagger",
   "\\Gamma",
   "\\Delta",
   "\\Theta",
@@ -634,7 +640,7 @@ function layoutSequence(
     const char = input[index];
     if (char === "{" || char === "}") continue;
     if (char === "^" || char === "_") {
-      const script = readArgument(input, index + 1);
+      const script = readScriptArgument(input, index + 1);
       const scriptBox = layoutSequence(script.value, fontSize * metrics.scriptScale, false, metrics, profile, false);
       const scriptBaseline = getScriptBaseline(char, fontSize, metrics, lastAtom, scriptBox);
       const yShift = scriptBaseline - scriptBox.baseline;
@@ -761,6 +767,43 @@ function layoutSequence(
         const mapped = profile.mapBoldGlyph(body.value.replace(/[{}]/g, ""));
         const text = mapped.text;
         const style = { bold: mapped.bold, italic: false, fontFamily: profile.layoutFontFamily };
+        nodes.push(glyph(text, x, 0, fontSize, style));
+        const width = measureGlyphWidth(text, fontSize, style);
+        const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
+        inkTop = Math.min(inkTop, -verticalMetrics.ascent);
+        inkBottom = Math.max(inkBottom, verticalMetrics.descent);
+        maxTop = Math.max(maxTop, verticalMetrics.ascent);
+        maxBottom = Math.max(maxBottom, verticalMetrics.descent);
+        lastAtom = { x, width, ascent: verticalMetrics.ascent, descent: verticalMetrics.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += width + glyphGap;
+        index = body.end;
+        continue;
+      }
+
+      if (command.name === "\\mathcal") {
+        const mathClass = applyAtomSpacing("mord");
+        const body = readArgument(input, command.end + 1);
+        const mapped = profile.mapCaligraphicGlyph(body.value.replace(/[{}]/g, ""));
+        const text = mapped.text;
+        const style = { italic: mapped.italic, fontFamily: profile.layoutFontFamily };
+        nodes.push(glyph(text, x, 0, fontSize, style));
+        const width = measureGlyphWidth(text, fontSize, style);
+        const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
+        inkTop = Math.min(inkTop, -verticalMetrics.ascent);
+        inkBottom = Math.max(inkBottom, verticalMetrics.descent);
+        maxTop = Math.max(maxTop, verticalMetrics.ascent);
+        maxBottom = Math.max(maxBottom, verticalMetrics.descent);
+        lastAtom = { x, width, ascent: verticalMetrics.ascent, descent: verticalMetrics.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += width + glyphGap;
+        index = body.end;
+        continue;
+      }
+
+      if (command.name === "\\text") {
+        const mathClass = applyAtomSpacing("mord");
+        const body = readArgument(input, command.end + 1);
+        const text = plainTextArgument(body.value);
+        const style = { italic: false, fontFamily: profile.layoutFontFamily };
         nodes.push(glyph(text, x, 0, fontSize, style));
         const width = measureGlyphWidth(text, fontSize, style);
         const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
@@ -1647,6 +1690,13 @@ function skipIgnoredCommandSpaces(input: string, commandName: string, commandEnd
   return index;
 }
 
+function plainTextArgument(value: string): string {
+  return value
+    .replace(/\\ /g, " ")
+    .replace(/\\([{}_$%&#])/g, "$1")
+    .replace(/[{}]/g, "");
+}
+
 function readArgument(input: string, start: number): { value: string; end: number } {
   while (input[start] === " ") start += 1;
   if (input[start] !== "{") return { value: input[start] ?? "", end: start };
@@ -1658,6 +1708,37 @@ function readArgument(input: string, start: number): { value: string; end: numbe
     if (depth === 0) return { value: input.slice(start + 1, index), end: index };
   }
   return { value: input.slice(start + 1), end: input.length - 1 };
+}
+
+const scriptGroupedCommandArgs: Record<string, number> = {
+  "\\bar": 1,
+  "\\bra": 1,
+  "\\ddot": 1,
+  "\\dot": 1,
+  "\\frac": 2,
+  "\\hat": 1,
+  "\\ket": 1,
+  "\\left": 1,
+  "\\mathcal": 1,
+  "\\mathbf": 1,
+  "\\sqrt": 1,
+  "\\text": 1,
+  "\\vec": 1
+};
+
+function readScriptArgument(input: string, start: number): { value: string; end: number } {
+  while (input[start] === " ") start += 1;
+  if (input[start] !== "\\") return readArgument(input, start);
+
+  const command = readCommand(input, start);
+  let end = command.end;
+  const argCount = scriptGroupedCommandArgs[command.name] ?? 0;
+  for (let argIndex = 0; argIndex < argCount; argIndex += 1) {
+    const arg = readArgument(input, end + 1);
+    if (arg.end < end + 1) break;
+    end = arg.end;
+  }
+  return { value: input.slice(start, end + 1), end };
 }
 
 type DelimiterToken = {
@@ -1801,17 +1882,24 @@ function layoutEnvironment(
   metrics: NativeMathMetrics,
   profile: NativeMathProfile
 ): Box {
+  if (!environment.known) {
+    return errorMarkerBox(unknownEnvironmentMessage(environment.name), fontSize, profile);
+  }
+
   const body = environment.known && matrixEnvironmentNames.has(environment.name)
     ? layoutMatrixEnvironment(environment, fontSize, displayMode, metrics, profile)
     : layoutSequence(normalizeEnvironmentBody(environment.body), fontSize, displayMode, metrics, profile);
-  const delimiter = environment.known ? environmentDelimiters[environment.name] : undefined;
+  const delimiter = environmentDelimiters[environment.name];
   const bodyBox = delimiter ? wrapBoxWithDelimiters(body, delimiter, fontSize, profile) : body;
   if (environment.known && environment.closed) return bodyBox;
 
-  const message = environment.known
-    ? `environment not closed: ${environment.name || "?"}`
-    : `unknown environment: ${environment.name || "?"}`;
+  const message = `environment not closed: ${environment.name || "?"}`;
   return prependErrorMarker(message, bodyBox, fontSize, profile);
+}
+
+function unknownEnvironmentMessage(name: string): string {
+  if (name === "tikzpicture") return "unsupported TikZ";
+  return `unknown environment: ${name || "?"}`;
 }
 
 function normalizeEnvironmentBody(body: string): string {
@@ -2133,6 +2221,26 @@ function prependErrorMarker(
     inkTop: Math.min(body.inkTop, body.baseline - markerMetrics.ascent),
     inkBottom: Math.max(body.inkBottom, body.baseline + markerMetrics.descent),
     nodes
+  };
+}
+
+function errorMarkerBox(message: string, fontSize: number, profile: NativeMathProfile): Box {
+  const style = { color: "#b42318", italic: false, fontFamily: profile.layoutFontFamily };
+  const text = `⟦${message}⟧`;
+  const markerSize = fontSize * 0.72;
+  const markerWidth = measureGlyphWidth(text, markerSize, style);
+  const markerMetrics = measureGlyphVerticalMetrics(text, markerSize, style);
+  const ascent = markerMetrics.ascent;
+  const descent = markerMetrics.descent;
+  return {
+    width: markerWidth,
+    height: ascent + descent,
+    baseline: ascent,
+    ascent,
+    descent,
+    inkTop: 0,
+    inkBottom: ascent + descent,
+    nodes: [glyph(text, 0, ascent, markerSize, style)]
   };
 }
 

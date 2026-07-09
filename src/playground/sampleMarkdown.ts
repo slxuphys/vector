@@ -1,4 +1,4 @@
-export const sampleMarkdown = `# SVG Markdown Preview
+export const sampleMarkdown = `# Vector Preview
 
 This playground renders **Markdown** into _positioned page objects_, then paints each page as selectable SVG text. The PDF download uses the same display list.
 
@@ -238,7 +238,7 @@ page:
 document:
   title: "Native Math Stress"
   titleFontSize: 34
-  authors: ["SVG Markdown Preview Lab", "OpenType Math Engine"]
+  authors: ["Vector Preview Lab", "OpenType Math Engine"]
   abstract: "This sample exercises the native OpenMath path, cross references, GraphSX figures, tables, and multi-page pagination. It also demonstrates YAML-controlled title matter rendered before the document columns."
 typography:
   family: libertinus
@@ -510,7 +510,7 @@ page:
 document:
   title: "Sparse Attention Blocks for Sequence Modeling"
   titleFontSize: 24
-  authors: ["Mira Chen    Theo Alvarez    Priya Nandakumar    Elias Hart", "Jun Park    Sofia Marin    Rowan Keller    Anika Bose", "Synthetic conference-paper layout replica for SVG Markdown Preview"]
+  authors: ["Mira Chen    Theo Alvarez    Priya Nandakumar    Elias Hart", "Jun Park    Sofia Marin    Rowan Keller    Anika Bose", "Synthetic conference-paper layout replica for Vector"]
   abstract: "This playground page mimics the visual shape of a Transformer-style research paper with our own text engine: title block, abstract, two-column flow, equations, figures, tables, captions, and references. The title, authors, and prose are synthetic so the example stresses layout without copying the original paper."
 typography:
   family: latin-modern

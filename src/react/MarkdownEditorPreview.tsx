@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import type { EngineOptions } from "../core/engine/workerProtocol";
+import type { EngineOptions } from "../core/engine/engineTypes";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
 import { isDebugLogEnabled } from "../core/utils/debugSettings";

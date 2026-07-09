@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { previewFontFaceCss } from "../../core/renderers/svg/previewFontCss";
 import { SvgPagedPreview } from "../SvgPagedPreview";
 import type { DocumentLayoutState } from "../useDocumentLayout";
+
+const previewFontCss = previewFontFaceCss();
 
 export type PreviewPaneProps = {
   layoutState: DocumentLayoutState;
@@ -48,6 +51,7 @@ export function PreviewPane({
 
   return (
     <div className="svg-md-preview-pane" ref={previewPaneRef}>
+      <style>{previewFontCss}</style>
       {layoutState.error ? <div className="svg-md-error">{layoutState.error.message}</div> : null}
       {layoutState.layout ? (
         <SvgPagedPreview

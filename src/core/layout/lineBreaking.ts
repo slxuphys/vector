@@ -1,5 +1,5 @@
 import type { DocumentTheme } from "../theme/themeTypes";
-import type { MathRendererName } from "../engine/workerProtocol";
+import type { MathRendererName } from "../engine/engineTypes";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import { createFallbackHyphenator, explicitHyphenBreakPoints, type Hyphenator } from "./hyphenation";
@@ -54,9 +54,14 @@ export function breakRunsIntoLines(
   }
 
   for (const run of runs) {
-    const words = run.math ? [run.text.trim()] : run.text.match(/\S+\s*|\s+/g) ?? [];
+    const words = run.math
+      ? [run.text.trim()]
+      : run.nonBreak
+        ? [run.text]
+        : run.text.match(/\S+\s*|\s+/g) ?? [];
     for (const word of words) {
-      if (!run.math && !run.code && !run.link) {
+      const gluedToPrevious = previousRunIsNonBreak(current);
+      if (!run.math && !run.code && !run.link && !run.nonBreak && !gluedToPrevious) {
         const placed = placeHyphenatedToken({
           token: word,
           run,
@@ -77,7 +82,7 @@ export function breakRunsIntoLines(
           continue;
         }
       }
-      if (!run.math && hyphenator && !run.code && !run.link) {
+      if (!run.math && hyphenator && !run.code && !run.link && !run.nonBreak && !gluedToPrevious) {
         const placed = placeHyphenatedToken({
           token: word,
           run,
@@ -108,7 +113,7 @@ export function breakRunsIntoLines(
         ...run
       });
       const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile) : lineHeight;
-      const sticky = isNoBreakBeforeToken(word);
+      const sticky = run.nonBreak || gluedToPrevious || isNoBreakBeforeToken(word);
       if (current.length > 0 && currentWidth + width > maxWidth && !sticky) pushLine();
       if (run.math) {
         current.push({ ...run, text: word });
@@ -139,6 +144,10 @@ export function breakRunsIntoLines(
 
   if (current.length > 0) pushLine();
   return lines.length > 0 ? lines : [{ runs: [], width: 0, height: lineHeight }];
+}
+
+function previousRunIsNonBreak(runs: InlineRun[]): boolean {
+  return runs.length > 0 && runs[runs.length - 1].nonBreak === true;
 }
 
 type HyphenatedPlacement = {

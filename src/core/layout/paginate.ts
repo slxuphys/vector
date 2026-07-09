@@ -1,5 +1,5 @@
 import type { DisplayObject, DisplayPage } from "../display-list/displayTypes";
-import type { MathRendererName } from "../engine/workerProtocol";
+import type { MathRendererName } from "../engine/engineTypes";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
@@ -719,7 +719,7 @@ function drawLines(
           height,
           advance,
           fontSize,
-          color: run.link ? theme.link : options.color,
+          color: run.link ? theme.link : run.color ?? options.color,
           mathRenderer,
           nativeMathMetrics,
           nativeMathProfile,
@@ -745,7 +745,7 @@ function drawLines(
         width: stretchedWidth,
         fontSize,
         fontFamily: font,
-        color: run.link ? theme.link : options.color,
+        color: run.link ? theme.link : run.color ?? options.color,
         bold: options.bold || run.bold,
         italic: run.italic || run.math,
         link: run.link

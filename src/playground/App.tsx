@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MarkdownEditorPreview } from "../react/MarkdownEditorPreview";
 import { darkTheme, defaultTheme } from "../core/theme/defaultTheme";
-import type { MathRendererName } from "../core/engine/workerProtocol";
+import type { MathRendererName } from "../core/engine/engineTypes";
 import {
   defaultDebugLogSettings,
   readDebugLogSettings,
@@ -71,13 +71,15 @@ export function App() {
   const options = useMemo(
     () => {
       const theme = dark ? darkTheme : defaultTheme;
-      const formatTheme = sourceFormat === "latex"
+      const colorTheme = dark
         ? {
-            ...theme,
-            fontSize: 10,
-            lineHeight: 1.2
+            text: darkTheme.text,
+            mutedText: darkTheme.mutedText,
+            link: darkTheme.link,
+            pageBackground: darkTheme.pageBackground
           }
-        : theme;
+        : {};
+      const formatTheme = sourceFormat === "latex" ? colorTheme : theme;
       return {
         pageSize,
         sourceFormat,
@@ -96,8 +98,7 @@ export function App() {
             }
           : formatTheme,
         nativeMathMetrics: activeNativeMetrics,
-        nativeMathProfile,
-        useWorker: false
+        nativeMathProfile
       };
     },
     [pageSize, pageMargin, sourceFormat, dark, font, mathRenderer, activeNativeMetrics, nativeMathProfile, openMathFont]
@@ -138,7 +139,7 @@ export function App() {
   return (
     <main className="app">
       <header className="app-header">
-        <h1>SVG Markdown Preview</h1>
+        <h1>Vector Lab</h1>
         <div className="app-controls">
           <label>
             Format

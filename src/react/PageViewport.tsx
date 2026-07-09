@@ -1,18 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { DisplayPage } from "../core/display-list/displayTypes";
-import { renderPageToSvg } from "../core/renderers/svg/renderPageToSvg";
 
 export type PageViewportProps = {
   page: DisplayPage;
+  svg: string;
   zoom: number;
 };
 
-export function PageViewport({ page, zoom }: PageViewportProps) {
+export function PageViewport({ page, svg, zoom }: PageViewportProps) {
   const svgContainerRef = useRef<HTMLDivElement>(null);
-  const svg = useMemo(() => {
-    const rendered = renderPageToSvg(page, { className: "svg-md-page-svg" });
-    return rendered;
-  }, [page]);
   const warnings = page.objects
     .filter((object) => object.type === "graphsx" && object.warnings?.length)
     .flatMap((object) => object.type === "graphsx"

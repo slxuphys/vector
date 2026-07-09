@@ -1,4 +1,4 @@
-import type { MathRendererName } from "../../core/engine/workerProtocol";
+import type { MathRendererName } from "../../core/engine/engineTypes";
 import { isNativeMathRenderer } from "../../core/renderers/math/nativeMath";
 import type { DocumentLayoutState } from "../useDocumentLayout";
 

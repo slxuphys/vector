@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   collectPreparedMathRequests,
   finishMarkdownLayout,
   prepareMarkdownLayoutWithFonts,
   type PreparedLayout
 } from "../core/engine/createDocumentEngine";
-import { createWorkerClient } from "../core/engine/workerClient";
 import { measureMathInDom } from "../core/engine/measureMathInDom";
-import type { EngineOptions } from "../core/engine/workerProtocol";
+import type { EngineOptions } from "../core/engine/engineTypes";
 import type { PagedDisplayList, PreviewStats } from "../core/display-list/displayTypes";
 import type { MathMeasurementMap } from "../core/layout/mathMetrics";
 import { clearTextMeasureCache } from "../core/layout/measureText";
@@ -48,27 +47,13 @@ export function useDocumentLayout(
   timing?: PreviewUpdateTiming
 ): DocumentLayoutState {
   const [state, setState] = useState<DocumentLayoutState>({ loading: true });
-  const workerEnabled = options.useWorker !== false && typeof Worker !== "undefined";
-  const workerClient = useMemo(
-    () => workerEnabled ? createWorkerClient(options) : undefined,
-    [workerEnabled, options.sourceFormat, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile]
-  );
 
   useEffect(() => {
     let cancelled = false;
     const layoutQueuedAt = performance.now();
     setState((current) => ({ ...current, loading: true, error: undefined }));
     const layoutStartedAt = performance.now();
-    const layoutPromise = layoutWithPremeasuredMath(markdown, options, workerEnabled)
-      .then(({ prepared, measurements, result }) => {
-        if (!workerClient) return result ?? finishMarkdownLayout(prepared, measurements);
-        return Promise.race([
-          workerClient.layout(markdown, measurements),
-          new Promise<never>((_, reject) => {
-            window.setTimeout(() => reject(new Error("Layout worker timed out")), 500);
-          })
-        ]).catch(() => finishMarkdownLayout(prepared, measurements));
-      });
+    const layoutPromise = layoutWithPremeasuredMath(markdown, options);
 
     layoutPromise
       .then((result) => {
@@ -82,13 +67,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [workerClient, markdown, timing, options.sourceFormat, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile, workerEnabled]);
-
-  useEffect(() => {
-    return () => {
-      workerClient?.dispose();
-    };
-  }, [workerClient]);
+  }, [markdown, timing, options.sourceFormat, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile]);
 
   return state;
 }
@@ -112,19 +91,13 @@ function finishTiming(
 
 async function layoutWithPremeasuredMath(
   markdown: string,
-  options: EngineOptions,
-  deferFinish: boolean
-): Promise<{
-  prepared: PreparedLayout;
-  measurements: MathMeasurementMap;
-  result?: { layout: PagedDisplayList; stats: PreviewStats };
-}> {
+  options: EngineOptions
+): Promise<{ layout: PagedDisplayList; stats: PreviewStats }> {
   const prepared = await prepareMarkdownLayoutWithFonts(markdown, options);
   await waitForTextFonts(prepared);
   const requests = collectPreparedMathRequests(prepared);
   const measurements = await measureMathInDom(requests, prepared.mathRenderer);
-  const result = deferFinish ? undefined : finishMarkdownLayout(prepared, measurements);
-  return { prepared, measurements, result };
+  return finishMarkdownLayout(prepared, measurements);
 }
 
 async function waitForTextFonts(prepared: PreparedLayout): Promise<void> {

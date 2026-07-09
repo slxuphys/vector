@@ -1,6 +1,9 @@
 import type { ImageLength, InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
 import { parseInline } from "../markdown/parseInline";
 
+const nonBreakingSpaceMarker = "\uE110";
+const citationPlaceholderMarker = "\uE111";
+
 type LatexPreamble = {
   title?: string;
   authors: string[];
@@ -223,6 +226,8 @@ function latexInlineToMarkdown(source: string): string {
   return preserveMathWhile(source, (value) => {
     let transformed = replaceInlineCommands(value);
     transformed = transformed
+      .replace(/~/g, nonBreakingSpaceMarker)
+      .replace(/\\cite\{[^{}]*}/g, citationPlaceholderMarker)
       .replace(/\\ref\{([A-Za-z][\w:.-]*)}/g, "@!$1")
       .replace(/\\(?:eqref|autoref|cref)\{([A-Za-z][\w:.-]*)}/g, "@$1")
       .replace(/\\LaTeX\b/g, "LaTeX")

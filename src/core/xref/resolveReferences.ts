@@ -156,7 +156,7 @@ function annotateNode(node: MarkdownNode, anchors: Map<string, CrossRefAnchor>):
 
 function resolveInlineReferences(nodes: InlineNode[], anchors: Map<string, CrossRefAnchor>, config: CrossRefConfig): InlineNode[] {
   return nodes.flatMap((node): InlineNode[] => {
-    if (node.type === "text") return resolveTextReferences(node.text, anchors, config);
+    if (node.type === "text") return resolveTextReferences(node, anchors, config);
     if (node.type === "strong" || node.type === "emphasis") {
       return [{ ...node, children: resolveInlineReferences(node.children, anchors, config) }];
     }
@@ -167,12 +167,18 @@ function resolveInlineReferences(nodes: InlineNode[], anchors: Map<string, Cross
   });
 }
 
-function resolveTextReferences(text: string, anchors: Map<string, CrossRefAnchor>, config: CrossRefConfig): InlineNode[] {
+function resolveTextReferences(node: Extract<InlineNode, { type: "text" }>, anchors: Map<string, CrossRefAnchor>, config: CrossRefConfig): InlineNode[] {
+  const { text } = node;
+  if (!refPattern.test(text)) {
+    refPattern.lastIndex = 0;
+    return [node];
+  }
+  refPattern.lastIndex = 0;
   const nodes: InlineNode[] = [];
   let cursor = 0;
   for (const match of text.matchAll(refPattern)) {
     const index = match.index ?? 0;
-    if (index > cursor) nodes.push({ type: "text", text: text.slice(cursor, index) });
+    if (index > cursor) nodes.push({ ...node, text: text.slice(cursor, index) });
     const rawNumberOnly = Boolean(match[1]);
     const id = match[2];
     const anchor = anchors.get(id);
@@ -183,11 +189,11 @@ function resolveTextReferences(text: string, anchors: Map<string, CrossRefAnchor
           href: `#${id}`,
           children: [{ type: "text", text: resolved }]
         }
-      : { type: "text", text: resolved });
+      : { ...node, text: resolved });
     cursor = index + match[0].length;
   }
-  if (cursor < text.length) nodes.push({ type: "text", text: text.slice(cursor) });
-  return nodes.length ? nodes : [{ type: "text", text }];
+  if (cursor < text.length) nodes.push({ ...node, text: text.slice(cursor) });
+  return nodes.length ? nodes : [node];
 }
 
 function formatReference(id: string, anchor: CrossRefAnchor | undefined, config: CrossRefConfig): string {

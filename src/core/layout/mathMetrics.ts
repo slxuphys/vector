@@ -1,6 +1,6 @@
 import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
 import type { DocumentTheme } from "../theme/themeTypes";
-import type { MathRendererName } from "../engine/workerProtocol";
+import type { MathRendererName } from "../engine/engineTypes";
 import { isNativeMathRenderer, type NativeMathLayout, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
