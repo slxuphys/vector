@@ -1,0 +1,36 @@
+{
+  "name": "vector",
+  "displayName": "Vector Preview",
+  "description": "Fast paginated preview and PDF export for Vector Markdown/LaTeX documents.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "vector",
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "activationEvents": [
+    "onCommand:vector.openPreview",
+    "onCommand:vector.exportPdf"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vector.openPreview",
+        "title": "Vector: Open Preview"
+      },
+      {
+        "command": "vector.exportPdf",
+        "title": "Vector: Export PDF"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.cjs"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.92.0",
+    "typescript": "^5.8.3"
+  }
+}

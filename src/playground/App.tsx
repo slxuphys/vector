@@ -23,18 +23,27 @@ import {
   openMathTextFontStack
 } from "../core/renderers/text/latinModernRomanFont";
 import type { OpenMathFontProfileName } from "../core/renderers/math/openMathFont";
-import { playgroundSamples } from "./sampleMarkdown";
+import { playgroundSampleLabels, playgroundSamples, playgroundSamplesByFormat } from "./sampleMarkdown";
 
 type PlaygroundFont = "sans" | "tex";
 type FontSelectValue = PlaygroundFont | OpenMathFontProfileName;
+type PlaygroundFormat = keyof typeof playgroundSamplesByFormat;
+type PlaygroundSampleKey = keyof typeof playgroundSamples;
 
 export function App() {
-  const [sample, setSample] = useState<keyof typeof playgroundSamples>("mathHeavy");
+  const [sourceFormat, setSourceFormat] = useState<PlaygroundFormat>("markdown");
+  const [sampleByFormat, setSampleByFormat] = useState<Record<PlaygroundFormat, PlaygroundSampleKey>>({
+    markdown: "mathHeavy",
+    latex: "latexPaper"
+  });
   const [font, setFont] = useState<PlaygroundFont>("sans");
   const [openMathFont, setOpenMathFont] = useState<OpenMathFontProfileName>("latin-modern");
   const [mathRenderer, setMathRenderer] = useState<MathRendererName>("native-openmath");
   const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
-  const [margin, setMargin] = useState(64);
+  const [marginByFormat, setMarginByFormat] = useState<Record<PlaygroundFormat, number | undefined>>({
+    markdown: 64,
+    latex: undefined
+  });
   const [dark, setDark] = useState(false);
   const [nativeMetrics, setNativeMetrics] = useState<NativeMathMetrics>(defaultNativeMathMetrics);
   const [openMathMetrics, setOpenMathMetrics] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
@@ -50,31 +59,48 @@ export function App() {
   const activeNativeMetrics = mathRenderer === "native-openmath" ? openMathMetrics : nativeMetrics;
   const activeNativeDefaults = mathRenderer === "native-openmath" ? openMathDefaults : defaultNativeMathMetrics;
   const effectiveFont: FontSelectValue = mathRenderer === "native-openmath" ? openMathFont : font;
+  const sample = sampleByFormat[sourceFormat];
+  const sampleOptions = playgroundSamplesByFormat[sourceFormat];
+  const margin = marginByFormat[sourceFormat];
+  const pageMargin = useMemo(
+    () => sourceFormat === "latex"
+      ? margin === undefined ? undefined : { top: 72, right: margin, bottom: 72, left: margin }
+      : margin ?? 64,
+    [sourceFormat, margin]
+  );
   const options = useMemo(
     () => {
       const theme = dark ? darkTheme : defaultTheme;
+      const formatTheme = sourceFormat === "latex"
+        ? {
+            ...theme,
+            fontSize: 10,
+            lineHeight: 1.2
+          }
+        : theme;
       return {
         pageSize,
-        margin,
+        sourceFormat,
+        ...(pageMargin === undefined ? {} : { margin: pageMargin }),
         mathRenderer,
         theme: mathRenderer === "native-openmath"
           ? {
-              ...theme,
+              ...formatTheme,
               fontFamily: openMathTextFontStack(openMathFont),
               fontFaceCss: openMathTextFontFaceCss(openMathFont)
             }
           : font === "tex"
           ? {
-              ...theme,
+              ...formatTheme,
               fontFamily: "KaTeX_Main, 'Times New Roman', serif"
             }
-          : theme,
+          : formatTheme,
         nativeMathMetrics: activeNativeMetrics,
         nativeMathProfile,
         useWorker: false
       };
     },
-    [pageSize, margin, dark, font, mathRenderer, activeNativeMetrics, nativeMathProfile, openMathFont]
+    [pageSize, pageMargin, sourceFormat, dark, font, mathRenderer, activeNativeMetrics, nativeMathProfile, openMathFont]
   );
 
   useEffect(() => {
@@ -115,16 +141,25 @@ export function App() {
         <h1>SVG Markdown Preview</h1>
         <div className="app-controls">
           <label>
+            Format
+            <select value={sourceFormat} onChange={(event) => setSourceFormat(event.target.value as PlaygroundFormat)}>
+              <option value="markdown">Markdown</option>
+              <option value="latex">LaTeX</option>
+            </select>
+          </label>
+          <label>
             Example
-            <select value={sample} onChange={(event) => setSample(event.target.value as keyof typeof playgroundSamples)}>
-              <option value="short">Short</option>
-              <option value="long">Long</option>
-                <option value="hundred">100 pages</option>
-                <option value="mathHeavy">Math heavy</option>
-                <option value="multiColumn">Multi-column</option>
-                <option value="transformerReplica">Transformer paper replica</option>
-                <option value="graphsxDebug">GraphSX debug</option>
-              </select>
+            <select
+              value={sample}
+              onChange={(event) => setSampleByFormat((current) => ({
+                ...current,
+                [sourceFormat]: event.target.value as PlaygroundSampleKey
+              }))}
+            >
+              {Object.keys(sampleOptions).map((key) => (
+                <option key={key} value={key}>{playgroundSampleLabels[key as PlaygroundSampleKey]}</option>
+              ))}
+            </select>
           </label>
           <label>
             Math
@@ -176,9 +211,13 @@ export function App() {
             <input
               type="number"
               min="24"
-              max="120"
-              value={margin}
-              onChange={(event) => setMargin(Number(event.target.value))}
+              max="180"
+              placeholder={sourceFormat === "latex" ? "class default" : undefined}
+              value={margin ?? ""}
+              onChange={(event) => setMarginByFormat((current) => ({
+                ...current,
+                [sourceFormat]: event.target.value === "" ? undefined : Number(event.target.value)
+              }))}
             />
           </label>
           <label className="toggle">
@@ -193,7 +232,7 @@ export function App() {
         </div>
       </header>
       <MarkdownEditorPreview
-        key={sample}
+        key={`${sourceFormat}:${sample}`}
         initialMarkdown={playgroundSamples[sample]}
         options={options}
         sidePanel={(

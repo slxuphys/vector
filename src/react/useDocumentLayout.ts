@@ -51,7 +51,7 @@ export function useDocumentLayout(
   const workerEnabled = options.useWorker !== false && typeof Worker !== "undefined";
   const workerClient = useMemo(
     () => workerEnabled ? createWorkerClient(options) : undefined,
-    [workerEnabled, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile]
+    [workerEnabled, options.sourceFormat, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile]
   );
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [workerClient, markdown, timing, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile, workerEnabled]);
+  }, [workerClient, markdown, timing, options.sourceFormat, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile, workerEnabled]);
 
   useEffect(() => {
     return () => {

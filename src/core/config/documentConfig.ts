@@ -1,12 +1,13 @@
 import { defaultDocumentOptions, type MathRendererName, type EngineOptions } from "../engine/workerProtocol";
 import { defaultLayoutConfig, type LayoutConfig } from "../layout/layoutConfig";
-import type { PageSizeName } from "../layout/pageConfig";
+import type { PageMarginInput, PageSizeName } from "../layout/pageConfig";
 import { getDefaultOpenMathMetricsForProfile } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import { isOpenMathFontProfileName, type OpenMathFontProfileName } from "../renderers/math/openMathFont";
 import { openMathTextFontFaceCss, openMathTextFontStack } from "../renderers/text/latinModernRomanFont";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
+import { readLatexDocumentClass, readLatexPreamble } from "../latex/parseLatex";
 
 export type DocumentFrontMatter = {
   document?: {
@@ -19,7 +20,7 @@ export type DocumentFrontMatter = {
   };
   page?: {
     size?: PageSizeName;
-    margin?: number;
+    margin?: PageMarginInput;
   };
   typography?: {
     family?: OpenMathFontProfileName;
@@ -69,6 +70,11 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
   };
 }
 
+export function applySourceFormatDefaults(source: string, options: EngineOptions): EngineOptions {
+  if (options.sourceFormat !== "latex") return options;
+  return mergeEngineOptions(latexDocumentClassDefaults(source), options);
+}
+
 export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: DocumentFrontMatter | undefined): EngineOptions {
   if (!frontMatter) return options;
 
@@ -110,6 +116,184 @@ export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: Do
   };
 }
 
+function latexDocumentClassDefaults(source: string): EngineOptions {
+  const documentClass = readLatexDocumentClass(source);
+  if (documentClass.name.toLowerCase() === "revtex4-2") return latexRevtexDefaults(source);
+  return latexArticleDefaults(source);
+}
+
+function latexArticleDefaults(source: string): EngineOptions {
+  const documentClass = readLatexDocumentClass(source);
+  const preamble = readLatexPreamble(source);
+  const options = new Set(documentClass.options.map((option) => option.toLowerCase()));
+  const fontSize = options.has("12pt") ? 12 : options.has("11pt") ? 11 : 10;
+  const nativeMathProfile = nativeMathProfileForOpenMathFont("latin-modern");
+  const date = preamble.date === undefined ? latexToday() : preamble.date || undefined;
+
+  return {
+    sourceFormat: "latex",
+    pageSize: "letter",
+    margin: {
+      top: 72,
+      right: 134,
+      bottom: 72,
+      left: 134
+    },
+    mathRenderer: "native-openmath",
+    nativeMathProfile,
+    nativeMathMetrics: getDefaultOpenMathMetricsForProfile(nativeMathProfile),
+    theme: {
+      fontFamily: openMathTextFontStack("latin-modern"),
+      fontFaceCss: openMathTextFontFaceCss("latin-modern"),
+      fontSize,
+      lineHeight: 1.2
+    },
+    layout: {
+      textAlign: "justify",
+      lineBreaking: {
+        ...defaultLayoutConfig.lineBreaking,
+        hyphenation: true
+      },
+      headingStyle: "default",
+      columns: {
+        count: options.has("twocolumn") ? 2 : 1,
+        gap: 24
+      },
+      paragraph: {
+        ...defaultLayoutConfig.paragraph,
+        indent: fontSize * 1.5
+      },
+      headingFontSizes: {
+        1: fontSize * 1.8,
+        2: fontSize * 1.4,
+        3: fontSize * 1.2,
+        4: fontSize,
+        5: fontSize,
+        6: fontSize
+      }
+    },
+    document: {
+      titleFromFirstHeading: false,
+      title: preamble.title,
+      titleFontSize: fontSize * 1.7,
+      authors: preamble.authors,
+      date,
+      abstract: preamble.abstract,
+      abstractTitle: "Abstract",
+      titleStyle: "latex-article",
+      numberSections: true
+    }
+  };
+}
+
+function latexRevtexDefaults(source: string): EngineOptions {
+  const documentClass = readLatexDocumentClass(source);
+  const preamble = readLatexPreamble(source);
+  const options = new Set(documentClass.options.map((option) => option.toLowerCase()));
+  const fontSize = options.has("12pt") ? 12 : options.has("11pt") ? 11 : 10;
+  const nativeMathProfile = nativeMathProfileForOpenMathFont("latin-modern");
+
+  return {
+    sourceFormat: "latex",
+    pageSize: "letter",
+    margin: {
+      top: 72,
+      right: 72,
+      bottom: 72,
+      left: 72
+    },
+    mathRenderer: "native-openmath",
+    nativeMathProfile,
+    nativeMathMetrics: getDefaultOpenMathMetricsForProfile(nativeMathProfile),
+    theme: {
+      fontFamily: openMathTextFontStack("latin-modern"),
+      fontFaceCss: openMathTextFontFaceCss("latin-modern"),
+      fontSize,
+      lineHeight: 1.28
+    },
+    layout: {
+      textAlign: "justify",
+      lineBreaking: {
+        ...defaultLayoutConfig.lineBreaking,
+        hyphenation: true
+      },
+      headingStyle: "revtex",
+      columns: {
+        count: options.has("twocolumn") ? 2 : 1,
+        gap: 24
+      },
+      paragraph: {
+        ...defaultLayoutConfig.paragraph,
+        indent: fontSize * 1.5
+      },
+      headingFontSizes: {
+        1: fontSize * 1.2,
+        2: fontSize * 1.05,
+        3: fontSize,
+        4: fontSize,
+        5: fontSize,
+        6: fontSize
+      }
+    },
+    crossRef: {
+      section: {
+        captionFormat: "{number}.",
+        referenceFormat: "{number}"
+      },
+      equation: {
+        captionFormat: "({number})",
+        referenceFormat: "({number})"
+      },
+      figure: {
+        captionFormat: "FIG. {number}.",
+        referenceFormat: "Fig. {number}"
+      },
+      table: {
+        captionFormat: "TABLE {number}.",
+        referenceFormat: "Table {number}"
+      }
+    },
+    document: {
+      titleFromFirstHeading: false,
+      title: preamble.title,
+      titleFontSize: fontSize * 1.18,
+      authors: preamble.authors,
+      date: preamble.date || undefined,
+      abstract: preamble.abstract,
+      abstractTitle: "",
+      titleStyle: "revtex",
+      numberSections: true,
+      sectionNumberStyle: "revtex"
+    }
+  };
+}
+
+function latexToday(): string {
+  const date = new Date();
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
+function mergeEngineOptions(base: EngineOptions, override: EngineOptions): EngineOptions {
+  return {
+    ...base,
+    ...override,
+    theme: {
+      ...(base.theme ?? {}),
+      ...(override.theme ?? {})
+    },
+    layout: mergeLayoutConfig(base.layout, override.layout),
+    crossRef: mergeCrossRefConfig(base.crossRef, override.crossRef),
+    document: {
+      ...(base.document ?? {}),
+      ...(override.document ?? {})
+    }
+  };
+}
+
 export function mergeLayoutConfig(
   base: Partial<LayoutConfig> | undefined,
   override: Partial<LayoutConfig> | undefined
@@ -127,6 +311,11 @@ export function mergeLayoutConfig(
       ...defaultLayoutConfig.columns,
       ...(base?.columns ?? {}),
       ...(override?.columns ?? {})
+    },
+    paragraph: {
+      ...defaultLayoutConfig.paragraph,
+      ...(base?.paragraph ?? {}),
+      ...(override?.paragraph ?? {})
     },
     headingFontSizes: {
       ...defaultLayoutConfig.headingFontSizes,
@@ -224,7 +413,7 @@ function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]
 
   if (page) {
     const size = readString(page.size);
-    const margin = readNumber(page.margin);
+    const margin = readMargin(page.margin, warnings);
     config.page = {};
     if (size === "letter" || size === "a4") config.page.size = size;
     else if (size) warnings.push(`Unsupported page.size "${size}". Use "letter" or "a4".`);
@@ -277,11 +466,18 @@ function normalizeLayoutConfig(raw: Record<string, YamlValue>, warnings: string[
   if (textAlign === "left" || textAlign === "justify") config.textAlign = textAlign;
   else if (textAlign) warnings.push(`Unsupported layout.textAlign "${textAlign}". Use "left" or "justify".`);
 
+  const headingStyle = readString(raw.headingStyle);
+  if (headingStyle === "default" || headingStyle === "revtex") config.headingStyle = headingStyle;
+  else if (headingStyle) warnings.push(`Unsupported layout.headingStyle "${headingStyle}". Use "default" or "revtex".`);
+
   const columns = normalizeColumns(raw, warnings);
   if (columns) config.columns = columns;
 
   const headingFontSizes = normalizeHeadingFontSizes(raw.headingFontSizes ?? raw.headings, warnings);
   if (headingFontSizes) config.headingFontSizes = headingFontSizes;
+
+  const paragraph = normalizeParagraph(raw.paragraph, warnings);
+  if (paragraph) config.paragraph = paragraph;
 
   const lineBreaking = readObject(raw.lineBreaking);
   if (lineBreaking) {
@@ -301,6 +497,23 @@ function normalizeLayoutConfig(raw: Record<string, YamlValue>, warnings: string[
   }
 
   return config;
+}
+
+function normalizeParagraph(rawValue: YamlValue | undefined, warnings: string[]): Partial<LayoutConfig>["paragraph"] | undefined {
+  const raw = readObject(rawValue);
+  if (!raw) return undefined;
+  const indent = readNumber(raw.indent);
+  const suppressAfter = readStringList(raw.suppressAfter);
+  const paragraph: Partial<LayoutConfig["paragraph"]> = {};
+  if (indent !== undefined) paragraph.indent = indent;
+  if (suppressAfter) {
+    const allowed = new Set(defaultLayoutConfig.paragraph.suppressAfter);
+    const valid = suppressAfter.filter((kind) => allowed.has(kind as never));
+    const invalid = suppressAfter.filter((kind) => !allowed.has(kind as never));
+    if (invalid.length) warnings.push(`Unsupported layout.paragraph.suppressAfter values: ${invalid.join(", ")}.`);
+    paragraph.suppressAfter = valid as LayoutConfig["paragraph"]["suppressAfter"];
+  }
+  return Object.keys(paragraph).length ? paragraph as LayoutConfig["paragraph"] : undefined;
 }
 
 function normalizeColumns(raw: Record<string, YamlValue>, warnings: string[]): Partial<LayoutConfig>["columns"] | undefined {
@@ -425,6 +638,34 @@ function readString(value: YamlValue | undefined): string | undefined {
 
 function readNumber(value: YamlValue | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readMargin(value: YamlValue | undefined, warnings: string[]): PageMarginInput | undefined {
+  const scalar = readNumber(value);
+  if (scalar !== undefined) return scalar;
+  const object = readObject(value);
+  if (!object) return undefined;
+
+  const top = readNumber(object.top);
+  const right = readNumber(object.right);
+  const bottom = readNumber(object.bottom);
+  const left = readNumber(object.left);
+  const horizontal = readNumber(object.horizontal ?? object.x);
+  const vertical = readNumber(object.vertical ?? object.y);
+
+  const margin = {
+    top: top ?? vertical,
+    right: right ?? horizontal,
+    bottom: bottom ?? vertical,
+    left: left ?? horizontal
+  };
+  if (Object.values(margin).every((entry) => entry === undefined)) {
+    warnings.push("page.margin object must include top/right/bottom/left or horizontal/vertical values.");
+    return undefined;
+  }
+  return Object.fromEntries(
+    Object.entries(margin).filter(([, entry]) => entry !== undefined)
+  ) as Partial<NonNullable<Extract<PageMarginInput, object>>>;
 }
 
 function readBoolean(value: YamlValue | undefined): boolean | undefined {

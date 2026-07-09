@@ -1,14 +1,11 @@
-import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/workerProtocol";
-import { isNativeMathRenderer } from "../core/renderers/math/nativeMath";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
 import { isDebugLogEnabled } from "../core/utils/debugSettings";
-import { SvgPagedPreview } from "./SvgPagedPreview";
+import { MarkdownEditor } from "./editor/MarkdownEditor";
+import { PreviewPane } from "./preview/PreviewPane";
+import { PreviewToolbar } from "./preview/PreviewToolbar";
 import { useDocumentLayout, type PreviewUpdateTiming } from "./useDocumentLayout";
 
 export type MarkdownEditorPreviewProps = {
@@ -25,13 +22,9 @@ type PreviewRequest = {
 export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, sidePanel }: MarkdownEditorPreviewProps) {
   const [previewRequest, setPreviewRequest] = useState<PreviewRequest>({ markdown: initialMarkdown });
   const [zoom, setZoom] = useState(0.9);
-  const [currentPage, setCurrentPage] = useState(0);
   const [pdfPending, setPdfPending] = useState(false);
   const [experimentalVectorMath, setExperimentalVectorMath] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const previewPaneRef = useRef<HTMLDivElement | null>(null);
-  const previewUpdateRef = useRef<number | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
   const startupLogRef = useRef({ editor: false, preview: false });
   const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
@@ -39,84 +32,26 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
   const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
   const usingMathJaxGlyph = options.mathRenderer === "mathjax-glyph";
-  const usingNativeMath = isNativeMathRenderer(options.mathRenderer);
-  const usingMathJax = usingMathJaxVector || usingMathJaxGlyph;
   const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
-  const lockedPdfMode = usingNativeMath || usingGlyphPdf || usingMathJaxVector;
 
-  const extensions = useMemo(
-    () => [
-      history(),
-      markdownLanguage(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
-      EditorView.lineWrapping,
-      EditorView.updateListener.of((update) => {
-        if (!update.docChanged) return;
-        const doc = update.state.doc;
-        const editedAt = performance.now();
-        window.clearTimeout(previewUpdateRef.current);
-        previewUpdateRef.current = window.setTimeout(() => {
-          const debounceFinishedAt = performance.now();
-          setPreviewRequest({
-            markdown: doc.toString(),
-            timing: {
-              id: ++previewUpdateIdRef.current,
-              editedAt,
-              debounceFinishedAt,
-              debounceMs: debounceFinishedAt - editedAt
-            }
-          });
-        }, 150);
-      })
-    ],
-    []
-  );
-
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const view = new EditorView({
-      parent: editorRef.current,
-      state: EditorState.create({ doc: initialMarkdown, extensions })
-    });
+  const handleEditorReady = useCallback(() => {
     logStartupMilestone("editor", startupLogRef);
-    return () => {
-      window.clearTimeout(previewUpdateRef.current);
-      view.destroy();
-    };
-  }, [extensions, initialMarkdown]);
+  }, []);
+
+  const handleDebouncedChange = useCallback((markdown: string, timing: Omit<PreviewUpdateTiming, "id">) => {
+    setPreviewRequest({
+      markdown,
+      timing: {
+        id: ++previewUpdateIdRef.current,
+        ...timing
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!layoutState.layout) return;
     logStartupMilestone("preview", startupLogRef);
   }, [layoutState.layout]);
-
-  useEffect(() => {
-    const pane = previewPaneRef.current;
-    const layout = layoutState.layout;
-    if (!pane || !layout) return;
-
-    let frame = 0;
-    const updateCurrentPage = () => {
-      frame = 0;
-      const pageHeight = layout.page.height * zoom;
-      const pageStride = pageHeight + 24;
-      const page = Math.max(0, Math.floor(Math.max(0, pane.scrollTop - 28) / pageStride));
-      setCurrentPage(Math.min(page, layout.pages.length - 1));
-    };
-    const scheduleUpdate = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(updateCurrentPage);
-    };
-
-    updateCurrentPage();
-    pane.addEventListener("scroll", scheduleUpdate, { passive: true });
-    window.addEventListener("resize", scheduleUpdate);
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      pane.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
-    };
-  }, [layoutState.layout, zoom]);
 
   useEffect(() => {
     if (!layoutState.layout || !usingKatexRaster || experimentalVectorMath) return;
@@ -162,53 +97,23 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
 
   return (
     <div className="svg-md-shell">
-      <div className="svg-md-toolbar">
-        <button
-          type="button"
-          className="svg-md-download-button"
-          disabled={!layoutState.layout || pdfPending}
-          onClick={handleDownloadPdf}
-        >
-          {pdfPending ? <span className="svg-md-spinner" aria-hidden="true" /> : null}
-          <span>{pdfPending ? "Generating PDF" : "Download PDF"}</span>
-        </button>
-        <label className="toggle">
-          <input
-            type="checkbox"
-            disabled={usingMathJax || usingKatexGlyph || usingNativeMath}
-            checked={lockedPdfMode || experimentalVectorMath}
-            onChange={(event) => setExperimentalVectorMath(event.target.checked)}
-          />
-          {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : usingNativeMath ? "Native PDF" : "Experimental vector math"}
-        </label>
-        <label>
-          Zoom <span className="svg-md-zoom-value">{Math.round(zoom * 100)}%</span>
-          <input
-            type="range"
-            min="0.55"
-            max="1.4"
-            step="0.05"
-            value={zoom}
-            onChange={(event) => setZoom(Number(event.target.value))}
-          />
-        </label>
-        <span>{layoutState.stats ? `${layoutState.stats.pageCount} pages` : "Laying out..."}</span>
-      </div>
+      <PreviewToolbar
+        layoutState={layoutState}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        pdfPending={pdfPending}
+        onDownloadPdf={handleDownloadPdf}
+        mathRenderer={options.mathRenderer}
+        experimentalVectorMath={experimentalVectorMath}
+        onExperimentalVectorMathChange={setExperimentalVectorMath}
+      />
       <div className={sidePanel ? "svg-md-workspace svg-md-workspace-with-panel" : "svg-md-workspace"}>
-        <div className="svg-md-editor" ref={editorRef} />
-        <div className="svg-md-preview-pane" ref={previewPaneRef}>
-          {layoutState.error ? <div className="svg-md-error">{layoutState.error.message}</div> : null}
-          {layoutState.layout ? (
-            <SvgPagedPreview
-              layout={layoutState.layout}
-              zoom={printing ? 1 : zoom}
-              currentPage={currentPage}
-              overscanPages={2}
-              renderAllPages={printing}
-              timing={layoutState.timing}
-            />
-          ) : null}
-        </div>
+        <MarkdownEditor
+          initialMarkdown={initialMarkdown}
+          onReady={handleEditorReady}
+          onDebouncedChange={handleDebouncedChange}
+        />
+        <PreviewPane layoutState={layoutState} zoom={zoom} printing={printing} />
         {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
       </div>
     </div>

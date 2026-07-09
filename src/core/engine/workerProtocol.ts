@@ -1,15 +1,16 @@
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
 import type { MathMeasurementMap } from "../layout/mathMetrics";
 import type { LayoutConfig } from "../layout/layoutConfig";
-import type { PageSizeName } from "../layout/pageConfig";
+import type { PageMarginInput, PageSizeName } from "../layout/pageConfig";
 import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { CrossRefConfig } from "../xref/xrefTypes";
 
 export type EngineOptions = {
+  sourceFormat?: SourceFormat;
   pageSize?: PageSizeName;
-  margin?: number;
+  margin?: PageMarginInput;
   theme?: Partial<DocumentTheme>;
   useWorker?: boolean;
   mathRenderer?: MathRendererName;
@@ -20,13 +21,19 @@ export type EngineOptions = {
   document?: Partial<DocumentOptions>;
 };
 
+export type SourceFormat = "markdown" | "latex";
+
 export type DocumentOptions = {
   titleFromFirstHeading: boolean;
   title?: string;
   titleFontSize?: number;
   authors?: string[];
+  date?: string;
   abstract?: string;
   abstractTitle?: string;
+  titleStyle?: "default" | "latex-article" | "revtex";
+  numberSections?: boolean;
+  sectionNumberStyle?: "decimal" | "revtex";
 };
 
 export const defaultDocumentOptions: DocumentOptions = {

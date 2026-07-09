@@ -742,6 +742,123 @@ The Transformer paper format is a good target for the previewer because it combi
 [3] The real source for this layout target is arXiv:1706.03762, "Attention Is All You Need". This example is a structural replica, not a full-text copy.
 `;
 
+export const latexPaperSample = `\\documentclass{article}
+\\usepackage{amsmath}
+\\title{Fast Live Preview for Scientific Writing}
+\\author{Ada Vector \\and Emmy Layout}
+
+\\begin{document}
+\\maketitle
+
+\\begin{abstract}
+We demonstrate a practical LaTeX subset rendered by the Vector text engine. The preview path is intentionally fast while final edge cases can still be delegated to a full LaTeX compiler.
+\\end{abstract}
+
+\\section{Introduction}
+Daily LaTeX writing often waits on the full compiler. A live engine can parse common structure, inline math such as $E = mc^2$, and references such as \\ref{sec:math} without leaving the editor.
+
+\\subsection{Lists}
+\\begin{itemize}
+\\item Sections, paragraphs, and emphasized text like \\emph{fast preview}.
+\\item Bold text through \\textbf{common commands}.
+\\item Inline math and display equations.
+\\end{itemize}
+
+\\section{Math}
+\\label{sec:math}
+Display equations keep labels and equation references.
+
+\\begin{equation}
+\\int_0^1 x^2\\,dx = \\frac{1}{3}
+\\label{eq:integral}
+\\end{equation}
+
+Equation \\eqref{eq:integral} is generated from the same display list as the preview.
+
+\\section{Figures}
+\\begin{figure}
+\\includegraphics[width=0.65\\textwidth]{figures/phase-space.svg}
+\\caption{A figure imported from a LaTeX-style includegraphics command.}
+\\label{fig:phase}
+\\end{figure}
+
+Figure \\ref{fig:phase} is parsed as a normal engine figure. TikZ support is intentionally left for a later GraphSX bridge.
+
+\\end{document}
+`;
+
+export const latexTwoColumnSample = `\\documentclass[twocolumn,10pt]{article}
+\\usepackage{amsmath}
+\\title{Two-Column Article Preview}
+\\author{Ada Vector \\and Emmy Layout}
+
+\\begin{document}
+\\maketitle
+
+\\begin{abstract}
+This sample checks the LaTeX article defaults, including Latin Modern text, compact headings, justified paragraphs, and the twocolumn document-class option.
+\\end{abstract}
+
+\\section{Motivation}
+LaTeX articles often use compact typography. The default parser profile should feel closer to a real article than a Markdown note. Inline Greek commands such as $\\alpha + \\beta = \\gamma$ should remain inside math instead of being cleaned as prose commands.
+
+\\section{Math}
+Display equations remain centered inside the active column.
+\\[
+\\int_0^1 x^2\\,dx = \\frac{1}{3}
+\\]
+
+\\section{Flow}
+This paragraph is intentionally long enough to wrap inside a narrow column. The text engine should fill the first column, continue into the second column, and only create a new page after both columns are used.
+
+\\end{document}
+`;
+
+export const latexRevtexSample = `\\documentclass[aps,prd,10pt]{revtex4-2}
+\\usepackage{amsmath}
+\\title{Fast Live Preview for Scientific Writing}
+\\author{Ada Vector}
+
+\\begin{document}
+\\maketitle
+
+\\begin{abstract}
+We demonstrate a practical LaTeX subset rendered by the Vector text engine. The preview path is intentionally fast while final edge cases can still be delegated to a full LaTeX compiler.
+\\end{abstract}
+
+\\section{Introduction}
+Daily LaTeX writing often waits on the full compiler. A live engine can parse common structure, inline math such as $E = mc^2$, and references such as \\ref{sec:math} without leaving the editor.
+
+\\subsection{Lists}
+\\begin{itemize}
+\\item Sections, paragraphs, and emphasized text like \\emph{fast preview}.
+\\item Bold text through \\textbf{common commands}.
+\\item Inline math and display equations.
+\\end{itemize}
+
+\\section{Math}
+\\label{sec:math}
+Display equations keep labels and equation references.
+
+\\begin{equation}
+\\int_0^1 x^2\\,dx = \\frac{1}{3}
+\\label{eq:integral}
+\\end{equation}
+
+Equation \\eqref{eq:integral} is generated from the same display list as the preview.
+
+\\section{Figures}
+Figure \\ref{fig:phase} is parsed as a normal engine figure. TikZ support is intentionally left for a later GraphSX bridge.
+
+\\begin{figure}
+\\includegraphics[width=0.65\\textwidth]{figures/phase-space.svg}
+\\caption{A figure imported from a LaTeX-style includegraphics command.}
+\\label{fig:phase}
+\\end{figure}
+
+\\end{document}
+`;
+
 export const playgroundSamples = {
   short: sampleMarkdown,
   long: longSampleMarkdown,
@@ -749,5 +866,51 @@ export const playgroundSamples = {
   mathHeavy: mathHeavySampleMarkdown,
   graphsxDebug: graphsxDebugSampleMarkdown,
   multiColumn: multiColumnSampleMarkdown,
-  transformerReplica: transformerReplicaSampleMarkdown
+  transformerReplica: transformerReplicaSampleMarkdown,
+  latexPaper: latexPaperSample,
+  latexTwoColumn: latexTwoColumnSample,
+  latexRevtex: latexRevtexSample
 } as const;
+
+export const playgroundSamplesByFormat = {
+  markdown: {
+    short: sampleMarkdown,
+    long: longSampleMarkdown,
+    hundred: hundredPageSampleMarkdown,
+    mathHeavy: mathHeavySampleMarkdown,
+    graphsxDebug: graphsxDebugSampleMarkdown,
+    multiColumn: multiColumnSampleMarkdown,
+    transformerReplica: transformerReplicaSampleMarkdown
+  },
+  latex: {
+    latexPaper: latexPaperSample,
+    latexTwoColumn: latexTwoColumnSample,
+    latexRevtex: latexRevtexSample
+  }
+} as const;
+
+export const playgroundSampleLabels: Record<keyof typeof playgroundSamples, string> = {
+  short: "Short",
+  long: "Long",
+  hundred: "100 pages",
+  mathHeavy: "Math heavy",
+  graphsxDebug: "GraphSX debug",
+  multiColumn: "Multi-column",
+  transformerReplica: "Transformer paper replica",
+  latexPaper: "LaTeX paper",
+  latexTwoColumn: "LaTeX two-column",
+  latexRevtex: "REVTeX 4.2"
+};
+
+export const playgroundSampleFormats: Record<keyof typeof playgroundSamples, "markdown" | "latex"> = {
+  short: "markdown",
+  long: "markdown",
+  hundred: "markdown",
+  mathHeavy: "markdown",
+  graphsxDebug: "markdown",
+  multiColumn: "markdown",
+  transformerReplica: "markdown",
+  latexPaper: "latex",
+  latexTwoColumn: "latex",
+  latexRevtex: "latex"
+};

@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
-import { createDocumentEngine } from "../src/core/engine/createDocumentEngine";
+import { createDocumentEngine, prepareMarkdownLayout } from "../src/core/engine/createDocumentEngine";
 import { parseMarkdownDocument } from "../src/core/config/documentConfig";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
+import { parseLatex } from "../src/core/latex/parseLatex";
 import { resolveCrossReferences } from "../src/core/xref/resolveReferences";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
@@ -226,6 +227,243 @@ $$
   });
 });
 
+describe("latex parser", () => {
+  it("converts practical latex structure into the shared document ast", () => {
+    const ast = parseLatex(`\\title{Live Preview}
+\\author{A. Writer \\and B. Author}
+\\begin{document}
+\\maketitle
+\\section{Math}\\label{sec:math}
+See \\ref{sec:math}.
+\\begin{equation}
+E = mc^2
+\\label{eq:energy}
+\\end{equation}
+\\begin{itemize}
+\\item \\textbf{Fast} preview
+\\end{itemize}
+\\end{document}`);
+
+    expect(ast.children.map((node) => node.type)).toContain("heading");
+    expect(ast.children.some((node) => node.type === "mathBlock" && node.label === "eq:energy")).toBe(true);
+    expect(ast.children.some((node) => node.type === "list")).toBe(true);
+  });
+
+  it("lays out latex through the document engine", async () => {
+    const engine = createDocumentEngine({
+      sourceFormat: "latex",
+      mathRenderer: "native-openmath",
+      useWorker: false
+    });
+    const result = await engine.layout(`\\title{Vector}
+\\begin{document}
+\\section{One}
+Inline $x^2$.
+\\[
+\\int_0^1 x^2 dx = \\frac{1}{3}
+\\]
+\\end{document}`);
+
+    expect(result.layout.pages.length).toBeGreaterThan(0);
+  });
+
+  it("preserves LaTeX commands inside inline math", () => {
+    const ast = parseLatex(`\\begin{document}
+Greek inline math $\\alpha + \\beta = \\gamma$ should survive.
+\\end{document}`);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toContainEqual({ type: "math", text: "\\alpha + \\beta = \\gamma" });
+    }
+  });
+
+  it("converts latex figures with includegraphics into image blocks", () => {
+    const ast = parseLatex(`\\begin{document}
+\\begin{figure}
+\\includegraphics[width=0.65\\textwidth]{figures/phase-space.svg}
+\\caption{A figure imported from a LaTeX-style includegraphics command.}
+\\label{fig:phase}
+\\end{figure}
+\\end{document}`);
+    const image = ast.children.find((node) => node.type === "image");
+
+    expect(image?.type).toBe("image");
+    if (image?.type === "image") {
+      expect(image.src).toBe("figures/phase-space.svg");
+      expect(image.caption).toBe("A figure imported from a LaTeX-style includegraphics command.");
+      expect(image.label).toBe("fig:phase");
+      expect(image.width).toEqual({ value: 65, unit: "percent" });
+    }
+  });
+
+  it("does not route latex figures through markdown image syntax", () => {
+    const ast = parseLatex(`\\begin{document}
+\\begin{figure}
+\\includegraphics[width=120pt]{figures/raw.svg}
+\\caption{Caption with \\textbf{bold} braces}
+\\label{fig:raw}
+\\end{figure}
+\\end{document}`);
+
+    expect(ast.children).toHaveLength(1);
+    expect(ast.children[0]).toMatchObject({
+      type: "image",
+      src: "figures/raw.svg",
+      label: "fig:raw",
+      width: { value: 120, unit: "px" }
+    });
+  });
+
+  it("uses article-like Latin Modern defaults for latex input", () => {
+    const prepared = prepareMarkdownLayout(`\\begin{document}
+\\section{One}
+Text with $\\alpha$.
+\\end{document}`, { sourceFormat: "latex" });
+
+    expect(prepared.theme.fontSize).toBe(10);
+    expect(prepared.theme.lineHeight).toBe(1.2);
+    expect(prepared.theme.fontFamily).toContain("Latin Modern Roman");
+    expect(prepared.page.margin.top).toBe(72);
+    expect(prepared.page.margin.left).toBe(134);
+    expect(prepared.mathRenderer).toBe("native-openmath");
+    expect(prepared.nativeMathProfile).toBe("openmath");
+    expect(prepared.layoutConfig.textAlign).toBe("justify");
+    expect(prepared.layoutConfig.lineBreaking.hyphenation).toBe(true);
+    expect(prepared.layoutConfig.headingFontSizes[2]).toBe(14);
+  });
+
+  it("applies the twocolumn documentclass option", () => {
+    const prepared = prepareMarkdownLayout(`\\documentclass[twocolumn,12pt]{article}
+\\begin{document}
+\\section{Two Columns}
+Text.
+\\end{document}`, { sourceFormat: "latex" });
+
+    expect(prepared.theme.fontSize).toBe(12);
+    expect(prepared.layoutConfig.columns.count).toBe(2);
+    expect(prepared.layoutConfig.headingFontSizes[2]).toBeCloseTo(16.8);
+  });
+
+  it("applies revtex4-2 document class defaults", () => {
+    const prepared = prepareMarkdownLayout(`\\documentclass[aps,prd]{revtex4-2}
+\\title{REVTeX Style}
+\\author{Ada Vector}
+\\begin{document}
+\\maketitle
+\\begin{abstract}
+Compact abstract text.
+\\end{abstract}
+\\section{Introduction}
+\\subsection{Lists}
+Text.
+\\end{document}`, { sourceFormat: "latex" });
+
+    expect(prepared.page.margin.left).toBe(72);
+    expect(prepared.theme.fontFamily).toContain("Latin Modern Roman");
+    expect(prepared.layoutConfig.headingStyle).toBe("revtex");
+    expect(prepared.titleMatter?.style).toBe("revtex");
+    expect(prepared.titleMatter?.abstractTitle).toBe("");
+    expect(prepared.titleMatter?.date).toBeUndefined();
+  });
+
+  it("renders revtex section numbers and headings", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex", useWorker: false });
+    const { layout } = await engine.layout(`\\documentclass{revtex4-2}
+\\begin{document}
+\\section{Introduction}
+\\subsection{Lists}
+\\section{Math}
+\\end{document}`);
+    const text = layout.pages[0].objects
+      .filter((object) => object.type === "text")
+      .map((object) => object.type === "text" ? object.text : "")
+      .join(" ");
+
+    expect(text).toContain("I.");
+    expect(text).toContain("INTRODUCTION");
+    expect(text).toContain("A.");
+    expect(text).toContain("LISTS");
+    expect(text).toContain("II.");
+    expect(text).toContain("MATH");
+  });
+
+  it("keeps revtex figure captions inside the active column with normal text color", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex", useWorker: false });
+    const source = `\\documentclass[twocolumn]{revtex4-2}
+\\begin{document}
+\\section{Figures}
+\\begin{figure}
+\\includegraphics[width=0.8\\columnwidth]{missing-phase-space.svg}
+\\caption{A long figure caption that should wrap inside one active column instead of drifting into the column gap.}
+\\label{fig:phase}
+\\end{figure}
+\\end{document}`;
+    const prepared = prepareMarkdownLayout(source, { sourceFormat: "latex" });
+    const { layout } = await engine.layout(source);
+    const captionObjects = layout.pages[0].objects.filter(
+      (object) => object.type === "text" && object.text.includes("FIG. 1.")
+    );
+    const contentWidth = layout.page.width - layout.page.margin.left - layout.page.margin.right;
+    const columnWidth = (contentWidth - prepared.layoutConfig.columns.gap) / 2;
+    const leftColumnX = layout.page.margin.left;
+    const rightColumnX = layout.page.margin.left + columnWidth + prepared.layoutConfig.columns.gap;
+
+    expect(captionObjects.length).toBeGreaterThan(0);
+    for (const caption of captionObjects) {
+      if (caption.type !== "text") continue;
+      const inLeftColumn = caption.x >= leftColumnX - 0.5 && caption.x + (caption.width ?? 0) <= leftColumnX + columnWidth + 0.5;
+      const inRightColumn = caption.x >= rightColumnX - 0.5 && caption.x + (caption.width ?? 0) <= rightColumnX + columnWidth + 0.5;
+      expect(inLeftColumn || inRightColumn).toBe(true);
+      expect(caption.color).toBe(layout.theme.text);
+    }
+    const justifiedLine = captionObjects.find((caption) => caption.type === "text" && caption.width && caption.width > columnWidth - 1);
+    expect(justifiedLine).toBeTruthy();
+  });
+
+  it("applies paragraph indentation from the resolved latex stylesheet", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex", useWorker: false });
+    const { layout } = await engine.layout(`\\documentclass{revtex4-2}
+\\begin{document}
+\\section{Intro}
+First paragraph after the heading should stay flush.
+
+Second paragraph should use the resolved stylesheet indent.
+\\end{document}`);
+    const first = layout.pages[0].objects.find((object) => object.type === "text" && object.text.startsWith("First paragraph"));
+    const second = layout.pages[0].objects.find((object) => object.type === "text" && object.text.startsWith("Second paragraph"));
+
+    expect(first?.type).toBe("text");
+    expect(second?.type).toBe("text");
+    if (first?.type === "text" && second?.type === "text") {
+      expect(first.x).toBeCloseTo(layout.page.margin.left);
+      expect(second.x).toBeGreaterThan(first.x + 10);
+    }
+  });
+
+  it("accepts separate page margins from front matter", async () => {
+    const engine = createDocumentEngine({ useWorker: false });
+    const { layout } = await engine.layout(`---
+page:
+  margin:
+    top: 30
+    right: 80
+    bottom: 40
+    left: 90
+---
+
+Text`);
+
+    const firstText = layout.pages[0].objects.find((object) => object.type === "text");
+    expect(firstText?.type).toBe("text");
+    if (firstText?.type === "text") {
+      expect(firstText.x).toBe(90);
+      expect(firstText.y).toBeCloseTo(30 + defaultTheme.fontSize);
+    }
+  });
+});
+
 describe("document engine", () => {
   it("measures bundled text fonts from font files", async () => {
     await loadHarfbuzzTextShaper();
@@ -309,6 +547,26 @@ describe("document engine", () => {
     expect(svg).toContain("Markdown ");
     expect(svg).toContain("Preview");
     expect(textObjects.some((object) => object.type === "text" && object.text.includes("Markdown "))).toBe(true);
+  });
+
+  it("renders a visible fallback for missing svg images", () => {
+    const svg = renderPageToSvg({
+      index: 0,
+      width: 220,
+      height: 120,
+      objects: [{
+        type: "image",
+        src: "figures/missing.svg",
+        alt: "Missing figure",
+        x: 20,
+        y: 20,
+        width: 120,
+        height: 60
+      }]
+    });
+
+    expect(svg).toContain("Fail to load");
+    expect(svg).toContain("svg-md-image-fallback");
   });
 
   it("renders cross references as SVG links and PDF link annotations", async () => {

@@ -134,7 +134,7 @@ function drawImagePlaceholder(page: PDFPage, object: ImageObject, fonts: PdfFont
     borderColor: hexToRgb("#cfd7df"),
     borderWidth: 0.7
   });
-  page.drawText(object.alt || "Image", {
+  page.drawText("Fail to load", {
     x: object.x + 8,
     y: y + object.height / 2 - 4,
     size: 9,

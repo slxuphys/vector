@@ -20,8 +20,10 @@ export type TitleMatter = {
   title?: InlineRun[];
   titleFontSize?: number;
   authors: InlineRun[][];
+  date?: InlineRun[];
   abstract?: InlineRun[];
   abstractTitle: string;
+  style?: "default" | "latex-article" | "revtex";
 };
 
 export type LayoutBlock =

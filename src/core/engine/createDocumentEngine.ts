@@ -1,6 +1,6 @@
 import { buildDisplayList } from "../display-list/buildDisplayList";
 import type { PagedDisplayList, PreviewStats } from "../display-list/displayTypes";
-import { applyDocumentFrontMatter, mergeCrossRefConfig, mergeLayoutConfig, parseMarkdownDocument, type ParsedMarkdownDocument } from "../config/documentConfig";
+import { applyDocumentFrontMatter, applySourceFormatDefaults, mergeCrossRefConfig, mergeLayoutConfig, parseMarkdownDocument, type ParsedMarkdownDocument } from "../config/documentConfig";
 import { createPageConfig } from "../layout/pageConfig";
 import type { LayoutConfig } from "../layout/layoutConfig";
 import { paginate } from "../layout/paginate";
@@ -9,9 +9,17 @@ import type { LayoutBlock } from "../layout/layoutBlocks";
 import type { PageConfig } from "../layout/pageConfig";
 import { normalizeAst } from "../markdown/normalizeAst";
 import { parseMarkdown } from "../markdown/parseMarkdown";
+import { parseLatex } from "../latex/parseLatex";
 import { resolveCrossReferences } from "../xref/resolveReferences";
 import { defaultTheme } from "../theme/defaultTheme";
-import { isNativeMathRenderer, type NativeMathMetrics } from "../renderers/math/nativeMath";
+import {
+  defaultNativeMathMetrics,
+  getDefaultOpenMathMetricsForProfile,
+  isNativeMathRenderer,
+  layoutNativeMath,
+  nativeMathProfileForRenderer,
+  type NativeMathMetrics
+} from "../renderers/math/nativeMath";
 import { loadNativeMathFonts } from "../renderers/math/nativeFontMetrics";
 import { loadTextFontsForTheme } from "../renderers/text/textFontMetrics";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
@@ -45,7 +53,7 @@ export function createDocumentEngine(options: EngineOptions = {}): DocumentEngin
     async layout(markdown: string) {
       const prepared = await prepareMarkdownLayoutWithFonts(markdown, options);
       await loadTextFontsForTheme(prepared.theme);
-      return finishMarkdownLayout(prepared);
+      return finishMarkdownLayout(prepared, measureNativeMathRequests(prepared));
     }
   };
 }
@@ -82,15 +90,18 @@ function prepareMarkdownLayoutFromDocument(
   totalStart: number,
   parseStart: number
 ): PreparedLayout {
-  const resolvedOptions = applyDocumentFrontMatter(options, document.frontMatter);
+  const sourceDefaults = applySourceFormatDefaults(document.markdown, options);
+  const resolvedOptions = applyDocumentFrontMatter(sourceDefaults, document.frontMatter);
   warnFrontMatter(document.warnings);
   const documentOptions = {
     ...defaultDocumentOptions,
     ...(resolvedOptions.document ?? {})
   };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const ast = resolveCrossReferences(parseMarkdown(document.markdown), crossRef, {
-    titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title
+  const ast = resolveCrossReferences(parseSourceAst(document.markdown, resolvedOptions.sourceFormat), crossRef, {
+    titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
+    numberSections: documentOptions.numberSections,
+    sectionNumberStyle: documentOptions.sectionNumberStyle
   });
   const blocks = normalizeAst(ast);
   const titleMatter = buildTitleMatter(documentOptions);
@@ -105,8 +116,13 @@ function prepareMarkdownLayoutFromDocument(
   return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
 }
 
+function parseSourceAst(source: string, format: EngineOptions["sourceFormat"] = "markdown") {
+  return format === "latex" ? parseLatex(source) : parseMarkdown(source);
+}
+
 function needsNativeMathFontsBeforeFrontMatter(document: ParsedMarkdownDocument, options: EngineOptions): boolean {
   return Boolean(
+    options.sourceFormat === "latex" ||
     document.frontMatter?.typography?.family ||
     document.frontMatter?.math?.renderer ||
     isNativeMathRenderer(options.mathRenderer)
@@ -145,13 +161,36 @@ function buildTitleMatter(documentOptions: typeof defaultDocumentOptions): Title
     title: documentOptions.title ? flattenInline(parseInline(documentOptions.title)) : undefined,
     titleFontSize: documentOptions.titleFontSize,
     authors: (documentOptions.authors ?? []).map((author) => flattenInline(parseInline(author))),
+    date: documentOptions.date ? flattenInline(parseInline(documentOptions.date)) : undefined,
     abstract: documentOptions.abstract ? flattenInline(parseInline(documentOptions.abstract)) : undefined,
-    abstractTitle: documentOptions.abstractTitle ?? defaultDocumentOptions.abstractTitle ?? "Abstract"
+    abstractTitle: documentOptions.abstractTitle ?? defaultDocumentOptions.abstractTitle ?? "Abstract",
+    style: documentOptions.titleStyle
   };
 }
 
 export function collectPreparedMathRequests(prepared: PreparedLayout) {
   return collectMathMeasureRequests(prepared.blocks, prepared.theme, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.titleMatter, prepared.layoutConfig);
+}
+
+function measureNativeMathRequests(prepared: PreparedLayout): MathMeasurementMap | undefined {
+  if (!isNativeMathRenderer(prepared.mathRenderer)) return undefined;
+
+  const measurements: MathMeasurementMap = {};
+  for (const request of collectPreparedMathRequests(prepared)) {
+    const profile = request.nativeMathProfile ?? prepared.nativeMathProfile ?? nativeMathProfileForRenderer(prepared.mathRenderer);
+    const metrics = request.nativeMetrics
+      ?? prepared.nativeMathMetrics
+      ?? (prepared.mathRenderer === "native-openmath" ? getDefaultOpenMathMetricsForProfile(profile) : defaultNativeMathMetrics);
+    const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize, metrics, profile);
+    measurements[request.key] = {
+      width: layout.width,
+      height: layout.height,
+      advance: layout.advance,
+      baseline: layout.baseline,
+      nativeLayout: layout
+    };
+  }
+  return measurements;
 }
 
 function warnFrontMatter(warnings: string[]): void {

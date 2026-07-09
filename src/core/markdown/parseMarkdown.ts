@@ -78,7 +78,8 @@ export function parseMarkdown(markdown: string): MarkdownAst {
 
     const image = parseImageBlock(line);
     if (image) {
-      children.push(image);
+      children.push(withFollowingLabel(image, lines, i + 1));
+      if (followingLabel(lines[i + 1])) i += 1;
       i += 1;
       continue;
     }

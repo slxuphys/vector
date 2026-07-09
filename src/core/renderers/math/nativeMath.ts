@@ -490,11 +490,12 @@ export function layoutNativeMath(
   return result;
 }
 
-export function renderNativeMathSvg(object: NativeMathObject): string {
+export function renderNativeMathSvg(object: NativeMathObject, options: { includeFontCss?: boolean } = {}): string {
   const profileName = object.nativeMathProfile ?? nativeMathProfileForRenderer(object.renderer);
   const profile = getNativeMathProfile(profileName);
   const layout = object.nativeLayout ?? layoutNativeMath(object.latex, object.displayMode, object.fontSize, object.nativeMetrics, profileName);
-  const fontFace = profile.svgFontFaceCss ? `<style>${profile.svgFontFaceCss}</style>` : "";
+  const includeFontCss = options.includeFontCss ?? true;
+  const fontFace = includeFontCss && profile.svgFontFaceCss ? `<style>${profile.svgFontFaceCss}</style>` : "";
   const body = layout.nodes.map((node) => {
     if (node.type === "rule") {
       return `<rect x="${round(object.x + node.x)}" y="${round(object.y + node.y)}" width="${round(node.width)}" height="${round(node.height)}" fill="${escapeXml(object.color)}" />`;

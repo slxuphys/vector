@@ -5,7 +5,7 @@ import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
 import { breakRunsIntoLines } from "./lineBreaking";
 import type { LayoutLine } from "./lineBreaking";
-import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
+import { defaultLayoutConfig, type LayoutConfig, type ParagraphSuppressAfter } from "./layoutConfig";
 import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
@@ -98,6 +98,7 @@ export function paginate(
     columnFlowTop = titleCursor.y;
     cursor = cursorForPage(titleCursor.page, 0);
   }
+  let previousBlockKind: ParagraphSuppressAfter | undefined = titleMatter ? "title" : undefined;
   const ensure = (height: number): Cursor => {
     if (cursor.y + height > cursor.bottom && cursor.y > cursor.top) cursor = advanceFlow();
     return cursor;
@@ -106,14 +107,16 @@ export function paginate(
   for (const block of blocks) {
     if (block.type === "pageBreak") {
       cursor = newPage();
+      previousBlockKind = "pageBreak";
       continue;
     }
 
     if (block.type === "heading") {
       const fontSize = headingSize(block.level, theme.fontSize, block.title, layoutConfig.headingFontSizes);
-      const before = block.title ? 0 : block.level === 1 ? 4 : 10;
-      const after = block.title ? 18 : block.level <= 2 ? 10 : 7;
-      const runs = sectionHeadingRuns(block, crossRef);
+      const revtexHeading = layoutConfig.headingStyle === "revtex" && !block.title;
+      const before = block.title ? 0 : revtexHeading ? 22 : block.level === 1 ? 4 : 10;
+      const after = block.title ? 18 : revtexHeading ? 16 : block.level <= 2 ? 10 : 7;
+      const runs = sectionHeadingRuns(block, crossRef, layoutConfig.headingStyle);
       const measuredRuns = runs.map((run) => ({ ...run, bold: true }));
       const titleSpan = Boolean(block.title && columnCount > 1);
       if (titleSpan && (cursor.column !== 0 || cursor.y > cursor.top)) cursor = newPage();
@@ -131,7 +134,13 @@ export function paginate(
       headingCursor.column = cursor.column;
       if (block.label) pushAnchor(headingCursor, block.label);
       headingCursor.y += before;
-      drawLines(headingCursor, lines, fontSize, theme, { bold: true, color: theme.text, lineHeight: 1.2 }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      drawLines(headingCursor, lines, fontSize, theme, {
+        bold: true,
+        color: theme.text,
+        lineHeight: 1.2,
+        align: revtexHeading ? "center" : undefined,
+        maxWidth: revtexHeading ? headingCursor.contentWidth : undefined
+      }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       headingCursor.y += after;
       if (titleSpan) {
         columnFlowTop = headingCursor.y;
@@ -139,23 +148,29 @@ export function paginate(
       } else {
         cursor = headingCursor;
       }
+      previousBlockKind = "heading";
       continue;
     }
 
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
+      const indent = paragraphIndent(layoutConfig, previousBlockKind);
       const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
       for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index];
+        const firstLine = index === 0 && indent > 0;
+        const maxWidth = firstLine ? Math.max(1, cursor.contentWidth - indent) : cursor.contentWidth;
         ensure(Math.max(line.height, fontSize * theme.lineHeight));
         drawLines(cursor, [line], fontSize, theme, {
           color: theme.text,
           lineHeight: theme.lineHeight,
           textAlign: index === lines.length - 1 ? "left" : layoutConfig.textAlign,
-          maxWidth: cursor.contentWidth
+          xOffset: firstLine ? indent : 0,
+          maxWidth
         }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       }
       cursor.y += 10;
+      previousBlockKind = "paragraph";
       continue;
     }
 
@@ -179,6 +194,7 @@ export function paginate(
         cursor.y += 4;
       }
       cursor.y += 6;
+      previousBlockKind = "list";
       continue;
     }
 
@@ -206,6 +222,7 @@ export function paginate(
         }));
       });
       cursor.y += height + 12;
+      previousBlockKind = "code";
       continue;
     }
 
@@ -222,6 +239,7 @@ export function paginate(
         cursor.y += fontSize * 1.6;
       }
       cursor = drawTable(cursor, block, theme, ensure, advanceFlow, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      previousBlockKind = "table";
       continue;
     }
 
@@ -241,21 +259,10 @@ export function paginate(
       });
       if (block.caption) {
         const caption = block.labelNumber ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}` : block.caption;
-        const captionWidth = measureText(caption, {
-          fontSize: image.captionFontSize,
-          fontFamily: theme.fontFamily,
-          monoFontFamily: theme.monoFontFamily
-        });
-        cursor.page.objects.push(textObject(
-          caption,
-          x + image.width / 2 - captionWidth / 2,
-          cursor.y + image.height + image.captionFontSize + 6,
-          image.captionFontSize,
-          theme,
-          { color: theme.mutedText }
-        ));
+        drawCaption(cursor, caption, cursor.x, cursor.y + image.height + 6, cursor.contentWidth, image.captionFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
       }
       cursor.y += image.totalHeight + 12;
+      previousBlockKind = "image";
       continue;
     }
 
@@ -281,21 +288,10 @@ export function paginate(
       });
       if (block.caption) {
         const caption = block.labelNumber ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}` : block.caption;
-        const captionWidth = measureText(caption, {
-          fontSize: graph.captionFontSize,
-          fontFamily: theme.fontFamily,
-          monoFontFamily: theme.monoFontFamily
-        });
-        cursor.page.objects.push(textObject(
-          caption,
-          x + graph.width / 2 - captionWidth / 2,
-          cursor.y + graph.height + graph.captionFontSize + 6,
-          graph.captionFontSize,
-          theme,
-          { color: theme.mutedText }
-        ));
+        drawCaption(cursor, caption, cursor.x, cursor.y + graph.height + 6, cursor.contentWidth, graph.captionFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
       }
       cursor.y += graph.totalHeight + 12;
+      previousBlockKind = "graphsx";
       continue;
     }
 
@@ -344,6 +340,7 @@ export function paginate(
         ));
       }
       cursor.y += height + 12;
+      previousBlockKind = "math";
       continue;
     }
 
@@ -359,10 +356,17 @@ export function paginate(
         strokeWidth: 1
       });
       cursor.y += 24;
+      previousBlockKind = "rule";
     }
   }
 
   return pages;
+}
+
+function paragraphIndent(layoutConfig: LayoutConfig, previousBlockKind: ParagraphSuppressAfter | undefined): number {
+  const indent = Math.max(0, layoutConfig.paragraph.indent);
+  if (!indent || !previousBlockKind) return 0;
+  return layoutConfig.paragraph.suppressAfter.includes(previousBlockKind) ? 0 : indent;
 }
 
 function drawTitleMatter(
@@ -375,53 +379,83 @@ function drawTitleMatter(
   nativeMathProfile: NativeMathFontProfileName | undefined,
   layoutConfig: LayoutConfig
 ): void {
+  const latexArticle = titleMatter.style === "latex-article";
+  const revtex = titleMatter.style === "revtex";
+  if (latexArticle) cursor.y += theme.fontSize * 9.5;
+  if (revtex) cursor.y += theme.fontSize * 0.8;
+
   if (titleMatter.title?.length) {
     const fontSize = titleMatter.titleFontSize ?? headingSize(1, theme.fontSize, true, layoutConfig.headingFontSizes);
-    const titleRuns = titleMatter.title.map((run) => ({ ...run, bold: true }));
+    const titleRuns = latexArticle ? titleMatter.title : titleMatter.title.map((run) => ({ ...run, bold: true }));
     const lines = breakRunsIntoLines(titleRuns, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
     drawLines(cursor, lines, fontSize, theme, {
-      bold: true,
+      bold: !latexArticle,
       color: theme.text,
       lineHeight: 1.12,
       align: "center",
       maxWidth: cursor.contentWidth
     }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
-    cursor.y += 8;
+    cursor.y += latexArticle ? theme.fontSize * 1.6 : revtex ? theme.fontSize * 1.8 : 8;
   }
 
   if (titleMatter.authors.length) {
-    const fontSize = theme.fontSize * 1.05;
-    for (const author of titleMatter.authors) {
-      const lines = breakRunsIntoLines(author, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+    const fontSize = latexArticle || revtex ? theme.fontSize : theme.fontSize * 1.05;
+    if (latexArticle || revtex) {
+      const authorRuns = joinAuthorRuns(titleMatter.authors);
+      const lines = breakRunsIntoLines(authorRuns, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
       drawLines(cursor, lines, fontSize, theme, {
-        color: theme.mutedText,
-        lineHeight: 1.25,
+        color: theme.text,
+        lineHeight: 1.2,
         align: "center",
         maxWidth: cursor.contentWidth
       }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    } else {
+      for (const author of titleMatter.authors) {
+        const lines = breakRunsIntoLines(author, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+        drawLines(cursor, lines, fontSize, theme, {
+          color: theme.mutedText,
+          lineHeight: 1.25,
+          align: "center",
+          maxWidth: cursor.contentWidth
+        }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+      }
     }
-    cursor.y += 12;
+    cursor.y += latexArticle ? theme.fontSize * 0.6 : revtex ? theme.fontSize * 0.8 : 12;
+  }
+
+  if (titleMatter.date?.length) {
+    const fontSize = theme.fontSize;
+    const lines = breakRunsIntoLines(titleMatter.date, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+    drawLines(cursor, lines, fontSize, theme, {
+      color: theme.text,
+      lineHeight: 1.2,
+      align: "center",
+      maxWidth: cursor.contentWidth
+    }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    cursor.y += latexArticle ? theme.fontSize * 2.7 : theme.fontSize;
   }
 
   if (titleMatter.abstract?.length) {
-    const titleFontSize = theme.fontSize * 0.95;
-    const abstractFontSize = theme.fontSize;
-    const labelWidth = measureText(titleMatter.abstractTitle, {
-      fontSize: titleFontSize,
-      fontFamily: theme.fontFamily,
-      monoFontFamily: theme.monoFontFamily,
-      bold: true
-    });
-    cursor.page.objects.push(textObject(
-      titleMatter.abstractTitle,
-      cursor.x + cursor.contentWidth / 2 - labelWidth / 2,
-      cursor.y + titleFontSize,
-      titleFontSize,
-      theme,
-      { color: theme.text, bold: true }
-    ));
-    cursor.y += titleFontSize * 1.45;
-    const abstractWidth = Math.min(cursor.contentWidth, 420);
+    const titleFontSize = latexArticle ? theme.fontSize : theme.fontSize * 0.95;
+    const abstractFontSize = latexArticle ? theme.fontSize * 0.9 : theme.fontSize;
+    if (titleMatter.abstractTitle) {
+      const labelWidth = measureText(titleMatter.abstractTitle, {
+        fontSize: titleFontSize,
+        fontFamily: theme.fontFamily,
+        monoFontFamily: theme.monoFontFamily,
+        bold: true
+      });
+      cursor.page.objects.push(textObject(
+        titleMatter.abstractTitle,
+        cursor.x + cursor.contentWidth / 2 - labelWidth / 2,
+        cursor.y + titleFontSize,
+        titleFontSize,
+        theme,
+        { color: theme.text, bold: true }
+      ));
+      cursor.y += titleFontSize * (latexArticle ? 1.25 : 1.45);
+    }
+    const abstractWidth = Math.min(cursor.contentWidth, latexArticle ? 345 : revtex ? 520 : 420);
     const abstractCursor = {
       ...cursor,
       x: cursor.x + (cursor.contentWidth - abstractWidth) / 2,
@@ -436,27 +470,92 @@ function drawTitleMatter(
         maxWidth: abstractWidth
       }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
     }
-    cursor.y = abstractCursor.y + 18;
+    cursor.y = abstractCursor.y + (latexArticle ? theme.fontSize * 2.3 : revtex ? theme.fontSize * 2.4 : 18);
   }
+}
+
+function joinAuthorRuns(authors: InlineRun[][]): InlineRun[] {
+  return authors.flatMap((author, index) => index === 0
+    ? author
+    : [{ text: "        " }, ...author]);
 }
 
 function sectionHeadingRuns(
   block: Extract<LayoutBlock, { type: "heading" }>,
-  crossRef: CrossRefConfig
+  crossRef: CrossRefConfig,
+  headingStyle: LayoutConfig["headingStyle"] = "default"
 ): InlineRun[] {
-  if (!block.labelNumber) return block.runs;
+  const runs = headingStyle === "revtex" ? uppercaseRuns(block.runs) : block.runs;
+  if (!block.labelNumber) return runs;
   const prefix = applyCrossRefFormat(crossRef.section.captionFormat, {
     number: block.labelNumber,
     kind: "section",
     id: block.label
   });
-  if (!prefix) return block.runs;
+  if (!prefix) return runs;
   return [
     {
-      text: /\s$/.test(prefix) ? prefix : `${prefix} `
+      text: headingStyle === "revtex"
+        ? `${prefix}   `
+        : /\s$/.test(prefix) ? prefix : `${prefix} `
     },
-    ...block.runs
+    ...runs
   ];
+}
+
+function uppercaseRuns(runs: InlineRun[]): InlineRun[] {
+  return runs.map((run) => run.math ? run : { ...run, text: run.text.toUpperCase() });
+}
+
+function drawCaption(
+  cursor: Cursor,
+  caption: string,
+  x: number,
+  y: number,
+  width: number,
+  fontSize: number,
+  theme: DocumentTheme,
+  mathMeasurements: MathMeasurementMap | undefined,
+  mathRenderer: MathRendererName,
+  nativeMathMetrics: NativeMathMetrics | undefined,
+  nativeMathProfile: NativeMathFontProfileName | undefined,
+  layoutConfig: LayoutConfig
+): void {
+  const captionCursor = {
+    ...cursor,
+    x,
+    y,
+    contentWidth: width
+  };
+  const lines = breakRunsIntoLines([{ text: caption }], width, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+  if (lines.length <= 1) {
+    drawLines(captionCursor, lines, fontSize, theme, {
+      color: theme.text,
+      lineHeight: theme.lineHeight,
+      align: "center",
+      maxWidth: width
+    }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    return;
+  }
+  lines.forEach((line, index) => {
+    drawLines(captionCursor, [line], fontSize, theme, {
+      color: theme.text,
+      lineHeight: theme.lineHeight,
+      maxWidth: width,
+      textAlign: index === lines.length - 1 ? "left" : "justify"
+    }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+  });
+}
+
+function estimateCaptionHeight(caption: string | undefined, width: number, fontSize: number, theme: DocumentTheme): number {
+  if (!caption) return 0;
+  const measuredWidth = measureText(caption, {
+    fontSize,
+    fontFamily: theme.fontFamily,
+    monoFontFamily: theme.monoFontFamily
+  });
+  const lineCount = Math.max(1, Math.ceil(measuredWidth / Math.max(1, width)));
+  return 6 + lineCount * fontSize * theme.lineHeight;
 }
 
 function layoutImageBlock(
@@ -497,7 +596,7 @@ function layoutImageBlock(
         monoFontFamily: theme.monoFontFamily
       }))
     : 0;
-  const totalHeight = height + (block.caption ? captionFontSize * theme.lineHeight + 6 : 0);
+  const totalHeight = height + estimateCaptionHeight(block.caption, contentWidth, captionFontSize, theme);
   return { x, width, height, totalHeight, captionFontSize, captionWidth };
 }
 
@@ -545,7 +644,7 @@ function layoutGraphSXBlock(
         monoFontFamily: theme.monoFontFamily
       }))
     : 0;
-  const totalHeight = height + (block.caption ? captionFontSize * theme.lineHeight + 6 : 0);
+  const totalHeight = height + estimateCaptionHeight(block.caption, contentWidth, captionFontSize, theme);
   return {
     x,
     width,

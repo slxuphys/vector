@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { DisplayPage } from "../core/display-list/displayTypes";
 import { renderPageToSvg } from "../core/renderers/svg/renderPageToSvg";
 
@@ -8,6 +8,7 @@ export type PageViewportProps = {
 };
 
 export function PageViewport({ page, zoom }: PageViewportProps) {
+  const svgContainerRef = useRef<HTMLDivElement>(null);
   const svg = useMemo(() => {
     const rendered = renderPageToSvg(page, { className: "svg-md-page-svg" });
     return rendered;
@@ -16,7 +17,32 @@ export function PageViewport({ page, zoom }: PageViewportProps) {
     .filter((object) => object.type === "graphsx" && object.warnings?.length)
     .flatMap((object) => object.type === "graphsx"
       ? object.warnings?.map((message) => ({ message, x: object.x, y: object.y + object.height })) ?? []
-      : []);
+    : []);
+
+  useEffect(() => {
+    const container = svgContainerRef.current;
+    if (!container) return undefined;
+    const images = Array.from(container.querySelectorAll<SVGImageElement>("image[data-fallback-id]"));
+    const cleanups = images.map((image) => {
+      const fallbackId = image.dataset.fallbackId;
+      const fallback = fallbackId ? container.querySelector<SVGGElement>(`#${CSS.escape(fallbackId)}`) : undefined;
+      const hideFallback = () => {
+        if (fallback) fallback.style.display = "none";
+      };
+      const showFallback = () => {
+        if (fallback) fallback.style.display = "";
+      };
+      image.addEventListener("load", hideFallback);
+      image.addEventListener("error", showFallback);
+      return () => {
+        image.removeEventListener("load", hideFallback);
+        image.removeEventListener("error", showFallback);
+      };
+    });
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [svg]);
 
   return (
     <div
@@ -28,6 +54,7 @@ export function PageViewport({ page, zoom }: PageViewportProps) {
       }}
     >
       <div
+        ref={svgContainerRef}
         style={{
           transform: `scale(${zoom})`,
           transformOrigin: "top left",
