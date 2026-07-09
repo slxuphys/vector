@@ -228,6 +228,61 @@ $$
 });
 
 describe("latex parser", () => {
+  it("expands document-order LaTeX macro definitions before parsing", () => {
+    const ast = parseLatex(`Before $\\R$.
+
+\\newcommand{\\R}{\\mathbb{R}}
+\\newcommand{\\pair}[2]{\\left\\langle #1, #2 \\right\\rangle}
+
+After $x \\in \\R$ and $\\pair{a}{b}$.`);
+    const paragraphs = ast.children.filter((node) => node.type === "paragraph");
+    const before = paragraphs[0];
+    const after = paragraphs[1];
+
+    expect(before?.type).toBe("paragraph");
+    expect(after?.type).toBe("paragraph");
+    if (before?.type === "paragraph" && after?.type === "paragraph") {
+      const beforeMath = before.children.find((child) => child.type === "math");
+      const afterMath = after.children.filter((child) => child.type === "math");
+      expect(beforeMath).toMatchObject({ text: "\\R" });
+      expect(afterMath).toEqual([
+        { type: "math", text: "x \\in \\mathbb{R}" },
+        { type: "math", text: "\\left\\langle a, b \\right\\rangle" }
+      ]);
+    }
+  });
+
+  it("expands def and LaTeX optional macro arguments", () => {
+    const ast = parseLatex(`\\def\\ket#1{|#1\\rangle}
+\\newcommand{\\norm}[2][2]{\\lVert #2 \\rVert_{#1}}
+
+$\\ket{0}$, $\\norm{x}$, and $\\norm[1]{y}$.`);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children.filter((child) => child.type === "math")).toEqual([
+        { type: "math", text: "|0\\rangle" },
+        { type: "math", text: "\\lVert x \\rVert_{2}" },
+        { type: "math", text: "\\lVert y \\rVert_{1}" }
+      ]);
+    }
+  });
+
+  it("honors renewcommand and providecommand definition rules", () => {
+    const ast = parseLatex(`\\newcommand{\\state}{first}
+\\providecommand{\\state}{provided}
+\\renewcommand{\\state}{second}
+
+$\\state$`);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toEqual([{ type: "math", text: "second" }]);
+    }
+  });
+
   it("converts practical latex structure into the shared document ast", () => {
     const ast = parseLatex(`\\title{Live Preview}
 \\author{A. Writer \\and B. Author}
@@ -1480,6 +1535,37 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(text).toContain("†");
     expect(text).not.toContain("otimes");
     expect(text).not.toContain("dagger");
+  });
+
+  it("renders arrow and escaped brace commands as native glyphs", () => {
+    const layout = layoutNativeMath("\\uparrow \\downarrow \\leftarrow \\rightarrow \\{ x \\}", false, 12, defaultOpenMathMetrics, "openmath");
+    const text = layout.nodes
+      .filter((node) => node.type === "glyph")
+      .map((node) => node.text)
+      .join("");
+
+    expect(text).toContain("↑");
+    expect(text).toContain("↓");
+    expect(text).toContain("←");
+    expect(text).toContain("→");
+    expect(text).toContain("{");
+    expect(text).toContain("}");
+    expect(text).not.toContain("uparrow");
+    expect(text).not.toContain("rightarrow");
+  });
+
+  it("renders mathrm and mathbb grouped commands", () => {
+    const layout = layoutNativeMath("\\mathrm{tr} + \\mathbb{R} + \\mathbb{1}", false, 12, defaultOpenMathMetrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const text = glyphs.map((node) => node.text).join("");
+    const roman = glyphs.find((node) => node.text === "tr");
+
+    expect(text).toContain("tr");
+    expect(text).toContain("ℝ");
+    expect(text).toContain("𝟙");
+    expect(text).not.toContain("mathrm");
+    expect(text).not.toContain("mathbb");
+    expect(roman?.italic).toBe(false);
   });
 
   it("renders text command as upright math text", () => {

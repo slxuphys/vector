@@ -22,9 +22,23 @@ type LatexBlockMatch = {
   nodes: MarkdownNode[];
 };
 
+type LatexMacro = {
+  parameterCount: number;
+  optionalDefault?: string;
+  body: string;
+};
+
+type MacroExpansionState = {
+  expansions: number;
+  warned: Set<string>;
+};
+
+const maxMacroExpansionDepth = 64;
+const maxMacroExpansions = 10_000;
+
 export function parseLatex(source: string): MarkdownAst {
   const normalized = source.replace(/\r\n?/g, "\n");
-  const body = stripPreamble(normalized);
+  const body = stripPreamble(expandLatexMacros(normalized));
   return {
     type: "document",
     children: parseLatexBlocks(body)
@@ -44,14 +58,255 @@ export function readLatexDocumentClass(source: string): LatexDocumentClass {
 }
 
 export function readLatexPreamble(source: string): LatexPreamble {
-  const rawDate = readCommandArgument(source, "date");
-  const authorCommands = readCommandArguments(source, "author");
+  const expanded = expandLatexMacros(source.replace(/\r\n?/g, "\n"));
+  const rawDate = readCommandArgument(expanded, "date");
+  const authorCommands = readCommandArguments(expanded, "author");
   return {
-    title: optionalLatexInline(readCommandArgument(source, "title")),
+    title: optionalLatexInline(readCommandArgument(expanded, "title")),
     authors: authorCommands.length ? authorCommands.flatMap(splitAuthors) : [],
     date: rawDate === undefined ? undefined : latexInlineToMarkdown(rawDate),
-    abstract: optionalLatexInline(readEnvironment(source, "abstract")?.body.trim())
+    abstract: optionalLatexInline(readEnvironment(expanded, "abstract")?.body.trim())
   };
+}
+
+function expandLatexMacros(source: string): string {
+  return expandLatexMacroFragment(source, new Map(), { expansions: 0, warned: new Set() }, 0);
+}
+
+function expandLatexMacroFragment(
+  source: string,
+  macros: Map<string, LatexMacro>,
+  state: MacroExpansionState,
+  depth: number
+): string {
+  let result = "";
+  let cursor = 0;
+
+  while (cursor < source.length) {
+    if (source[cursor] === "%" && !isEscaped(source, cursor)) {
+      const end = source.indexOf("\n", cursor);
+      const commentEnd = end === -1 ? source.length : end;
+      result += source.slice(cursor, commentEnd);
+      cursor = commentEnd;
+      continue;
+    }
+
+    if (source[cursor] !== "\\") {
+      result += source[cursor];
+      cursor += 1;
+      continue;
+    }
+
+    const command = readLatexControlSequence(source, cursor);
+    if (!command) {
+      result += source[cursor];
+      cursor += 1;
+      continue;
+    }
+
+    const definition = readLatexMacroDefinition(source, command);
+    if (definition) {
+      const existing = macros.has(definition.name);
+      if (
+        definition.kind === "def" ||
+        (definition.kind === "newcommand" && !existing) ||
+        (definition.kind === "renewcommand" && existing) ||
+        (definition.kind === "providecommand" && !existing)
+      ) {
+        macros.set(definition.name, definition.macro);
+      } else if (definition.kind === "newcommand" || definition.kind === "renewcommand") {
+        warnMacro(state, `${definition.kind} could not define \\${definition.name}`);
+      }
+      cursor = definition.end;
+      continue;
+    }
+
+    const macro = macros.get(command.name);
+    if (!macro) {
+      result += command.raw;
+      cursor = command.end;
+      continue;
+    }
+
+    const argumentsResult = readLatexMacroArguments(source, command.end, macro);
+    if (!argumentsResult) {
+      warnMacro(state, `Missing argument while expanding \\${command.name}`);
+      result += command.raw;
+      cursor = command.end;
+      continue;
+    }
+    if (depth >= maxMacroExpansionDepth || state.expansions >= maxMacroExpansions) {
+      warnMacro(state, `Expansion limit reached at \\${command.name}`);
+      result += command.raw;
+      cursor = argumentsResult.end;
+      continue;
+    }
+
+    state.expansions += 1;
+    const substituted = macro.body.replace(/#([1-9])/g, (_match, value: string) => argumentsResult.args[Number(value) - 1] ?? "");
+    result += expandLatexMacroFragment(substituted, macros, state, depth + 1);
+    cursor = argumentsResult.end;
+  }
+
+  return result;
+}
+
+function readLatexMacroDefinition(
+  source: string,
+  command: { name: string; end: number }
+): { kind: "def" | "newcommand" | "renewcommand" | "providecommand"; name: string; macro: LatexMacro; end: number } | undefined {
+  if (command.name === "def") return readDefMacroDefinition(source, command.end);
+  if (command.name === "newcommand" || command.name === "renewcommand" || command.name === "providecommand") {
+    return readCommandMacroDefinition(source, command.name, command.end);
+  }
+  return undefined;
+}
+
+function readCommandMacroDefinition(
+  source: string,
+  kind: "newcommand" | "renewcommand" | "providecommand",
+  start: number
+): { kind: "newcommand" | "renewcommand" | "providecommand"; name: string; macro: LatexMacro; end: number } | undefined {
+  let cursor = skipLatexWhitespace(source, start);
+  if (source[cursor] === "*") cursor = skipLatexWhitespace(source, cursor + 1);
+  const name = readLatexMacroNameArgument(source, cursor);
+  if (!name) return undefined;
+  cursor = skipLatexWhitespace(source, name.end);
+
+  let parameterCount = 0;
+  let optionalDefault: string | undefined;
+  const count = readDelimitedLatexArgument(source, cursor, "[", "]");
+  if (count) {
+    if (!/^\d$/.test(count.value.trim())) return undefined;
+    parameterCount = Number(count.value.trim());
+    cursor = skipLatexWhitespace(source, count.end);
+    const optional = readDelimitedLatexArgument(source, cursor, "[", "]");
+    if (optional) {
+      optionalDefault = optional.value;
+      cursor = skipLatexWhitespace(source, optional.end);
+    }
+  }
+
+  const body = readDelimitedLatexArgument(source, cursor, "{", "}");
+  if (!body) return undefined;
+  return {
+    kind,
+    name: name.value,
+    macro: { parameterCount, optionalDefault, body: body.value },
+    end: body.end
+  };
+}
+
+function readDefMacroDefinition(
+  source: string,
+  start: number
+): { kind: "def"; name: string; macro: LatexMacro; end: number } | undefined {
+  let cursor = skipLatexWhitespace(source, start);
+  const name = readLatexControlSequence(source, cursor);
+  if (!name || !name.name) return undefined;
+  cursor = name.end;
+  let parameterCount = 0;
+  while (true) {
+    cursor = skipLatexWhitespace(source, cursor);
+    if (source[cursor] !== "#" || !/[1-9]/.test(source[cursor + 1] ?? "")) break;
+    parameterCount = Math.max(parameterCount, Number(source[cursor + 1]));
+    cursor += 2;
+  }
+  const body = readDelimitedLatexArgument(source, skipLatexWhitespace(source, cursor), "{", "}");
+  if (!body) return undefined;
+  return {
+    kind: "def",
+    name: name.name,
+    macro: { parameterCount, body: body.value },
+    end: body.end
+  };
+}
+
+function readLatexMacroNameArgument(source: string, start: number): { value: string; end: number } | undefined {
+  const braced = readDelimitedLatexArgument(source, start, "{", "}");
+  if (braced) {
+    const name = readLatexControlSequence(braced.value.trim(), 0);
+    return name && name.end === braced.value.trim().length ? { value: name.name, end: braced.end } : undefined;
+  }
+  const command = readLatexControlSequence(source, start);
+  return command ? { value: command.name, end: command.end } : undefined;
+}
+
+function readLatexMacroArguments(source: string, start: number, macro: LatexMacro): { args: string[]; end: number } | undefined {
+  let cursor = start;
+  const args: string[] = [];
+  if (macro.optionalDefault !== undefined) {
+    cursor = skipLatexWhitespace(source, cursor);
+    const optional = readDelimitedLatexArgument(source, cursor, "[", "]");
+    if (optional) {
+      args.push(optional.value);
+      cursor = optional.end;
+    } else {
+      args.push(macro.optionalDefault);
+    }
+  }
+  while (args.length < macro.parameterCount) {
+    const argument = readLatexMacroArgument(source, cursor);
+    if (!argument) return undefined;
+    args.push(argument.value);
+    cursor = argument.end;
+  }
+  return { args, end: cursor };
+}
+
+function readLatexMacroArgument(source: string, start: number): { value: string; end: number } | undefined {
+  const cursor = skipLatexWhitespace(source, start);
+  const braced = readDelimitedLatexArgument(source, cursor, "{", "}");
+  if (braced) return braced;
+  const command = readLatexControlSequence(source, cursor);
+  if (command) return { value: command.raw, end: command.end };
+  return source[cursor] === undefined ? undefined : { value: source[cursor], end: cursor + 1 };
+}
+
+function readLatexControlSequence(source: string, start: number): { name: string; raw: string; end: number } | undefined {
+  if (source[start] !== "\\" || source[start + 1] === undefined) return undefined;
+  let end = start + 1;
+  if (/[A-Za-z@]/.test(source[end])) {
+    while (/[A-Za-z@]/.test(source[end] ?? "")) end += 1;
+  } else {
+    end += 1;
+  }
+  return { name: source.slice(start + 1, end), raw: source.slice(start, end), end };
+}
+
+function readDelimitedLatexArgument(source: string, start: number, open: string, close: string): { value: string; end: number } | undefined {
+  if (source[start] !== open) return undefined;
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === "\\") {
+      index += 1;
+      continue;
+    }
+    if (source[index] === open) depth += 1;
+    if (source[index] === close) {
+      depth -= 1;
+      if (depth === 0) return { value: source.slice(start + 1, index), end: index + 1 };
+    }
+  }
+  return undefined;
+}
+
+function skipLatexWhitespace(source: string, start: number): number {
+  let cursor = start;
+  while (/\s/.test(source[cursor] ?? "")) cursor += 1;
+  return cursor;
+}
+
+function isEscaped(source: string, index: number): boolean {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) slashCount += 1;
+  return slashCount % 2 === 1;
+}
+
+function warnMacro(state: MacroExpansionState, message: string): void {
+  if (state.warned.has(message)) return;
+  state.warned.add(message);
+  console.warn(`[latex-macros] ${message}`);
 }
 
 function stripPreamble(source: string): string {

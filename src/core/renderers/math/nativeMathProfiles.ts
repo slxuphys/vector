@@ -26,6 +26,7 @@ export type NativeMathProfile = {
   mapGlyph: (text: string, options?: { upright?: boolean }) => string;
   mapBoldGlyph: (text: string) => { text: string; bold: boolean };
   mapCaligraphicGlyph: (text: string) => { text: string; italic: boolean };
+  mapBlackboardGlyph: (text: string) => { text: string; italic: boolean };
   shouldItalicize: (rawText: string, mappedText: string, options?: { upright?: boolean }) => boolean;
 };
 
@@ -41,6 +42,7 @@ export const katexNativeMathProfile: NativeMathProfile = {
   mapGlyph: (text) => text,
   mapBoldGlyph: (text) => ({ text, bold: true }),
   mapCaligraphicGlyph: (text) => ({ text, italic: false }),
+  mapBlackboardGlyph: (text) => ({ text: Array.from(text).map((char) => openMathDoubleStruckGlyph(char)).join(""), italic: false }),
   shouldItalicize: (rawText, mappedText, options) => !options?.upright && shouldItalicizeMathText(rawText) && !isOperatorText(mappedText)
 };
 
@@ -56,6 +58,7 @@ export const openTypeNativeMathProfile: NativeMathProfile = {
   mapGlyph: (text, options) => options?.upright ? text : Array.from(text).map((char) => openMathItalicGlyph(char)).join(""),
   mapBoldGlyph: (text) => ({ text: Array.from(text).map((char) => openMathBoldGlyph(char)).join(""), bold: false }),
   mapCaligraphicGlyph: (text) => ({ text: Array.from(text).map((char) => openMathScriptGlyph(char)).join(""), italic: false }),
+  mapBlackboardGlyph: (text) => ({ text: Array.from(text).map((char) => openMathDoubleStruckGlyph(char)).join(""), italic: false }),
   shouldItalicize: () => false
 };
 
@@ -119,7 +122,7 @@ export function isOperatorText(text: string): boolean {
 }
 
 export function isRelationOperator(text: string): boolean {
-  return ["=", "≤", "≥", "<", ">", "→", "⇒", "∈"].includes(text);
+  return ["=", "≤", "≥", "<", ">", "←", "→", "↑", "↓", "⇒", "∈"].includes(text);
 }
 
 export function isBinaryOperator(text: string): boolean {
@@ -253,6 +256,32 @@ function openMathScriptGlyph(char: string): string {
     z: "𝓏"
   };
   return script[char] ?? char;
+}
+
+function openMathDoubleStruckGlyph(char: string): string {
+  const uppercase: Record<string, string> = {
+    C: "ℂ",
+    H: "ℍ",
+    N: "ℕ",
+    P: "ℙ",
+    Q: "ℚ",
+    R: "ℝ",
+    Z: "ℤ"
+  };
+  if (uppercase[char]) return uppercase[char];
+
+  const codePoint = char.codePointAt(0);
+  if (codePoint === undefined) return char;
+  if (codePoint >= 0x41 && codePoint <= 0x5a) {
+    return String.fromCodePoint(0x1d538 + codePoint - 0x41);
+  }
+  if (codePoint >= 0x61 && codePoint <= 0x7a) {
+    return String.fromCodePoint(0x1d552 + codePoint - 0x61);
+  }
+  if (codePoint >= 0x30 && codePoint <= 0x39) {
+    return String.fromCodePoint(0x1d7d8 + codePoint - 0x30);
+  }
+  return char;
 }
 
 function openMathGreekBoldGlyph(char: string): string | undefined {

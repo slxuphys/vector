@@ -155,18 +155,22 @@ export function paginate(
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
       const indent = paragraphIndent(layoutConfig, previousBlockKind);
-      const lines = breakRunsIntoLines(block.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+      const paragraphRuns = indent > 0 && block.runs.length > 0
+        ? [
+            { ...block.runs[0], text: "\u2003", nonBreak: true },
+            { ...block.runs[0], text: "\u2003", nonBreak: true },
+            ...block.runs
+          ]
+        : block.runs;
+      const lines = breakRunsIntoLines(paragraphRuns, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
       for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index];
-        const firstLine = index === 0 && indent > 0;
-        const maxWidth = firstLine ? Math.max(1, cursor.contentWidth - indent) : cursor.contentWidth;
         ensure(Math.max(line.height, fontSize * theme.lineHeight));
         drawLines(cursor, [line], fontSize, theme, {
           color: theme.text,
           lineHeight: theme.lineHeight,
           textAlign: index === lines.length - 1 ? "left" : layoutConfig.textAlign,
-          xOffset: firstLine ? indent : 0,
-          maxWidth
+          maxWidth: cursor.contentWidth
         }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
       }
       cursor.y += 10;
@@ -756,6 +760,7 @@ function drawLines(
         textObject.color,
         textObject.bold ? "b" : "",
         textObject.italic ? "i" : "",
+        run.nonBreak ? "nb" : "",
         textObject.link ?? ""
       ].join("\u0000");
       if (pendingText && pendingKey === textKey) {

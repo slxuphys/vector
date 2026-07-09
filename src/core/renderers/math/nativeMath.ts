@@ -332,6 +332,12 @@ const commandGlyphs: Record<string, string> = {
   "\\otimes": "⊗",
   "\\circ": "∘",
   "\\dagger": "†",
+  "\\uparrow": "↑",
+  "\\downarrow": "↓",
+  "\\leftarrow": "←",
+  "\\rightarrow": "→",
+  "\\{": "{",
+  "\\}": "}",
   "\\langle": "⟨",
   "\\rangle": "⟩",
   "\\vert": "|",
@@ -391,6 +397,12 @@ const uprightCommandGlyphs = new Set([
   "\\otimes",
   "\\circ",
   "\\dagger",
+  "\\uparrow",
+  "\\downarrow",
+  "\\leftarrow",
+  "\\rightarrow",
+  "\\{",
+  "\\}",
   "\\Gamma",
   "\\Delta",
   "\\Theta",
@@ -784,6 +796,43 @@ function layoutSequence(
         const mathClass = applyAtomSpacing("mord");
         const body = readArgument(input, command.end + 1);
         const mapped = profile.mapCaligraphicGlyph(body.value.replace(/[{}]/g, ""));
+        const text = mapped.text;
+        const style = { italic: mapped.italic, fontFamily: profile.layoutFontFamily };
+        nodes.push(glyph(text, x, 0, fontSize, style));
+        const width = measureGlyphWidth(text, fontSize, style);
+        const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
+        inkTop = Math.min(inkTop, -verticalMetrics.ascent);
+        inkBottom = Math.max(inkBottom, verticalMetrics.descent);
+        maxTop = Math.max(maxTop, verticalMetrics.ascent);
+        maxBottom = Math.max(maxBottom, verticalMetrics.descent);
+        lastAtom = { x, width, ascent: verticalMetrics.ascent, descent: verticalMetrics.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += width + glyphGap;
+        index = body.end;
+        continue;
+      }
+
+      if (command.name === "\\mathrm") {
+        const mathClass = applyAtomSpacing("mord");
+        const body = readArgument(input, command.end + 1);
+        const text = plainTextArgument(body.value);
+        const style = { italic: false, fontFamily: profile.layoutFontFamily };
+        nodes.push(glyph(text, x, 0, fontSize, style));
+        const width = measureGlyphWidth(text, fontSize, style);
+        const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
+        inkTop = Math.min(inkTop, -verticalMetrics.ascent);
+        inkBottom = Math.max(inkBottom, verticalMetrics.descent);
+        maxTop = Math.max(maxTop, verticalMetrics.ascent);
+        maxBottom = Math.max(maxBottom, verticalMetrics.descent);
+        lastAtom = { x, width, ascent: verticalMetrics.ascent, descent: verticalMetrics.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += width + glyphGap;
+        index = body.end;
+        continue;
+      }
+
+      if (command.name === "\\mathbb") {
+        const mathClass = applyAtomSpacing("mord");
+        const body = readArgument(input, command.end + 1);
+        const mapped = profile.mapBlackboardGlyph(body.value.replace(/[{}]/g, ""));
         const text = mapped.text;
         const style = { italic: mapped.italic, fontFamily: profile.layoutFontFamily };
         nodes.push(glyph(text, x, 0, fontSize, style));
@@ -1720,7 +1769,9 @@ const scriptGroupedCommandArgs: Record<string, number> = {
   "\\ket": 1,
   "\\left": 1,
   "\\mathcal": 1,
+  "\\mathbb": 1,
   "\\mathbf": 1,
+  "\\mathrm": 1,
   "\\sqrt": 1,
   "\\text": 1,
   "\\vec": 1
