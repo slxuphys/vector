@@ -1,5 +1,6 @@
 import type { InlineNode } from "../markdown/markdownTypes";
 import type { ImageAlign, ImageLength, TableAlign } from "../markdown/markdownTypes";
+import type { SourceSpan } from "../source/sourceTypes";
 
 export type InlineRun = {
   text: string;
@@ -29,16 +30,16 @@ export type TitleMatter = {
 };
 
 export type LayoutBlock =
-  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean }
-  | { type: "paragraph"; runs: InlineRun[] }
-  | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined> }
-  | { type: "code"; language?: string; code: string }
-  | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string }
-  | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string }
-  | { type: "graphsx"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string }
-  | { type: "math"; text: string; label?: string; labelNumber?: string }
-  | { type: "rule" }
-  | { type: "pageBreak" };
+  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; source?: SourceSpan }
+  | { type: "paragraph"; runs: InlineRun[]; source?: SourceSpan }
+  | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined>; source?: SourceSpan }
+  | { type: "code"; language?: string; code: string; source?: SourceSpan }
+  | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string; source?: SourceSpan }
+  | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
+  | { type: "graphsx"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; sourceSpan?: SourceSpan }
+  | { type: "math"; text: string; label?: string; labelNumber?: string; source?: SourceSpan }
+  | { type: "rule"; source?: SourceSpan }
+  | { type: "pageBreak"; source?: SourceSpan };
 
 export function flattenInline(nodes: InlineNode[], inherited: Partial<InlineRun> = {}): InlineRun[] {
   return nodes.flatMap((node): InlineRun[] => {

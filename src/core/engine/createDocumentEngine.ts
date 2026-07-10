@@ -98,7 +98,7 @@ function prepareMarkdownLayoutFromDocument(
     ...(resolvedOptions.document ?? {})
   };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const ast = resolveCrossReferences(parseSourceAst(document.markdown, resolvedOptions.sourceFormat), crossRef, {
+  const ast = resolveCrossReferences(parseSourceAst(document.markdown, resolvedOptions.sourceFormat, document.sourceOffset), crossRef, {
     titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
     numberSections: documentOptions.numberSections,
     sectionNumberStyle: documentOptions.sectionNumberStyle
@@ -116,8 +116,8 @@ function prepareMarkdownLayoutFromDocument(
   return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
 }
 
-function parseSourceAst(source: string, format: EngineOptions["sourceFormat"] = "markdown") {
-  return format === "latex" ? parseLatex(source) : parseMarkdown(source);
+function parseSourceAst(source: string, format: EngineOptions["sourceFormat"] = "markdown", sourceOffset = 0) {
+  return format === "latex" ? parseLatex(source, sourceOffset) : parseMarkdown(source, sourceOffset);
 }
 
 function needsNativeMathFontsBeforeFrontMatter(document: ParsedMarkdownDocument, options: EngineOptions): boolean {

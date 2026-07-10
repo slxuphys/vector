@@ -1,13 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import type { DisplayPage } from "../core/display-list/displayTypes";
 
 export type PageViewportProps = {
   page: DisplayPage;
   svg: string;
   zoom: number;
+  onSourceClick?: (source: { start: number; end: number }) => void;
+  sourceHighlight?: { start: number; end: number; id: number };
 };
 
-export function PageViewport({ page, svg, zoom }: PageViewportProps) {
+export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }: PageViewportProps) {
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const warnings = page.objects
     .filter((object) => object.type === "graphsx" && object.warnings?.length)
@@ -40,6 +42,22 @@ export function PageViewport({ page, svg, zoom }: PageViewportProps) {
     };
   }, [svg]);
 
+  useEffect(() => {
+    const container = svgContainerRef.current;
+    if (!container || !sourceHighlight) return;
+    const selector = `[data-vector-source-start="${sourceHighlight.start}"][data-vector-source-end="${sourceHighlight.end}"]`;
+    const targets = Array.from(container.querySelectorAll<SVGGElement>(selector));
+    for (const target of targets) {
+      target.classList.remove("vector-source-highlight");
+      target.getBoundingClientRect();
+      target.classList.add("vector-source-highlight");
+    }
+    const timeout = window.setTimeout(() => {
+      targets.forEach((target) => target.classList.remove("vector-source-highlight"));
+    }, 1200);
+    return () => window.clearTimeout(timeout);
+  }, [sourceHighlight]);
+
   return (
     <div
       className="svg-md-page"
@@ -51,6 +69,15 @@ export function PageViewport({ page, svg, zoom }: PageViewportProps) {
     >
       <div
         ref={svgContainerRef}
+        onClick={(event: MouseEvent<HTMLDivElement>) => {
+          if (!event.ctrlKey && !event.metaKey) return;
+          const target = event.target instanceof Element
+            ? event.target.closest<SVGGElement>("[data-vector-source-start]")
+            : undefined;
+          const start = Number(target?.dataset.vectorSourceStart);
+          const end = Number(target?.dataset.vectorSourceEnd);
+          if (Number.isInteger(start) && Number.isInteger(end)) onSourceClick?.({ start, end });
+        }}
         style={{
           transform: `scale(${zoom})`,
           transformOrigin: "top left",

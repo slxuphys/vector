@@ -3,6 +3,7 @@ import type { NativeMathLayout, NativeMathMetrics } from "../renderers/math/nati
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { GraphSXDisplayList } from "@slxu/graphsx";
 import type { DocumentTheme } from "../theme/themeTypes";
+import type { SourceSpan } from "../source/sourceTypes";
 
 export type DisplayTextRun = {
   text: string;
@@ -16,10 +17,12 @@ export type DisplayTextRun = {
   italic?: boolean;
   link?: string;
   anchorId?: string;
+  sourceSpan?: SourceSpan;
 };
 
 export type DisplayAnchor = {
   anchorId?: string;
+  sourceSpan?: SourceSpan;
 };
 
 export type DisplayObject =

@@ -3,7 +3,7 @@ import type { EngineOptions } from "../core/engine/engineTypes";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
 import { isDebugLogEnabled } from "../core/utils/debugSettings";
-import { MarkdownEditor } from "./editor/MarkdownEditor";
+import { MarkdownEditor, type MarkdownEditorController } from "./editor/MarkdownEditor";
 import { PreviewPane } from "./preview/PreviewPane";
 import { PreviewToolbar } from "./preview/PreviewToolbar";
 import { useDocumentLayout, type PreviewUpdateTiming } from "./useDocumentLayout";
@@ -25,6 +25,9 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   const [pdfPending, setPdfPending] = useState(false);
   const [experimentalVectorMath, setExperimentalVectorMath] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [sourceNavigation, setSourceNavigation] = useState<{ offset: number; id: number } | undefined>(undefined);
+  const sourceNavigationIdRef = useRef(0);
+  const editorControllerRef = useRef<MarkdownEditorController | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
   const startupLogRef = useRef({ editor: false, preview: false });
   const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
@@ -36,6 +39,14 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
 
   const handleEditorReady = useCallback(() => {
     logStartupMilestone("editor", startupLogRef);
+  }, []);
+
+  const handlePreviewSourceClick = useCallback((source: { start: number; end: number }) => {
+    editorControllerRef.current?.revealSource(source);
+  }, []);
+
+  const handleEditorSourceNavigation = useCallback((offset: number) => {
+    setSourceNavigation({ offset, id: ++sourceNavigationIdRef.current });
   }, []);
 
   const handleDebouncedChange = useCallback((markdown: string, timing: Omit<PreviewUpdateTiming, "id">) => {
@@ -112,8 +123,19 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
           initialMarkdown={initialMarkdown}
           onReady={handleEditorReady}
           onDebouncedChange={handleDebouncedChange}
+          onSelectionChange={handleEditorSourceNavigation}
+          onControllerReady={(controller) => {
+            editorControllerRef.current = controller;
+          }}
         />
-        <PreviewPane layoutState={layoutState} zoom={zoom} printing={printing} />
+        <PreviewPane
+          layoutState={layoutState}
+          zoom={zoom}
+          printing={printing}
+          sourceOffset={sourceNavigation?.offset}
+          sourceNavigationId={sourceNavigation?.id}
+          onSourceClick={handlePreviewSourceClick}
+        />
         {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
       </div>
     </div>

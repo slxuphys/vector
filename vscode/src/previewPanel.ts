@@ -7,6 +7,7 @@ export class VectorPreviewPanel {
   private disposed = false;
   private previewShownHandlers: Array<(message: PreviewShownMessage) => void> = [];
   private pageRequestHandlers: Array<(message: PageRequestMessage) => void> = [];
+  private sourceRevealHandlers: Array<(message: SourceRevealMessage) => void> = [];
 
   private constructor(extensionUri: vscode.Uri, onDispose: () => void) {
     this.panel = vscode.window.createWebviewPanel(
@@ -29,7 +30,9 @@ export class VectorPreviewPanel {
       }
       if (isPageRequestMessage(message)) {
         for (const handler of this.pageRequestHandlers) handler(message);
+        return;
       }
+      if (isSourceRevealMessage(message)) for (const handler of this.sourceRevealHandlers) handler(message);
     });
     this.panel.webview.html = this.html();
   }
@@ -66,6 +69,21 @@ export class VectorPreviewPanel {
 
   onPageRequest(handler: (message: PageRequestMessage) => void): void {
     this.pageRequestHandlers.push(handler);
+  }
+
+  onSourceReveal(handler: (message: SourceRevealMessage) => void): void {
+    this.sourceRevealHandlers.push(handler);
+  }
+
+  revealSource(anchor: { page: number; y: number; source: { start: number; end: number } }): Thenable<boolean> {
+    if (this.disposed) return Promise.resolve(false);
+    return this.panel.webview.postMessage({
+      type: "revealSource",
+      page: anchor.page,
+      y: anchor.y,
+      start: anchor.source.start,
+      end: anchor.source.end
+    });
   }
 
   setPreviewMetadata(
@@ -130,6 +148,13 @@ export class VectorPreviewPanel {
       .page { background: white; box-shadow: 0 8px 30px rgba(0,0,0,.28); line-height: 0; overflow: hidden; transform-origin: top center; }
       .page.pending-page { background: #fff; }
       .page svg { display: block; user-select: text; }
+      @keyframes vector-source-highlight-pulse {
+        0% { filter: drop-shadow(0 0 0 rgba(37, 99, 235, 0)); }
+        20% { filter: drop-shadow(0 0 5px rgba(37, 99, 235, .95)); }
+        70% { filter: drop-shadow(0 0 3px rgba(37, 99, 235, .65)); }
+        100% { filter: drop-shadow(0 0 0 rgba(37, 99, 235, 0)); }
+      }
+      .vector-source-highlight { animation: vector-source-highlight-pulse 1.15s ease-out; }
     </style>
   </head>
   <body>
@@ -145,6 +170,7 @@ export class VectorPreviewPanel {
       let loadedPages = new Set();
       let requestedPages = new Set();
       let visibleRequestTimer = undefined;
+      let pendingSourceHighlight = undefined;
       function applyZoom() {
         const pages = document.querySelectorAll(".page");
         for (const page of pages) {
@@ -297,16 +323,55 @@ export class VectorPreviewPanel {
           requestedPages.delete(payload.index);
           insertedIndexes.push(payload.index);
         }
+        applyPendingSourceHighlight();
         return insertedIndexes;
+      }
+      function highlightSource(start, end) {
+        if (!Number.isInteger(start) || !Number.isInteger(end)) return;
+        pendingSourceHighlight = { start, end, id: Date.now() };
+        applyPendingSourceHighlight();
+      }
+      function applyPendingSourceHighlight() {
+        if (!pendingSourceHighlight) return;
+        const selector = '[data-vector-source-start="' + pendingSourceHighlight.start + '"][data-vector-source-end="' + pendingSourceHighlight.end + '"]';
+        const targets = [...document.querySelectorAll(selector)];
+        if (targets.length === 0) return;
+        const highlightId = pendingSourceHighlight.id;
+        for (const target of targets) {
+          target.classList.remove("vector-source-highlight");
+          target.getBoundingClientRect();
+          target.classList.add("vector-source-highlight");
+        }
+        window.setTimeout(() => {
+          if (pendingSourceHighlight?.id !== highlightId) return;
+          for (const target of targets) target.classList.remove("vector-source-highlight");
+          pendingSourceHighlight = undefined;
+        }, 1200);
       }
       window.addEventListener("scroll", scheduleVisibleRequest, { passive: true });
       window.addEventListener("resize", () => {
         applyZoom();
         scheduleVisibleRequest();
       });
+      document.addEventListener("click", (event) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        const target = event.target instanceof Element ? event.target.closest("[data-vector-source-start]") : undefined;
+        const start = Number(target?.getAttribute("data-vector-source-start"));
+        const end = Number(target?.getAttribute("data-vector-source-end"));
+        if (Number.isInteger(start) && Number.isInteger(end)) vscode.postMessage({ type: "revealSource", start, end });
+      });
       window.addEventListener("message", (event) => {
         const message = event.data;
         const root = document.getElementById("root");
+        if (message.type === "revealSource") {
+          highlightSource(Number(message.start), Number(message.end));
+          const page = document.querySelector('.page[data-index="' + message.page + '"]');
+          const fallbackTop = rootOffsetTop() + 40 + pageMeta.slice(0, message.page).reduce((sum, meta) => sum + (meta.height || 792) * zoom + 24, 0);
+          const pageTop = page ? page.getBoundingClientRect().top + window.scrollY : fallbackTop;
+          window.scrollTo({ top: Math.max(0, pageTop + Number(message.y || 0) * zoom - window.innerHeight * 0.35), behavior: "auto" });
+          scheduleVisibleRequest();
+          return;
+        }
         if (message.type === "loading") {
           if (hasPreview) {
             const toolbar = root.querySelector(".toolbar");
@@ -426,6 +491,12 @@ export type PageRequestMessage = {
   indexes: number[];
 };
 
+export type SourceRevealMessage = {
+  type: "revealSource";
+  start: number;
+  end: number;
+};
+
 type PageMeta = {
   index: number;
   width: number;
@@ -453,6 +524,12 @@ function isPageRequestMessage(message: unknown): message is PageRequestMessage {
     typeof record.updateId === "number" &&
     Array.isArray(record.indexes) &&
     record.indexes.every((index) => typeof index === "number");
+}
+
+function isSourceRevealMessage(message: unknown): message is SourceRevealMessage {
+  if (!message || typeof message !== "object") return false;
+  const record = message as Record<string, unknown>;
+  return record.type === "revealSource" && typeof record.start === "number" && typeof record.end === "number";
 }
 
 function randomNonce(): string {

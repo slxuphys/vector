@@ -1,3 +1,7 @@
+import type { SourceSpan } from "../source/sourceTypes";
+
+type SourceMapped = { sourceSpan?: SourceSpan };
+
 export type InlineNode =
   | { type: "text"; text: string; nonBreak?: boolean; color?: string }
   | { type: "strong"; children: InlineNode[] }
@@ -26,16 +30,16 @@ export type LabeledNode = {
 };
 
 export type MarkdownNode =
-  | ({ type: "heading"; level: number; children: InlineNode[]; title?: boolean } & LabeledNode)
-  | { type: "paragraph"; children: InlineNode[] }
-  | { type: "list"; ordered: boolean; items: InlineNode[][]; checked?: Array<boolean | undefined> }
-  | { type: "codeBlock"; language?: string; code: string }
-  | ({ type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] } & LabeledNode)
-  | ImageNode
-  | GraphSXNode
-  | ({ type: "mathBlock"; text: string } & LabeledNode)
-  | { type: "thematicBreak" }
-  | { type: "pageBreak" };
+  | (({ type: "heading"; level: number; children: InlineNode[]; title?: boolean } & LabeledNode) & SourceMapped)
+  | ({ type: "paragraph"; children: InlineNode[] } & SourceMapped)
+  | ({ type: "list"; ordered: boolean; items: InlineNode[][]; checked?: Array<boolean | undefined> } & SourceMapped)
+  | ({ type: "codeBlock"; language?: string; code: string } & SourceMapped)
+  | (({ type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] } & LabeledNode) & SourceMapped)
+  | (ImageNode & SourceMapped)
+  | (GraphSXNode & SourceMapped)
+  | (({ type: "mathBlock"; text: string } & LabeledNode) & SourceMapped)
+  | ({ type: "thematicBreak" } & SourceMapped)
+  | ({ type: "pageBreak" } & SourceMapped);
 
 export type ImageNode = {
   type: "image";

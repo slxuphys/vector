@@ -37,6 +37,7 @@ export type DocumentFrontMatter = {
 
 export type ParsedMarkdownDocument = {
   markdown: string;
+  sourceOffset: number;
   frontMatter?: DocumentFrontMatter;
   warnings: string[];
 };
@@ -48,15 +49,16 @@ type YamlObject = {
 
 export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
   const normalized = source.replace(/^\uFEFF/, "");
-  if (!normalized.startsWith("---")) return { markdown: source, warnings: [] };
+  if (!normalized.startsWith("---")) return { markdown: source, sourceOffset: 0, warnings: [] };
 
   const lines = normalized.split(/\r?\n/);
-  if (lines[0].trim() !== "---") return { markdown: source, warnings: [] };
+  if (lines[0].trim() !== "---") return { markdown: source, sourceOffset: 0, warnings: [] };
 
   const endIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
   if (endIndex < 0) {
     return {
       markdown: source,
+      sourceOffset: 0,
       warnings: ["Front matter starts with --- but has no closing ---."]
     };
   }
@@ -65,6 +67,7 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
   const raw = parseSimpleYaml(lines.slice(1, endIndex), warnings);
   return {
     markdown: lines.slice(endIndex + 1).join("\n"),
+    sourceOffset: lines.slice(0, endIndex + 1).join("\n").length + 1,
     frontMatter: normalizeFrontMatter(raw, warnings),
     warnings
   };

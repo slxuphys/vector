@@ -3,10 +3,11 @@ import { readFileSync } from "node:fs";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument } from "pdf-lib";
 import { createDocumentEngine, prepareMarkdownLayout } from "../src/core/engine/createDocumentEngine";
-import { parseMarkdownDocument } from "../src/core/config/documentConfig";
+import { applySourceFormatDefaults, parseMarkdownDocument } from "../src/core/config/documentConfig";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
 import { parseLatex } from "../src/core/latex/parseLatex";
 import { resolveCrossReferences } from "../src/core/xref/resolveReferences";
+import { findSourceAnchor } from "../src/core/source/sourceMap";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
@@ -41,6 +42,43 @@ import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
 
 describe("markdown parser", () => {
+  it("records Markdown block source spans", () => {
+    const source = `# Heading
+
+Paragraph text.
+`;
+    const ast = parseMarkdown(source);
+
+    expect(ast.children[0]).toMatchObject({ sourceSpan: { start: 0, end: 10 } });
+    expect(ast.children[1]).toMatchObject({ sourceSpan: { start: 11, end: source.length } });
+  });
+
+  it("maps source offsets to laid-out preview anchors", async () => {
+    const source = `# Heading
+
+Paragraph text.`;
+    const { layout } = await createDocumentEngine().layout(source);
+    const anchor = findSourceAnchor(layout, source.indexOf("Paragraph") + 3);
+
+    expect(anchor?.source).toEqual({ start: 11, end: source.length });
+    expect(anchor?.page).toBe(0);
+  });
+
+  it("keeps preview navigation offsets relative to the full front-matter document", async () => {
+    const source = `---
+page:
+  size: letter
+---
+
+# Heading
+
+Paragraph text.`;
+    const { layout } = await createDocumentEngine().layout(source);
+    const anchor = findSourceAnchor(layout, source.indexOf("Paragraph") + 3);
+
+    expect(anchor?.source.start).toBe(source.indexOf("Paragraph"));
+  });
+
   it("parses headings, lists, tables, code, and page breaks", () => {
     const ast = parseMarkdown(`# Title
 
@@ -228,6 +266,73 @@ $$
 });
 
 describe("latex parser", () => {
+  it("does not parse title matter again as normal body paragraphs", () => {
+    const source = `\\documentclass{article}
+\\title{Unique document title}
+\\author{Ada Vector \\and Emmy Layout}
+\\begin{document}
+\\maketitle
+\\begin{abstract}
+Unique abstract content.
+\\end{abstract}
+\\section{Introduction}
+Body content.
+\\end{document}`;
+    const ast = parseLatex(source);
+    const serialized = JSON.stringify(ast);
+
+    expect(serialized).not.toContain("Unique document title");
+    expect(serialized).not.toContain("Ada Vector");
+    expect(serialized).not.toContain("Emmy Layout");
+    expect(serialized).not.toContain("Unique abstract content");
+    expect(serialized).toContain("Body content");
+  });
+
+  it("extracts in-document title declarations without parsing them as body text", () => {
+    const source = `\\begin{document}
+
+\\title{Fast Live Preview for Scientific Writing}
+\\author{Ada Vector}
+\\affiliation{Department of Computational Glyphs, Asteria University}
+\\author{Emmy Layout}
+\\email{emmy.layout@meridian-moon.example}
+\\affiliation{Department of Computational Glyphs, Asteria University}
+
+\\section{Introduction}
+Body content.
+\\end{document}`;
+    const ast = parseLatex(source);
+    const serialized = JSON.stringify(ast);
+    const options = applySourceFormatDefaults(source, { sourceFormat: "latex" });
+
+    expect(options.document?.title).toBe("Fast Live Preview for Scientific Writing");
+    expect(options.document?.authors).toEqual(["Ada Vector", "Emmy Layout"]);
+    expect(serialized).not.toContain("Original title declaration");
+    expect(serialized).not.toContain("Ada Vector");
+    expect(serialized).not.toContain("Emmy Layout");
+    expect(serialized).not.toContain("emmy.layout@meridian-moon.example");
+    expect(serialized).not.toContain("Original affiliation");
+    expect(serialized).toContain("Body content");
+  });
+
+  it("records LaTeX block source spans", () => {
+    const source = `\\section{Heading}
+
+Paragraph text.`;
+    const ast = parseLatex(source);
+
+    expect(ast.children[0]).toMatchObject({ type: "heading", sourceSpan: { start: 0, end: 17 } });
+    expect(ast.children[1]).toMatchObject({ type: "paragraph", sourceSpan: { start: 19, end: source.length } });
+  });
+
+  it("preserves VS Code offsets for LaTeX documents with CRLF line endings", () => {
+    const source = "\\begin{document}\r\n\\section{Heading}\r\n\r\nParagraph text.\r\n\\end{document}";
+    const ast = parseLatex(source);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.sourceSpan?.start).toBe(source.indexOf("Paragraph text."));
+  });
+
   it("expands document-order LaTeX macro definitions before parsing", () => {
     const ast = parseLatex(`Before $\\R$.
 
@@ -319,6 +424,27 @@ Inline $x^2$.
 \\end{document}`);
 
     expect(result.layout.pages.length).toBeGreaterThan(0);
+  });
+
+  it("insets a LaTeX abstract from the full text width", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
+    const result = await engine.layout(`\\documentclass{article}
+\\title{Inset Abstract}
+\\begin{document}
+\\begin{abstract}
+Distinct abstract prose that is long enough to produce a normal line of text.
+\\end{abstract}
+\\section{Introduction}
+Body text.
+\\end{document}`);
+    const abstractText = result.layout.pages[0].objects.find((object) =>
+      object.type === "text" && object.text.includes("Distinct abstract prose")
+    );
+
+    expect(abstractText?.type).toBe("text");
+    if (abstractText?.type === "text") {
+      expect(abstractText.x).toBeGreaterThan(result.layout.page.margin.left);
+    }
   });
 
   it("preserves LaTeX commands inside inline math", () => {

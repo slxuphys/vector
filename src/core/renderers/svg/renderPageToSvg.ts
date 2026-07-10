@@ -24,7 +24,12 @@ export function renderPageToSvg(page: DisplayPage, options: SvgRenderOptions = {
 
 function renderObject(object: DisplayObject, options: SvgRenderOptions): string {
   const rendered = renderObjectBody(object, options);
-  return object.anchorId ? `<g id="${escapeXml(object.anchorId)}">${rendered}</g>` : rendered;
+  const attributes = [
+    object.anchorId ? `id="${escapeXml(object.anchorId)}"` : "",
+    object.sourceSpan ? `data-vector-source-start="${object.sourceSpan.start}"` : "",
+    object.sourceSpan ? `data-vector-source-end="${object.sourceSpan.end}"` : ""
+  ].filter(Boolean);
+  return attributes.length ? `<g ${attributes.join(" ")}>${rendered}</g>` : rendered;
 }
 
 function renderObjectBody(object: DisplayObject, options: SvgRenderOptions): string {

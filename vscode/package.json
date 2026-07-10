@@ -11,7 +11,8 @@
   },
   "activationEvents": [
     "onCommand:vector.openPreview",
-    "onCommand:vector.exportPdf"
+    "onCommand:vector.exportPdf",
+    "onCommand:vector.revealCursorInPreview"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -23,6 +24,18 @@
       {
         "command": "vector.exportPdf",
         "title": "Vector: Export PDF"
+      },
+      {
+        "command": "vector.revealCursorInPreview",
+        "title": "Vector: Reveal Cursor in Preview"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "vector.revealCursorInPreview",
+        "key": "ctrl+alt+enter",
+        "mac": "ctrl+alt+enter",
+        "when": "editorTextFocus"
       }
     ]
   },

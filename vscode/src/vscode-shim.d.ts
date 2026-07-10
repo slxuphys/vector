@@ -11,9 +11,19 @@ declare module "vscode" {
     fileName: string;
     languageId: string;
     getText(): string;
+    offsetAt(position: Position): number;
+    positionAt(offset: number): Position;
   };
+  export type Position = { line: number; character: number };
+  export type Range = { start: Position; end: Position };
+  export const Range: { new(start: Position, end: Position): Range };
+  export const Selection: { new(anchor: Position, active: Position): Selection };
+  export type Selection = Range & { active: Position };
+  export enum TextEditorRevealType { InCenter = 0 }
   export type TextEditor = {
     document: TextDocument;
+    selection: Selection;
+    revealRange(range: Range, revealType?: TextEditorRevealType): void;
   };
   export enum ViewColumn {
     Beside = -2
@@ -34,6 +44,7 @@ declare module "vscode" {
   };
   export const window: {
     activeTextEditor?: TextEditor;
+    visibleTextEditors: readonly TextEditor[];
     createWebviewPanel(
       viewType: string,
       title: string,

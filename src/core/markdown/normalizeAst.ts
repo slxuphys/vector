@@ -11,19 +11,21 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           runs: flattenInline(node.children),
           label: node.label,
           labelNumber: node.labelNumber,
-          title: node.title
+          title: node.title,
+          source: node.sourceSpan
         };
       case "paragraph":
-        return { type: "paragraph", runs: flattenInline(node.children) };
+        return { type: "paragraph", runs: flattenInline(node.children), source: node.sourceSpan };
       case "list":
         return {
           type: "list",
           ordered: node.ordered,
           checked: node.checked,
-          items: node.items.map((item) => flattenInline(item))
+          items: node.items.map((item) => flattenInline(item)),
+          source: node.sourceSpan
         };
       case "codeBlock":
-        return { type: "code", language: node.language, code: node.code };
+        return { type: "code", language: node.language, code: node.code, source: node.sourceSpan };
       case "table":
         return {
           type: "table",
@@ -39,7 +41,8 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           }))),
           align: node.align,
           label: node.label,
-          labelNumber: node.labelNumber
+          labelNumber: node.labelNumber,
+          source: node.sourceSpan
         };
       case "image":
         return {
@@ -51,7 +54,8 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           height: node.height,
           align: node.align,
           label: node.label,
-          labelNumber: node.labelNumber
+          labelNumber: node.labelNumber,
+          source: node.sourceSpan
         };
       case "graphsx":
         return {
@@ -61,14 +65,15 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           width: node.width,
           align: node.align,
           label: node.label,
-          labelNumber: node.labelNumber
+          labelNumber: node.labelNumber,
+          sourceSpan: node.sourceSpan
         };
       case "mathBlock":
-        return { type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber };
+        return { type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber, source: node.sourceSpan };
       case "thematicBreak":
-        return { type: "rule" };
+        return { type: "rule", source: node.sourceSpan };
       case "pageBreak":
-        return { type: "pageBreak" };
+        return { type: "pageBreak", source: node.sourceSpan };
     }
   });
 }

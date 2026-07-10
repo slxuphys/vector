@@ -12,6 +12,8 @@ export type SvgPagedPreviewProps = {
   overscanPages?: number;
   renderAllPages?: boolean;
   timing?: CompletedPreviewUpdateTiming;
+  onSourceClick?: (source: { start: number; end: number }) => void;
+  sourceHighlight?: { start: number; end: number; id: number };
 };
 
 export function SvgPagedPreview({
@@ -20,7 +22,9 @@ export function SvgPagedPreview({
   currentPage,
   overscanPages = 2,
   renderAllPages = false,
-  timing
+  timing,
+  onSourceClick,
+  sourceHighlight
 }: SvgPagedPreviewProps) {
   const numericZoom = zoom === "fit-width" ? 1 : zoom;
   const start = renderAllPages || currentPage === undefined ? 0 : Math.max(0, currentPage - overscanPages);
@@ -88,7 +92,7 @@ export function SvgPagedPreview({
     <div className="svg-md-preview" data-page-count={layout.pages.length}>
       {layout.pages.map((page, index) => (
         index >= start && index < end
-          ? <PageViewport key={page.index} page={page} svg={visiblePages.pages[index]?.svg ?? ""} zoom={numericZoom} />
+          ? <PageViewport key={page.index} page={page} svg={visiblePages.pages[index]?.svg ?? ""} zoom={numericZoom} onSourceClick={onSourceClick} sourceHighlight={sourceHighlight} />
           : (
             <div
               key={page.index}

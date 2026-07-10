@@ -2,24 +2,60 @@ import { useEffect, useRef, useState } from "react";
 import { previewFontFaceCss } from "../../core/renderers/svg/previewFontCss";
 import { SvgPagedPreview } from "../SvgPagedPreview";
 import type { DocumentLayoutState } from "../useDocumentLayout";
+import { previewScrollTopForSource } from "../navigation/previewSourceNavigation";
 
 const previewFontCss = previewFontFaceCss();
+const sourceHighlightCss = `
+@keyframes vector-source-highlight-pulse {
+  0% { filter: drop-shadow(0 0 0 rgba(37, 99, 235, 0)); }
+  20% { filter: drop-shadow(0 0 5px rgba(37, 99, 235, 0.95)); }
+  70% { filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.65)); }
+  100% { filter: drop-shadow(0 0 0 rgba(37, 99, 235, 0)); }
+}
+.vector-source-highlight { animation: vector-source-highlight-pulse 1.15s ease-out; }
+`;
 
 export type PreviewPaneProps = {
   layoutState: DocumentLayoutState;
   zoom: number;
   printing?: boolean;
   overscanPages?: number;
+  sourceOffset?: number;
+  sourceNavigationId?: number;
+  onSourceClick?: (source: { start: number; end: number }) => void;
 };
 
 export function PreviewPane({
   layoutState,
   zoom,
   printing = false,
-  overscanPages = 2
+  overscanPages = 2,
+  sourceOffset,
+  sourceNavigationId,
+  onSourceClick
 }: PreviewPaneProps) {
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [sourceHighlight, setSourceHighlight] = useState<{ start: number; end: number; id: number } | undefined>(undefined);
+
+  useEffect(() => {
+    const pane = previewPaneRef.current;
+    const layout = layoutState.layout;
+    if (!pane || !layout || sourceOffset === undefined) return;
+    const target = previewScrollTopForSource(layout, sourceOffset, zoom, pane.clientHeight);
+    if (!target) return;
+    setSourceHighlight({ ...target.source, id: sourceNavigationId ?? 0 });
+    pane.scrollTo({ top: target.top, behavior: "auto" });
+  }, [layoutState.layout, sourceNavigationId, sourceOffset, zoom]);
+
+  useEffect(() => {
+    if (!sourceHighlight) return undefined;
+    const highlightId = sourceHighlight.id;
+    const timeout = window.setTimeout(() => {
+      setSourceHighlight((current) => current?.id === highlightId ? undefined : current);
+    }, 1200);
+    return () => window.clearTimeout(timeout);
+  }, [sourceHighlight]);
 
   useEffect(() => {
     const pane = previewPaneRef.current;
@@ -51,7 +87,7 @@ export function PreviewPane({
 
   return (
     <div className="svg-md-preview-pane" ref={previewPaneRef}>
-      <style>{previewFontCss}</style>
+      <style>{previewFontCss + sourceHighlightCss}</style>
       {layoutState.error ? <div className="svg-md-error">{layoutState.error.message}</div> : null}
       {layoutState.layout ? (
         <SvgPagedPreview
@@ -61,6 +97,8 @@ export function PreviewPane({
           overscanPages={overscanPages}
           renderAllPages={printing}
           timing={layoutState.timing}
+          onSourceClick={onSourceClick}
+          sourceHighlight={sourceHighlight}
         />
       ) : null}
     </div>

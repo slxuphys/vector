@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { PageRequestMessage, VectorPreviewPanel } from "./previewPanel";
-import { createDocumentEngine, loadNativeMathFonts, renderPageToSvg } from "./previewBundle";
+import { createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg } from "./previewBundle";
 
 const previewDebounceMs = 150;
 const pendingUpdates = new Map<number, PreviewTiming>();
@@ -39,6 +39,20 @@ export function activate(context: vscode.ExtensionContext) {
         });
         previewPanel.onPageRequest((message) => {
           void sendRequestedPages(previewPanel, message);
+        });
+        previewPanel.onSourceReveal((message) => {
+          const documentUri = activePreview?.documentUri;
+          if (!documentUri) return;
+          const editor = vscode.window.visibleTextEditors.find(
+            (candidate) => candidate.document.uri.toString() === documentUri
+          );
+          if (!editor) {
+            console.warn("[source-map] Preview target document is not open in a visible text editor.", { documentUri });
+            return;
+          }
+          const start = editor.document.positionAt(message.start);
+          editor.selection = new vscode.Selection(start, start);
+          editor.revealRange(new vscode.Range(start, start), vscode.TextEditorRevealType.InCenter);
         });
         previewPanel.onPreviewShown((message) => {
           if (message.updateId === undefined) return;
@@ -89,6 +103,14 @@ export function activate(context: vscode.ExtensionContext) {
         path: document.uri.path.replace(/\.[^.\/\\]+$/, "") + ".pdf"
       });
       await vscode.window.showInformationMessage(`Vector PDF export shell is ready: ${target.fsPath.split(/[\\/]/).pop() ?? "document.pdf"}`);
+    }),
+    vscode.commands.registerCommand("vector.revealCursorInPreview", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || !previewPanel?.alive || !activePreview) return;
+      if (editor.document.uri.toString() !== activePreview.documentUri) return;
+      const offset = editor.document.offsetAt(editor.selection.active);
+      const anchor = findSourceAnchorInPages(activePreview.pages, offset);
+      if (anchor) void previewPanel.revealSource(anchor);
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (previewPanel?.alive && event.document === vscode.window.activeTextEditor?.document) {

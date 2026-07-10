@@ -36,13 +36,70 @@ type MacroExpansionState = {
 const maxMacroExpansionDepth = 64;
 const maxMacroExpansions = 10_000;
 
-export function parseLatex(source: string): MarkdownAst {
-  const normalized = source.replace(/\r\n?/g, "\n");
-  const body = stripPreamble(expandLatexMacros(normalized));
+export function parseLatex(source: string, sourceOffset = 0): MarkdownAst {
+  const normalized = normalizeLatexSource(source);
+  const expanded = expandLatexMacros(normalized);
+  const documentStart = /\\begin\{document}/.exec(expanded);
+  const bodyOffset = documentStart?.index === undefined
+    ? sourceOffset
+    : sourceOffset + documentStart.index + documentStart[0].length;
+  const body = documentStart?.index === undefined
+    ? stripPreamble(expanded)
+    : maskLatexDocumentOnlyContent(expanded.slice(documentStart.index + documentStart[0].length));
   return {
     type: "document",
-    children: parseLatexBlocks(body)
+    children: parseLatexBlocks(body, bodyOffset)
   };
+}
+
+function maskLatexDocumentOnlyContent(source: string): string {
+  return maskLatexCommandDeclarations(source, new Set([
+    "title",
+    "author",
+    "affiliation",
+    "email",
+    "date",
+    "thanks"
+  ]))
+    .replace(/\\begin\{abstract}([\s\S]*?)\\end\{abstract}/g, (match) => maskLatexSource(match))
+    .replace(/\\maketitle\b|\\end\{document}/g, (match) => maskLatexSource(match));
+}
+
+function maskLatexCommandDeclarations(source: string, names: Set<string>): string {
+  const masked = source.split("");
+  let cursor = 0;
+
+  while (cursor < source.length) {
+    if (source[cursor] !== "\\") {
+      cursor += 1;
+      continue;
+    }
+    const command = readLatexControlSequence(source, cursor);
+    if (!command || !names.has(command.name)) {
+      cursor = command?.end ?? cursor + 1;
+      continue;
+    }
+
+    let argumentStart = skipLatexWhitespace(source, command.end);
+    const optional = readDelimitedLatexArgument(source, argumentStart, "[", "]");
+    if (optional) argumentStart = skipLatexWhitespace(source, optional.end);
+    const argument = readDelimitedLatexArgument(source, argumentStart, "{", "}");
+    if (!argument) {
+      cursor = command.end;
+      continue;
+    }
+
+    const end = argument.end;
+    const replacement = maskLatexSource(source.slice(cursor, end));
+    for (let index = cursor; index < end; index += 1) masked[index] = replacement[index - cursor];
+    cursor = end;
+  }
+
+  return masked.join("");
+}
+
+function maskLatexSource(source: string): string {
+  return source.replace(/[^\n]/g, " ");
 }
 
 export function readLatexDocumentClass(source: string): LatexDocumentClass {
@@ -58,7 +115,7 @@ export function readLatexDocumentClass(source: string): LatexDocumentClass {
 }
 
 export function readLatexPreamble(source: string): LatexPreamble {
-  const expanded = expandLatexMacros(source.replace(/\r\n?/g, "\n"));
+  const expanded = expandLatexMacros(normalizeLatexSource(source));
   const rawDate = readCommandArgument(expanded, "date");
   const authorCommands = readCommandArguments(expanded, "author");
   return {
@@ -67,6 +124,10 @@ export function readLatexPreamble(source: string): LatexPreamble {
     date: rawDate === undefined ? undefined : latexInlineToMarkdown(rawDate),
     abstract: optionalLatexInline(readEnvironment(expanded, "abstract")?.body.trim())
   };
+}
+
+function normalizeLatexSource(source: string): string {
+  return source.replace(/\r(?=\n)/g, " ").replace(/\r/g, "\n");
 }
 
 function expandLatexMacros(source: string): string {
@@ -117,6 +178,7 @@ function expandLatexMacroFragment(
       } else if (definition.kind === "newcommand" || definition.kind === "renewcommand") {
         warnMacro(state, `${definition.kind} could not define \\${definition.name}`);
       }
+      result += source.slice(cursor, definition.end).replace(/[^\n]/g, " ");
       cursor = definition.end;
       continue;
     }
@@ -323,18 +385,18 @@ function stripPreamble(source: string): string {
     .replace(/\\end\{document}/g, "");
 }
 
-function parseLatexBlocks(source: string): MarkdownNode[] {
+function parseLatexBlocks(source: string, sourceOffset: number): MarkdownNode[] {
   const nodes: MarkdownNode[] = [];
   let cursor = 0;
 
   while (cursor < source.length) {
     const match = findNextBlock(source, cursor);
     if (!match) {
-      nodes.push(...parseLatexParagraphs(source.slice(cursor)));
+      nodes.push(...parseLatexParagraphs(source.slice(cursor), sourceOffset + cursor));
       break;
     }
-    if (match.index > cursor) nodes.push(...parseLatexParagraphs(source.slice(cursor, match.index)));
-    nodes.push(...match.nodes);
+    if (match.index > cursor) nodes.push(...parseLatexParagraphs(source.slice(cursor, match.index), sourceOffset + cursor));
+    nodes.push(...match.nodes.map((node) => ({ ...node, sourceSpan: { start: sourceOffset + match.index, end: sourceOffset + match.end } })));
     cursor = match.end;
   }
 
@@ -364,7 +426,7 @@ function matchFigure(source: string, cursor: number): LatexBlockMatch | undefine
     return {
       index,
       end: index + match[0].length,
-      nodes: parseLatexParagraphs(body)
+      nodes: parseLatexParagraphs(body, index + match[0].indexOf(body))
     };
   }
 
@@ -462,15 +524,27 @@ function matchPageBreak(source: string, cursor: number): LatexBlockMatch | undef
   };
 }
 
-function parseLatexParagraphs(source: string): MarkdownNode[] {
-  return stripLatexComments(source)
-    .split(/\n\s*\n/g)
-    .map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").trim())
-    .filter(Boolean)
-    .map((paragraph): MarkdownNode => ({
+function parseLatexParagraphs(source: string, sourceOffset: number): MarkdownNode[] {
+  const cleaned = stripLatexComments(source);
+  const nodes: MarkdownNode[] = [];
+  let cursor = 0;
+  for (const rawParagraph of cleaned.split(/\n\s*\n/g)) {
+    const index = cleaned.indexOf(rawParagraph, cursor);
+    cursor = Math.max(cursor, index) + rawParagraph.length;
+    const paragraph = rawParagraph.replace(/\s*\n\s*/g, " ").trim();
+    if (!paragraph || index < 0) continue;
+    const leadingWhitespace = rawParagraph.match(/^\s*/)?.[0].length ?? 0;
+    const trailingWhitespace = rawParagraph.match(/\s*$/)?.[0].length ?? 0;
+    nodes.push({
       type: "paragraph",
-      children: parseLatexInline(paragraph)
-    }));
+      children: parseLatexInline(paragraph),
+      sourceSpan: {
+        start: sourceOffset + index + leadingWhitespace,
+        end: sourceOffset + index + rawParagraph.length - trailingWhitespace
+      }
+    });
+  }
+  return nodes;
 }
 
 function parseLatexInline(source: string): InlineNode[] {
@@ -602,7 +676,7 @@ function optionalLatexInline(source: string | undefined): string | undefined {
 function stripLatexComments(source: string): string {
   return source
     .split("\n")
-    .map((line) => line.replace(/(^|[^\\])%.*/, "$1").trimEnd())
+    .map((line) => line.replace(/(^|[^\\])%.*/, (match, prefix: string) => `${prefix}${" ".repeat(match.length - prefix.length)}`))
     .join("\n");
 }
 
