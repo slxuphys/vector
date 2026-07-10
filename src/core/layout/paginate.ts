@@ -1,7 +1,7 @@
 import type { DisplayObject, DisplayPage } from "../display-list/displayTypes";
 import type { MathRendererName } from "../engine/engineTypes";
 import type { DocumentTheme } from "../theme/themeTypes";
-import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
+import { flattenInline, type LayoutBlock, type InlineRun, type TitleMatter } from "./layoutBlocks";
 import type { PageConfig } from "./pageConfig";
 import { breakRunsIntoLines } from "./lineBreaking";
 import type { LayoutLine } from "./lineBreaking";
@@ -24,6 +24,7 @@ import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProf
 import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMetrics";
 import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 import type { SourceSpan } from "../source/sourceTypes";
+import { parseInline } from "../markdown/parseInline";
 
 type Cursor = {
   page: DisplayPage;
@@ -552,7 +553,7 @@ function drawCaption(
     y,
     contentWidth: width
   };
-  const lines = breakRunsIntoLines([{ text: caption }], width, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+  const lines = breakRunsIntoLines(flattenInline(parseInline(caption)), width, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
   if (lines.length <= 1) {
     drawLines(captionCursor, lines, fontSize, theme, {
       color: theme.text,

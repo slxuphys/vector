@@ -12,14 +12,38 @@ export type MarkdownEditorPreviewProps = {
   initialMarkdown?: string;
   options?: EngineOptions;
   sidePanel?: ReactNode;
+  leftPanel?: ReactNode;
+  toolbarPlacement?: "top" | "preview";
+  onSourceChange?: (source: string) => void;
+  layoutMode?: WorkspaceLayoutMode;
+  leftPanelCompact?: boolean;
+  editorTheme?: "light" | "dark";
+  editorSourceFormat?: "markdown" | "latex" | "text";
+  previewAvailable?: boolean;
+  previewUnavailableMessage?: string;
 };
+
+export type WorkspaceLayoutMode = "split" | "editor" | "preview";
 
 type PreviewRequest = {
   markdown: string;
   timing?: PreviewUpdateTiming;
 };
 
-export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, sidePanel }: MarkdownEditorPreviewProps) {
+export function MarkdownEditorPreview({
+  initialMarkdown = "",
+  options = {},
+  sidePanel,
+  leftPanel,
+  toolbarPlacement = "top",
+  onSourceChange,
+  layoutMode = "split",
+  leftPanelCompact = false,
+  editorTheme = "light",
+  editorSourceFormat,
+  previewAvailable = true,
+  previewUnavailableMessage
+}: MarkdownEditorPreviewProps) {
   const [previewRequest, setPreviewRequest] = useState<PreviewRequest>({ markdown: initialMarkdown });
   const [zoom, setZoom] = useState(0.9);
   const [pdfPending, setPdfPending] = useState(false);
@@ -30,7 +54,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   const editorControllerRef = useRef<MarkdownEditorController | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
   const startupLogRef = useRef({ editor: false, preview: false });
-  const layoutState = useDocumentLayout(previewRequest.markdown, options, previewRequest.timing);
+  const layoutState = useDocumentLayout(previewAvailable ? previewRequest.markdown : "", options, previewRequest.timing);
   const usingKatexGlyph = options.mathRenderer === "katex-glyph";
   const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
   const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
@@ -65,7 +89,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
   }, [layoutState.layout]);
 
   useEffect(() => {
-    if (!layoutState.layout || !usingKatexRaster || experimentalVectorMath) return;
+    if (!previewAvailable || !layoutState.layout || !usingKatexRaster || experimentalVectorMath) return;
     let cancelled = false;
     const timeout = window.setTimeout(() => {
       if (!cancelled && layoutState.layout) void warmPdfMathArtifactCache(layoutState.layout);
@@ -74,7 +98,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [experimentalVectorMath, layoutState.layout, usingKatexRaster]);
+  }, [experimentalVectorMath, layoutState.layout, previewAvailable, usingKatexRaster]);
 
   useEffect(() => {
     const printQuery = window.matchMedia("print");
@@ -94,7 +118,7 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
 
   const handleDownloadPdf = () => {
     const layout = layoutState.layout;
-    if (!layout || pdfPending) return;
+    if (!previewAvailable || !layout || pdfPending) return;
     setPdfPending(true);
     window.setTimeout(() => {
       const mathPdfMode = usingGlyphPdf ? "glyph" : usingMathJaxVector || experimentalVectorMath ? "vector" : "raster";
@@ -106,23 +130,40 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
     }, 150);
   };
 
+  const toolbar = (
+    <PreviewToolbar
+      layoutState={layoutState}
+      zoom={zoom}
+      onZoomChange={setZoom}
+      pdfPending={pdfPending}
+      onDownloadPdf={handleDownloadPdf}
+      mathRenderer={options.mathRenderer}
+      experimentalVectorMath={experimentalVectorMath}
+      onExperimentalVectorMathChange={setExperimentalVectorMath}
+      variant={toolbarPlacement === "preview" ? "preview" : "lab"}
+      previewAvailable={previewAvailable}
+    />
+  );
+  const workspaceClasses = [
+    "svg-md-workspace",
+    sidePanel ? "svg-md-workspace-with-panel" : "",
+    leftPanel ? "svg-md-workspace-with-left-panel" : "",
+    leftPanel && leftPanelCompact ? "svg-md-workspace-left-compact" : "",
+    `svg-md-workspace-layout-${layoutMode}`
+  ].filter(Boolean).join(" ");
+
   return (
     <div className="svg-md-shell">
-      <PreviewToolbar
-        layoutState={layoutState}
-        zoom={zoom}
-        onZoomChange={setZoom}
-        pdfPending={pdfPending}
-        onDownloadPdf={handleDownloadPdf}
-        mathRenderer={options.mathRenderer}
-        experimentalVectorMath={experimentalVectorMath}
-        onExperimentalVectorMathChange={setExperimentalVectorMath}
-      />
-      <div className={sidePanel ? "svg-md-workspace svg-md-workspace-with-panel" : "svg-md-workspace"}>
+      {toolbarPlacement === "top" ? toolbar : null}
+      <div className={workspaceClasses}>
+        {leftPanel ? <aside className="svg-md-file-panel">{leftPanel}</aside> : null}
         <MarkdownEditor
           initialMarkdown={initialMarkdown}
+          sourceFormat={editorSourceFormat ?? (options.sourceFormat === "latex" ? "latex" : "markdown")}
+          theme={editorTheme}
           onReady={handleEditorReady}
           onDebouncedChange={handleDebouncedChange}
+          onChange={onSourceChange}
           onSelectionChange={handleEditorSourceNavigation}
           onControllerReady={(controller) => {
             editorControllerRef.current = controller;
@@ -135,6 +176,8 @@ export function MarkdownEditorPreview({ initialMarkdown = "", options = {}, side
           sourceOffset={sourceNavigation?.offset}
           sourceNavigationId={sourceNavigation?.id}
           onSourceClick={handlePreviewSourceClick}
+          toolbar={toolbarPlacement === "preview" ? toolbar : undefined}
+          unavailableMessage={previewAvailable ? undefined : previewUnavailableMessage ?? "This file type does not have a document preview."}
         />
         {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
       </div>

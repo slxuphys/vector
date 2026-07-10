@@ -36,13 +36,13 @@ export function parseImageAttributes(raw: string | undefined): {
     else if (key === "align" && isImageAlign(value)) attributes.align = value;
     else if ((key === "id" || key === "#") && isLabelId(value)) attributes.label = value.replace(/^#/, "");
   }
-  const shorthand = body.match(/(?:^|\s)#([A-Za-z][\w:.-]*)/);
+  const shorthand = body.match(/(?:^|\s)#([A-Za-z][\w:.'-]*)/);
   if (shorthand) attributes.label = shorthand[1];
   return attributes;
 }
 
 function isLabelId(value: string): boolean {
-  return /^#?[A-Za-z][\w:.-]*$/.test(value);
+  return /^#?[A-Za-z][\w:.'-]*$/.test(value);
 }
 
 function parseLength(value: string): ImageLength | undefined {

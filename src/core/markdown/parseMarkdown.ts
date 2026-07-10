@@ -174,7 +174,7 @@ function parseFenceInfo(language: string | undefined, rest: string): {
 }
 
 function stripTrailingLabel(text: string): { text: string; label?: string } {
-  const match = text.match(/\s*\{#([A-Za-z][\w:.-]*)}\s*$/);
+  const match = text.match(/\s*\{#([A-Za-z][\w:.'-]*)}\s*$/);
   if (!match) return { text };
   return {
     text: text.slice(0, match.index).trimEnd(),
@@ -183,7 +183,7 @@ function stripTrailingLabel(text: string): { text: string; label?: string } {
 }
 
 function followingLabel(line: string | undefined): string | undefined {
-  const match = line?.trim().match(/^\{:\s*#([A-Za-z][\w:.-]*)\s*}$|^\{#([A-Za-z][\w:.-]*)}$/);
+  const match = line?.trim().match(/^\{:\s*#([A-Za-z][\w:.'-]*)\s*}$|^\{#([A-Za-z][\w:.'-]*)}$/);
   return match?.[1] ?? match?.[2];
 }
 

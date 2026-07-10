@@ -48,7 +48,7 @@ export function parseLatex(source: string, sourceOffset = 0): MarkdownAst {
     : maskLatexDocumentOnlyContent(expanded.slice(documentStart.index + documentStart[0].length));
   return {
     type: "document",
-    children: parseLatexBlocks(body, bodyOffset)
+    children: parseLatexBlocks(stripLatexComments(body), bodyOffset)
   };
 }
 
@@ -497,7 +497,7 @@ function matchList(source: string, cursor: number): LatexBlockMatch | undefined 
 }
 
 function matchSection(source: string, cursor: number): LatexBlockMatch | undefined {
-  const match = /\\(section|subsection|subsubsection)\*?\{((?:[^{}]|\{[^{}]*})*)}(\s*\\label\{([A-Za-z][\w:.-]*)})?/g.exec(source.slice(cursor));
+  const match = /\\(section|subsection|subsubsection)\*?\{((?:[^{}]|\{[^{}]*})*)}(\s*\\label\{([A-Za-z][\w:.'-]*)})?/g.exec(source.slice(cursor));
   if (!match || match.index === undefined) return undefined;
   const index = cursor + match.index;
   const command = match[1];
@@ -557,12 +557,12 @@ function latexInlineToMarkdown(source: string): string {
     transformed = transformed
       .replace(/~/g, nonBreakingSpaceMarker)
       .replace(/\\cite\{[^{}]*}/g, citationPlaceholderMarker)
-      .replace(/\\ref\{([A-Za-z][\w:.-]*)}/g, "@!$1")
-      .replace(/\\(?:eqref|autoref|cref)\{([A-Za-z][\w:.-]*)}/g, "@$1")
+      .replace(/\\ref\{([A-Za-z][\w:.'-]*)}/g, "@!$1")
+      .replace(/\\(?:eqref|autoref|cref)\{([A-Za-z][\w:.'-]*)}/g, "@$1")
       .replace(/\\LaTeX\b/g, "LaTeX")
       .replace(/\\TeX\b/g, "TeX")
       .replace(/\\and\b/g, ", ")
-      .replace(/\\label\{([A-Za-z][\w:.-]*)}/g, "")
+      .replace(/\\label\{([A-Za-z][\w:.'-]*)}/g, "")
       .replace(/\\(?:noindent|quad|qquad|,|;|:|!)/g, " ")
       .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*])?/g, "");
     return transformed.replace(/[{}]/g, "");
@@ -610,7 +610,7 @@ function parseLatexGraphicsWidth(options: string): ImageLength | undefined {
 
 function stripMathLabel(body: string): { body: string; label?: string } {
   let label: string | undefined;
-  const stripped = body.replace(/\\label\{([A-Za-z][\w:.-]*)}/g, (_match, id: string) => {
+  const stripped = body.replace(/\\label\{([A-Za-z][\w:.'-]*)}/g, (_match, id: string) => {
     label = id;
     return "";
   });

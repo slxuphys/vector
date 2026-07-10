@@ -6,6 +6,11 @@
   "private": true,
   "publisher": "vector",
   "type": "commonjs",
+  "files": [
+    "dist/extension.js",
+    "webview-dist/**",
+    "README.md"
+  ],
   "engines": {
     "vscode": "^1.92.0"
   },
@@ -40,10 +45,19 @@
     ]
   },
   "scripts": {
-    "compile": "node esbuild.cjs"
+    "compile": "npm run build:webview && node esbuild.cjs",
+    "build:webview": "vite build --config vite.webview.config.mts",
+    "check:webview": "tsc -p tsconfig.webview.json"
+  },
+  "dependencies": {
+    "lucide-react": "^1.24.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
     "@types/vscode": "^1.92.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
   }
 }

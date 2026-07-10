@@ -1,7 +1,7 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
 import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefAnchor, type CrossRefConfig, type CrossRefKind } from "./xrefTypes";
 
-const refPattern = /@(!)?((?:eq|fig|tbl|sec):[A-Za-z][\w:-]*(?:\.[A-Za-z0-9_-]+)*)/g;
+const refPattern = /@(!)?((?:eq|fig|tbl|sec):[A-Za-z][\w:'-]*(?:\.[A-Za-z0-9_'-]+)*)/g;
 
 export function resolveCrossReferences(
   ast: MarkdownAst,
@@ -182,29 +182,39 @@ function resolveTextReferences(node: Extract<InlineNode, { type: "text" }>, anch
     const rawNumberOnly = Boolean(match[1]);
     const id = match[2];
     const anchor = anchors.get(id);
-    const resolved = rawNumberOnly && anchor ? anchor.number : formatReference(id, anchor, config);
+    const resolved = anchor
+      ? rawNumberOnly ? anchor.number : formatReference(id, anchor, config)
+      : formatMissingReference(id, rawNumberOnly, config);
     nodes.push(anchor
       ? {
           type: "link",
           href: `#${id}`,
           children: [{ type: "text", text: resolved }]
         }
-      : { ...node, text: resolved });
+      : { ...node, text: resolved, color: "#b42318" });
     cursor = index + match[0].length;
   }
   if (cursor < text.length) nodes.push({ ...node, text: text.slice(cursor) });
   return nodes.length ? nodes : [node];
 }
 
-function formatReference(id: string, anchor: CrossRefAnchor | undefined, config: CrossRefConfig): string {
-  if (!anchor) {
-    if (typeof console !== "undefined") console.warn("[xref-missing]", { id });
-    return `??${id}??`;
-  }
+function formatReference(id: string, anchor: CrossRefAnchor, config: CrossRefConfig): string {
   const prefix = id.split(":", 1)[0];
   const kind = kindForPrefix(prefix) ?? anchor.kind;
   return applyCrossRefFormat(config[kind].referenceFormat, {
     number: anchor.number,
+    id,
+    kind
+  });
+}
+
+function formatMissingReference(id: string, rawNumberOnly: boolean, config: CrossRefConfig): string {
+  if (typeof console !== "undefined") console.warn("[xref-missing]", { id });
+  if (rawNumberOnly) return "??";
+  const kind = kindForPrefix(id.split(":", 1)[0]);
+  if (!kind) return "??";
+  return applyCrossRefFormat(config[kind].referenceFormat, {
+    number: "??",
     id,
     kind
   });

@@ -9,4 +9,9 @@ The extension uses:
 - A webview for the paginated preview.
 - The shared core engine for parsing, layout, SVG preview, and PDF export.
 
-The current implementation wires the command shell and live document bridge. The next step is to bundle the shared React preview pane into the webview.
+The extension is built as two independent bundles:
+
+- `dist/extension.js` is the Node extension host and contains VS Code APIs, the engine, and message routing.
+- `webview-dist/` is the browser bundle containing React, the VS Code webview adapter, and the shared `PreviewSurface` from `src/react/preview`.
+
+Run `npm run compile` from this directory to build both bundles. `webview-dist` is generated output and is not committed.

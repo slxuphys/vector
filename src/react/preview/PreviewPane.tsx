@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { previewFontFaceCss } from "../../core/renderers/svg/previewFontCss";
 import { SvgPagedPreview } from "../SvgPagedPreview";
 import type { DocumentLayoutState } from "../useDocumentLayout";
 import { previewScrollTopForSource } from "../navigation/previewSourceNavigation";
+import { FileQuestion } from "lucide-react";
+import { PreviewSurface } from "./PreviewSurface";
 
 const previewFontCss = previewFontFaceCss();
 const sourceHighlightCss = `
@@ -23,6 +25,8 @@ export type PreviewPaneProps = {
   sourceOffset?: number;
   sourceNavigationId?: number;
   onSourceClick?: (source: { start: number; end: number }) => void;
+  toolbar?: ReactNode;
+  unavailableMessage?: string;
 };
 
 export function PreviewPane({
@@ -32,7 +36,9 @@ export function PreviewPane({
   overscanPages = 2,
   sourceOffset,
   sourceNavigationId,
-  onSourceClick
+  onSourceClick,
+  toolbar,
+  unavailableMessage
 }: PreviewPaneProps) {
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -86,21 +92,28 @@ export function PreviewPane({
   }, [layoutState.layout, zoom]);
 
   return (
-    <div className="svg-md-preview-pane" ref={previewPaneRef}>
-      <style>{previewFontCss + sourceHighlightCss}</style>
-      {layoutState.error ? <div className="svg-md-error">{layoutState.error.message}</div> : null}
-      {layoutState.layout ? (
-        <SvgPagedPreview
-          layout={layoutState.layout}
-          zoom={printing ? 1 : zoom}
-          currentPage={currentPage}
-          overscanPages={overscanPages}
-          renderAllPages={printing}
-          timing={layoutState.timing}
-          onSourceClick={onSourceClick}
-          sourceHighlight={sourceHighlight}
-        />
-      ) : null}
-    </div>
+    <PreviewSurface toolbar={toolbar} ref={previewPaneRef}>
+        <style>{previewFontCss + sourceHighlightCss}</style>
+        {unavailableMessage ? (
+          <div className="svg-md-preview-unavailable">
+            <FileQuestion size={30} aria-hidden="true" />
+            <strong>Preview not available</strong>
+            <span>{unavailableMessage}</span>
+          </div>
+        ) : null}
+        {!unavailableMessage && layoutState.error ? <div className="svg-md-error">{layoutState.error.message}</div> : null}
+        {!unavailableMessage && layoutState.layout ? (
+          <SvgPagedPreview
+            layout={layoutState.layout}
+            zoom={printing ? 1 : zoom}
+            currentPage={currentPage}
+            overscanPages={overscanPages}
+            renderAllPages={printing}
+            timing={layoutState.timing}
+            onSourceClick={onSourceClick}
+            sourceHighlight={sourceHighlight}
+          />
+        ) : null}
+    </PreviewSurface>
   );
 }

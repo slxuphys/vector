@@ -172,7 +172,10 @@ function placeHyphenatedToken(options: {
   const { token, run, hyphenator, maxWidth, fontSize, theme, lineHeight, pushSpecificLine } = options;
   const match = token.match(/^(\S+)(\s*)$/);
   if (!match) return undefined;
-  const [, word, trailingSpace] = match;
+  const [, rawWord, trailingSpace] = match;
+  const punctuation = rawWord.match(/^(.*?[A-Za-z])([,.;:!?%)}\]”’]*)$/);
+  const word = punctuation?.[1] ?? rawWord;
+  const trailingSuffix = `${punctuation?.[2] ?? ""}${trailingSpace}`;
   const points = hyphenator.points(word);
   if (!points.length) return undefined;
 
@@ -184,16 +187,16 @@ function placeHyphenatedToken(options: {
   let handled = false;
 
   while (remaining) {
-    const remainingWidth = measureText(remaining + trailingSpace, textMeasureOptions(run, fontSize, theme));
+    const remainingWidth = measureText(remaining + trailingSuffix, textMeasureOptions(run, fontSize, theme));
     if (current.length === 0 && remainingWidth <= maxWidth) {
-      current.push({ ...run, text: remaining + trailingSpace });
+      current.push({ ...run, text: remaining + trailingSuffix });
       currentWidth += remainingWidth;
       currentHeight = Math.max(currentHeight, lineHeight);
       handled = true;
       break;
     }
     if (current.length > 0 && currentWidth + remainingWidth <= maxWidth) {
-      current.push({ ...run, text: remaining + trailingSpace });
+      current.push({ ...run, text: remaining + trailingSuffix });
       currentWidth += remainingWidth;
       currentHeight = Math.max(currentHeight, lineHeight);
       handled = true;

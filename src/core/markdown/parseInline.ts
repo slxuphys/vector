@@ -8,7 +8,7 @@ export function parseInline(text: string): InlineNode[] {
   let rest = text;
 
   while (rest.length > 0) {
-    const match = rest.match(/(\*\*[^*]+\*\*|_[^_]+_|`[^`]+`|\[[^\]]+]\([^)]+\)|\$[^$]+\$)/);
+    const match = rest.match(/(\*\*[^*]+\*\*|(?<![\w:])_[^_\n]+_(?!\w)|`[^`]+`|\[[^\]]+]\([^)]+\)|\$[^$]+\$)/);
     if (!match || match.index === undefined) {
       nodes.push(...textNodes(rest));
       break;

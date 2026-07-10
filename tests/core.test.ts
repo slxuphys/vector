@@ -333,6 +333,59 @@ Paragraph text.`;
     expect(paragraph?.sourceSpan?.start).toBe(source.indexOf("Paragraph text."));
   });
 
+  it("does not render environments whose lines are commented out", () => {
+    const ast = parseLatex(`\\begin{document}
+% \\begin{equation}
+% x
+% \\end{equation}
+Visible text.
+\\end{document}`);
+    const serialized = JSON.stringify(ast);
+
+    expect(ast.children.some((node) => node.type === "mathBlock")).toBe(false);
+    expect(serialized).not.toContain('"text":"x"');
+    expect(serialized).toContain("Visible text.");
+  });
+
+  it("renders missing LaTeX equation references as unresolved markers", () => {
+    const ast = resolveCrossReferences(parseLatex(`\\begin{document}
+See \\eqref{eq:decomp_U}; raw \\ref{eq:decomp_U}.
+\\end{document}`));
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      const unresolved = paragraph.children.filter((node) => node.type === "text" && node.color === "#b42318");
+      expect(unresolved).toEqual([
+        { type: "text", text: "(??)", color: "#b42318" },
+        { type: "text", text: "??", color: "#b42318" }
+      ]);
+    }
+  });
+
+  it("supports apostrophes in LaTeX labels and references", () => {
+    const ast = resolveCrossReferences(parseLatex(`\\begin{document}
+\\begin{equation}
+y = k
+\\label{eq:yk'}
+\\end{equation}
+See \\eqref{eq:yk'}.
+\\end{document}`));
+    const equation = ast.children.find((node) => node.type === "mathBlock");
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(equation?.type).toBe("mathBlock");
+    if (equation?.type === "mathBlock") expect(equation.label).toBe("eq:yk'");
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toContainEqual({
+        type: "link",
+        href: "#eq:yk'",
+        children: [{ type: "text", text: "(1)" }]
+      });
+    }
+  });
+
   it("expands document-order LaTeX macro definitions before parsing", () => {
     const ast = parseLatex(`Before $\\R$.
 
@@ -501,6 +554,22 @@ Prior work\\cite{einstein1905} is pending bibliography support.
       expect(image.label).toBe("fig:phase");
       expect(image.width).toEqual({ value: 65, unit: "percent" });
     }
+  });
+
+  it("renders inline math inside LaTeX figure captions", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex", mathRenderer: "native-openmath" });
+    const { layout } = await engine.layout(`\\begin{document}
+\\begin{figure}
+\\includegraphics{figures/phase-space.svg}
+\\caption{Energy $E=mc^2$ is conserved.}
+\\end{figure}
+\\end{document}`);
+    const captionMath = layout.pages[0].objects.find((object) => object.type === "math" && object.latex === "E=mc^2");
+    const literalCaptionMath = layout.pages[0].objects.find((object) => object.type === "text" && object.text.includes("$E=mc^2$"));
+
+    expect(captionMath?.type).toBe("math");
+    expect(literalCaptionMath).toBeUndefined();
+    if (captionMath?.type === "math") expect(captionMath.displayMode).toBe(false);
   });
 
   it("does not route latex figures through markdown image syntax", () => {
@@ -1238,6 +1307,68 @@ ${repeated}
     expect(rendered.some((line) => line.endsWith("-"))).toBe(true);
   });
 
+  it("allows representation to break at represent-ation", () => {
+    const fontSize = 12;
+    const maxWidth = measureText("represent-", {
+      fontSize,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    }) + 0.5;
+    const lines = breakRunsIntoLines(
+      [{ text: "representation" }],
+      maxWidth,
+      fontSize,
+      defaultTheme,
+      undefined,
+      "native-openmath",
+      undefined,
+      undefined,
+      {
+        ...defaultLayoutConfig,
+        lineBreaking: {
+          algorithm: "greedy",
+          hyphenation: true,
+          language: "en-US"
+        }
+      }
+    );
+    const rendered = lines.map((line) => line.runs.map((run) => run.text).join(""));
+
+    expect(rendered[0]).toBe("represent-");
+    expect(rendered.slice(1).join("")).toBe("ation");
+  });
+
+  it("hyphenates words before trailing punctuation", () => {
+    const fontSize = 12;
+    const maxWidth = measureText("represent-", {
+      fontSize,
+      fontFamily: defaultTheme.fontFamily,
+      monoFontFamily: defaultTheme.monoFontFamily
+    }) + 0.5;
+    const lines = breakRunsIntoLines(
+      [{ text: "representation, " }],
+      maxWidth,
+      fontSize,
+      defaultTheme,
+      undefined,
+      "native-openmath",
+      undefined,
+      undefined,
+      {
+        ...defaultLayoutConfig,
+        lineBreaking: {
+          algorithm: "greedy",
+          hyphenation: true,
+          language: "en-US"
+        }
+      }
+    );
+    const rendered = lines.map((line) => line.runs.map((run) => run.text).join(""));
+
+    expect(rendered[0]).toBe("represent-");
+    expect(rendered.slice(1).join("")).toBe("ation, ");
+  });
+
   it("does not hyphenate URL-like words", () => {
     const lines = breakRunsIntoLines(
       [{ text: "https://example.com/electromagnetohydrodynamics" }],
@@ -1663,6 +1794,33 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(text).not.toContain("dagger");
   });
 
+  it("renders perp as an upright relation with relation spacing", () => {
+    const layout = layoutNativeMath("x \\perp y", false, 12, defaultOpenMathMetrics, "openmath");
+    const compact = layoutNativeMath("x \\perp y", false, 12, {
+      ...defaultOpenMathMetrics,
+      relationMargin: 0
+    }, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toContain("⟂");
+    expect(glyphs.find((node) => node.text === "⟂")?.italic).not.toBe(true);
+    expect(layout.width).toBeGreaterThan(compact.width);
+  });
+
+  it("renders common comparison commands as spaced relations", () => {
+    const latex = "a \\geq b \\gg c \\ll d \\leq e \\neq f";
+    const layout = layoutNativeMath(latex, false, 12, defaultOpenMathMetrics, "openmath");
+    const compact = layoutNativeMath(latex, false, 12, {
+      ...defaultOpenMathMetrics,
+      relationMargin: 0
+    }, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(glyphs.map((node) => node.text)).toEqual(["𝑎", "≥", "𝑏", "≫", "𝑐", "≪", "𝑑", "≤", "𝑒", "≠", "𝑓"]);
+    expect(glyphs.filter((node) => ["≥", "≫", "≪", "≤", "≠"].includes(node.text)).every((node) => node.italic !== true)).toBe(true);
+    expect(layout.width).toBeGreaterThan(compact.width);
+  });
+
   it("renders arrow and escaped brace commands as native glyphs", () => {
     const layout = layoutNativeMath("\\uparrow \\downarrow \\leftarrow \\rightarrow \\{ x \\}", false, 12, defaultOpenMathMetrics, "openmath");
     const text = layout.nodes
@@ -1992,6 +2150,21 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(c?.type).toBe("glyph");
     if (a?.type === "glyph" && c?.type === "glyph") expect(c.y).toBeGreaterThan(a.y);
     expect(text).not.toContain("⟦begin⟧");
+  });
+
+  it("lays out aligned rows on shared ampersand axes", () => {
+    const layout = layoutNativeMath(`\\begin{aligned}
+      x &= y \\\\
+      &= \\frac{a}{b}
+    \\end{aligned}`, true, 12, defaultOpenMathMetrics, "openmath");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const equals = glyphs.filter((node) => node.text === "=");
+
+    expect(equals).toHaveLength(2);
+    expect(equals[0].x).toBeCloseTo(equals[1].x, 5);
+    expect(equals[1].y).toBeGreaterThan(equals[0].y);
+    expect(layout.nodes.some((node) => node.type === "rule")).toBe(true);
+    expect(glyphs.map((node) => node.text).join("")).not.toContain("aligned");
   });
 
   it("collapses unknown native math environments without parsing their body", () => {

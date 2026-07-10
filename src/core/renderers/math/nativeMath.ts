@@ -332,6 +332,7 @@ const commandGlyphs: Record<string, string> = {
   "\\otimes": "⊗",
   "\\circ": "∘",
   "\\dagger": "†",
+  "\\perp": "⟂",
   "\\uparrow": "↑",
   "\\downarrow": "↓",
   "\\leftarrow": "←",
@@ -379,7 +380,12 @@ const commandGlyphs: Record<string, string> = {
   "\\pm": "±",
   "\\times": "×",
   "\\le": "≤",
+  "\\leq": "≤",
   "\\ge": "≥",
+  "\\geq": "≥",
+  "\\neq": "≠",
+  "\\gg": "≫",
+  "\\ll": "≪",
   "\\in": "∈",
   "\\to": "→",
   "\\Rightarrow": "⇒",
@@ -397,6 +403,14 @@ const uprightCommandGlyphs = new Set([
   "\\otimes",
   "\\circ",
   "\\dagger",
+  "\\perp",
+  "\\le",
+  "\\leq",
+  "\\ge",
+  "\\geq",
+  "\\neq",
+  "\\gg",
+  "\\ll",
   "\\uparrow",
   "\\downarrow",
   "\\leftarrow",
@@ -624,6 +638,7 @@ const matrixEnvironmentNames = new Set([
   "smallmatrix",
   "cases"
 ]);
+const alignedEnvironmentNames = new Set(["aligned", "align", "align*"]);
 
 function layoutSequence(
   input: string,
@@ -1939,7 +1954,9 @@ function layoutEnvironment(
 
   const body = environment.known && matrixEnvironmentNames.has(environment.name)
     ? layoutMatrixEnvironment(environment, fontSize, displayMode, metrics, profile)
-    : layoutSequence(normalizeEnvironmentBody(environment.body), fontSize, displayMode, metrics, profile);
+    : environment.known && alignedEnvironmentNames.has(environment.name)
+      ? layoutAlignedEnvironment(environment, fontSize, displayMode, metrics, profile)
+      : layoutSequence(normalizeEnvironmentBody(environment.body), fontSize, displayMode, metrics, profile);
   const delimiter = environmentDelimiters[environment.name];
   const bodyBox = delimiter ? wrapBoxWithDelimiters(body, delimiter, fontSize, profile) : body;
   if (environment.known && environment.closed) return bodyBox;
@@ -2006,6 +2023,74 @@ function layoutMatrixEnvironment(
       inkTop = Math.min(inkTop, cellY + cell.inkTop);
       inkBottom = Math.max(inkBottom, cellY + cell.inkBottom);
       x += columnWidth + columnGap;
+    }
+    y += rowAscents[rowIndex] + rowDescents[rowIndex] + rowGap;
+  }
+
+  if (!Number.isFinite(inkTop) || !Number.isFinite(inkBottom)) {
+    inkTop = 0;
+    inkBottom = totalHeight;
+  }
+
+  return {
+    width: contentWidth,
+    height: totalHeight,
+    baseline,
+    ascent: baseline,
+    descent: Math.max(0, totalHeight - baseline),
+    inkTop,
+    inkBottom,
+    nodes
+  };
+}
+
+function layoutAlignedEnvironment(
+  environment: ParsedEnvironment,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const rows = splitEnvironmentRows(environment.body).map((row) => splitEnvironmentColumns(row));
+  const normalizedRows = rows.length ? rows : [[""]];
+  const columnCount = Math.max(1, ...normalizedRows.map((row) => row.length));
+  const cellRows = normalizedRows.map((row) => (
+    Array.from({ length: columnCount }, (_, columnIndex) => (
+      layoutSequence((row[columnIndex] ?? "").trim(), fontSize, displayMode, metrics, profile)
+    ))
+  ));
+  const columnWidths = Array.from({ length: columnCount }, (_, columnIndex) => (
+    Math.max(...cellRows.map((row) => row[columnIndex]?.width ?? 0), 0)
+  ));
+  const columnGaps = Array.from({ length: Math.max(0, columnCount - 1) }, (_, columnIndex) => (
+    fontSize * (columnIndex % 2 === 0 ? metrics.relationMargin : 1.5)
+  ));
+  const rowAscents = cellRows.map((row) => Math.max(...row.map((cell) => cell.ascent), fontSize * 0.75));
+  const rowDescents = cellRows.map((row) => Math.max(...row.map((cell) => cell.descent), fontSize * 0.25));
+  const rowGap = fontSize * 0.38;
+  const contentWidth = columnWidths.reduce((sum, width) => sum + width, 0)
+    + columnGaps.reduce((sum, gap) => sum + gap, 0);
+  const totalHeight = rowAscents.reduce((sum, ascent) => sum + ascent, 0)
+    + rowDescents.reduce((sum, descent) => sum + descent, 0)
+    + rowGap * Math.max(0, cellRows.length - 1);
+  const baseline = totalHeight / 2 + fontSize * 0.18;
+  const nodes: NativeNode[] = [];
+  let y = 0;
+  let inkTop = Number.POSITIVE_INFINITY;
+  let inkBottom = Number.NEGATIVE_INFINITY;
+
+  for (let rowIndex = 0; rowIndex < cellRows.length; rowIndex += 1) {
+    const rowBaseline = y + rowAscents[rowIndex];
+    let x = 0;
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      const cell = cellRows[rowIndex][columnIndex];
+      const columnWidth = columnWidths[columnIndex];
+      const cellX = x + (columnIndex % 2 === 0 ? columnWidth - cell.width : 0);
+      const cellY = rowBaseline - cell.baseline;
+      nodes.push(...translateNodes(cell.nodes, cellX, cellY));
+      inkTop = Math.min(inkTop, cellY + cell.inkTop);
+      inkBottom = Math.max(inkBottom, cellY + cell.inkBottom);
+      x += columnWidth + (columnGaps[columnIndex] ?? 0);
     }
     y += rowAscents[rowIndex] + rowDescents[rowIndex] + rowGap;
   }
@@ -2563,7 +2648,7 @@ function estimateWidth(text: string, fontSize: number): number {
   for (const char of Array.from(text)) {
     if (char === " ") width += fontSize * 0.28;
     else if (/^[il.,;:|]$/.test(char)) width += fontSize * 0.24;
-    else if (/^[=+\-×≤≥→⇒⋅]$/.test(char)) width += fontSize * 0.72;
+    else if (/^[=+\-×≤≥≠≫≪→⇒⋅⟂]$/.test(char)) width += fontSize * 0.72;
     else if (/^[A-Z∇∂√∞]$/.test(char)) width += fontSize * 0.72;
     else width += fontSize * 0.52;
   }

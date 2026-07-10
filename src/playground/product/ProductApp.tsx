@@ -1,107 +1,88 @@
-import { useMemo, useState } from "react";
-import { MarkdownEditorPreview } from "../../react/MarkdownEditorPreview";
-import { defaultTheme } from "../../core/theme/defaultTheme";
+import { useEffect, useMemo, useState } from "react";
+import { FlaskConical } from "lucide-react";
+import { MarkdownEditorPreview, type WorkspaceLayoutMode } from "../../react/MarkdownEditorPreview";
 import {
   openMathTextFontFaceCss,
   openMathTextFontStack
 } from "../../core/renderers/text/latinModernRomanFont";
 import type { EngineOptions } from "../../core/engine/engineTypes";
-import type { OpenMathFontProfileName } from "../../core/renderers/math/openMathFont";
-import type { NativeMathFontProfileName } from "../../core/renderers/math/nativeMathProfiles";
-import {
-  productExampleLabels,
-  productExamples,
-  productExamplesByFormat,
-  type ProductExampleKey,
-  type ProductFormat
-} from "./productExamples";
-
-type ProductFont = OpenMathFontProfileName;
+import { ProjectSidebar } from "./ProjectSidebar";
+import { ProjectSelector } from "./ProjectSelector";
+import { useProjectFileSystem } from "./useProjectFileSystem";
+import { WorkspaceRibbon } from "./WorkspaceRibbon";
 
 export function ProductApp() {
-  const [sourceFormat, setSourceFormat] = useState<ProductFormat>("latex");
-  const [sampleByFormat, setSampleByFormat] = useState<Record<ProductFormat, ProductExampleKey>>({
-    markdown: "markdownNote",
-    latex: "latexArticle"
+  const fileSystem = useProjectFileSystem();
+  const [filesVisible, setFilesVisible] = useState(true);
+  const [layoutMode, setLayoutMode] = useState<WorkspaceLayoutMode>("split");
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = window.localStorage.getItem("vector-ui-theme");
+    return saved === "dark" ? "dark" : "light";
   });
-  const [font, setFont] = useState<ProductFont>("latin-modern");
-  const [pageSize, setPageSize] = useState<"letter" | "a4">("letter");
 
-  const sample = sampleByFormat[sourceFormat];
-  const sampleOptions = productExamplesByFormat[sourceFormat];
-  const nativeMathProfile = useMemo<NativeMathFontProfileName>(() => {
-    if (font === "new-computer-modern") return "openmath-new-computer-modern";
-    if (font === "libertinus") return "openmath-libertinus";
-    return "openmath";
-  }, [font]);
+  useEffect(() => {
+    window.localStorage.setItem("vector-ui-theme", theme);
+  }, [theme]);
+
+  const { projects, project, activeFile, activePath, projectId } = fileSystem;
+  const previewAvailable = activeFile.language === "markdown" || activeFile.language === "latex";
+  const sourceFormat = activeFile.language === "latex" ? "latex" : "markdown";
   const options = useMemo<EngineOptions>(() => ({
-    pageSize,
+    pageSize: "letter",
     sourceFormat,
     mathRenderer: "native-openmath",
-    nativeMathProfile,
-    theme: sourceFormat === "latex"
-      ? {
-          fontFamily: openMathTextFontStack(font),
-          fontFaceCss: openMathTextFontFaceCss(font)
-        }
-      : {
-          ...defaultTheme,
-          fontFamily: openMathTextFontStack(font),
-          fontFaceCss: openMathTextFontFaceCss(font)
-        },
-  }), [font, nativeMathProfile, pageSize, sourceFormat]);
+    nativeMathProfile: "openmath",
+    theme: {
+      fontFamily: openMathTextFontStack("latin-modern"),
+      fontFaceCss: openMathTextFontFaceCss("latin-modern")
+    }
+  }), [sourceFormat]);
 
   return (
-    <main className="app app-product">
-      <header className="app-header">
-        <h1>Vector Preview</h1>
-        <div className="app-controls">
-          <label>
-            Format
-            <select
-              value={sourceFormat}
-              onChange={(event) => setSourceFormat(event.target.value as ProductFormat)}
-            >
-              <option value="markdown">Markdown</option>
-              <option value="latex">LaTeX</option>
-            </select>
-          </label>
-          <label>
-            Example
-            <select
-              value={sample}
-              onChange={(event) => setSampleByFormat((current) => ({
-                ...current,
-                [sourceFormat]: event.target.value as ProductExampleKey
-              }))}
-            >
-              {Object.keys(sampleOptions).map((key) => (
-                <option key={key} value={key}>{productExampleLabels[key as ProductExampleKey]}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Font
-            <select value={font} onChange={(event) => setFont(event.target.value as ProductFont)}>
-              <option value="latin-modern">Latin Modern</option>
-              <option value="libertinus">Libertinus</option>
-              <option value="new-computer-modern">New Computer Modern</option>
-            </select>
-          </label>
-          <label>
-            Page
-            <select value={pageSize} onChange={(event) => setPageSize(event.target.value as "letter" | "a4")}>
-              <option value="letter">Letter</option>
-              <option value="a4">A4</option>
-            </select>
-          </label>
-          <a className="app-lab-link" href="?mode=lab">Debug lab</a>
+    <main className={`app app-product app-theme-${theme}`}>
+      <header className="product-header">
+        <div className="product-brand">
+          <span className="product-mark">V</span>
+          <h1>Vector</h1>
         </div>
+        <ProjectSelector projects={projects} projectId={projectId} onProjectSelect={fileSystem.selectProject} />
+        <a className="app-lab-link" href="?mode=lab" title="Open debug lab">
+          <FlaskConical size={16} aria-hidden="true" />
+          <span>Debug lab</span>
+        </a>
       </header>
       <MarkdownEditorPreview
-        key={`${sourceFormat}:${sample}`}
-        initialMarkdown={productExamples[sample]}
+        key={`${project.id}:${activeFile.path}`}
+        initialMarkdown={activeFile.content}
         options={options}
+        toolbarPlacement="preview"
+        onSourceChange={fileSystem.updateActiveFile}
+        layoutMode={layoutMode}
+        leftPanelCompact={!filesVisible}
+        editorTheme={theme}
+        editorSourceFormat={activeFile.language === "latex" ? "latex" : activeFile.language === "markdown" ? "markdown" : "text"}
+        previewAvailable={previewAvailable}
+        previewUnavailableMessage={`Preview is not available for ${activeFile.path}.`}
+        leftPanel={(
+          <div className={filesVisible ? "project-navigation" : "project-navigation project-navigation-collapsed"}>
+            <WorkspaceRibbon
+              filesVisible={filesVisible}
+              layoutMode={layoutMode}
+              theme={theme}
+              onFilesToggle={() => setFilesVisible((visible) => !visible)}
+              onLayoutChange={setLayoutMode}
+              onThemeToggle={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+            />
+            {filesVisible ? (
+              <ProjectSidebar
+                files={project.files}
+                activePath={activeFile.path}
+                onFileSelect={fileSystem.selectFile}
+                onFileAdd={fileSystem.addFile}
+              />
+            ) : null}
+          </div>
+        )}
       />
     </main>
   );

@@ -1,9 +1,10 @@
-import type { LayoutBlock, InlineRun, TitleMatter } from "./layoutBlocks";
+import { flattenInline, type LayoutBlock, type InlineRun, type TitleMatter } from "./layoutBlocks";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/engineTypes";
 import { isNativeMathRenderer, type NativeMathLayout, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
+import { parseInline } from "../markdown/parseInline";
 
 export type MathMeasureRequest = {
   key: string;
@@ -76,6 +77,9 @@ export function collectMathMeasureRequests(
       const latex = block.text.replace(/\s+/g, " ").trim();
       const key = mathMeasureKey(latex, true, fontSize, renderer, nativeMetrics, nativeMathProfile);
       requests.set(key, { key, latex, displayMode: true, fontSize, color: theme.text, nativeMetrics, nativeMathProfile });
+    } else if ((block.type === "image" || block.type === "graphsx") && block.caption) {
+      const fontSize = theme.fontSize * 0.86;
+      flattenInline(parseInline(block.caption)).forEach((run) => addRun(run, fontSize, theme.text));
     }
   }
 
