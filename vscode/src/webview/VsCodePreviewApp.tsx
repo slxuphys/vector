@@ -97,7 +97,7 @@ export function VsCodePreviewApp() {
         pendingRef.current = pending;
         setError(undefined);
         setStatus(`${message.stats.pageCount} pages, laid out in ${message.stats.totalMs.toFixed(1)} ms`);
-        const initial = pageMeta.slice(0, Math.min(3, pageMeta.length)).map((meta) => meta.index);
+        const initial = visibleIndexesForMeta(pageMeta, scrollRef.current, zoom);
         initial.forEach((index) => pending.requested.add(index));
         requestPages(pending.updateId, initial);
         return;
@@ -136,7 +136,7 @@ export function VsCodePreviewApp() {
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [requestPages]);
+  }, [requestPages, zoom]);
 
   const revealSource = (pageIndex: number, y: number, start: number, end: number) => {
     const pane = scrollRef.current;
@@ -208,6 +208,39 @@ function scaleSvg(svg: string, meta: PageMeta, zoom: number): string {
     const withoutSize = attrs.replace(/\s(?:width|height)="[^"]*"/g, "");
     return `<svg${withoutSize} width="${meta.width * zoom}" height="${meta.height * zoom}">`;
   });
+}
+
+function visibleIndexesForMeta(metaList: PageMeta[], pane: HTMLDivElement | null, zoom: number): number[] {
+  if (metaList.length === 0) return [];
+  if (!pane) return metaList.slice(0, Math.min(3, metaList.length)).map((meta) => meta.index);
+
+  const viewportTop = pane.scrollTop;
+  const viewportBottom = viewportTop + pane.clientHeight;
+  const buffer = Math.max(pane.clientHeight * 1.25, 900);
+  const indexes: number[] = [];
+  let pageTop = 28;
+
+  for (const meta of metaList) {
+    const pageHeight = meta.height * zoom;
+    const pageBottom = pageTop + pageHeight;
+    if (pageBottom >= viewportTop - buffer && pageTop <= viewportBottom + buffer) indexes.push(meta.index);
+    pageTop = pageBottom + 24;
+  }
+
+  if (indexes.length > 0) return indexes;
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  pageTop = 28;
+  for (const meta of metaList) {
+    const distance = Math.abs(pageTop - viewportTop);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = meta.index;
+    }
+    pageTop += meta.height * zoom + 24;
+  }
+  return [nearestIndex];
 }
 
 function acknowledge(message: any, payloads: PagePayload[], totalPages: number, receivedAt: number, receivedEpochMs: number) {
