@@ -21,6 +21,16 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Vector",
+      "properties": {
+        "vector.debug.pdf": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log PDF display-list signatures and export timings."
+        }
+      }
+    },
     "commands": [
       {
         "command": "vector.openPreview",

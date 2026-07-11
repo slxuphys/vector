@@ -12,7 +12,8 @@
     "build:playground": "tsc && vite build --config vite.playground.config.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "test:parity": "node scripts/test-pdf-parity.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",
@@ -22,6 +23,7 @@
     "@codemirror/view": "^6.38.1",
     "@lezer/highlight": "^1.2.3",
     "@pdf-lib/fontkit": "^1.1.1",
+    "@resvg/resvg-wasm": "^2.6.2",
     "@slxu/graphsx": "^0.1.6",
     "codemirror-lang-latex": "^0.4.1",
     "harfbuzzjs": "^1.4.0",

@@ -10,7 +10,7 @@ import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactS
 import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
 import { drawPdfNativeMath } from "./pdfNativeMath";
-import { drawPdfImage } from "./pdfImage";
+import { drawPdfImage, type PdfImageServices } from "./pdfImage";
 import { drawPdfGraphSX } from "./pdfGraphSX";
 import { isNativeMathRenderer } from "../math/nativeMath";
 import { collectPdfLinkTargets } from "./pdfLinks";
@@ -20,10 +20,11 @@ export type PdfRenderOptions = {
   mathPdfMode?: "raster" | "vector" | "glyph";
   subsetFonts?: boolean;
   debugLabel?: string;
+  imageServices?: PdfImageServices;
 };
 
 export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOptions = {}): Promise<Uint8Array> {
-  logPdfDisplayList(layout, options.debugLabel ?? "unknown");
+  if (isDebugLogEnabled("pdf")) logPdfDisplayList(layout, options.debugLabel ?? "unknown");
   const subsetFonts = options.subsetFonts ?? false;
   if (!subsetFonts) return renderToPdfAttempt(layout, options, false);
 
@@ -146,7 +147,7 @@ async function renderToPdfAttempt(
         }
       } else if (object.type === "image") {
         objectCounts.image += 1;
-        await drawPdfImage(pdf, page, object, fonts, displayPage.height);
+        await drawPdfImage(pdf, page, object, fonts, displayPage.height, options.imageServices);
       } else if (object.type === "graphsx") {
         objectCounts.graphsx += 1;
         drawPdfGraphSX(page, object, fonts, displayPage.height);

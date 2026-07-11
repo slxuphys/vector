@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { PageRequestMessage, VectorPreviewPanel } from "./previewPanel";
 import { createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg, renderToPdf } from "./previewBundle";
 import type { PagedDisplayList } from "../../src/core/display-list/displayTypes";
+import { createNodePdfImageServices } from "./nodePdfImage";
 
 const previewDebounceMs = 150;
 const pendingUpdates = new Map<number, PreviewTiming>();
@@ -10,6 +11,7 @@ let activePreview: ActivePreview | undefined;
 let pdfExportInProgress = false;
 
 export function activate(context: vscode.ExtensionContext) {
+  applyDebugSettings();
   let previewPanel: VectorPreviewPanel | undefined;
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -122,6 +124,9 @@ export function activate(context: vscode.ExtensionContext) {
       if (previewPanel?.alive && editor?.document) {
         scheduleRender(editor.document, 0);
       }
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("vector.debug.pdf")) applyDebugSettings();
     })
   );
 }
@@ -153,7 +158,15 @@ type VectorPreviewBundle = {
     }>;
   };
   renderPageToSvg(page: DisplayPage, options?: { includeFontCss?: boolean }): string;
-  renderToPdf(layout: PagedDisplayList, options?: { mathPdfMode?: "vector"; subsetFonts?: boolean; debugLabel?: string }): Promise<Uint8Array>;
+  renderToPdf(layout: PagedDisplayList, options?: {
+    mathPdfMode?: "vector";
+    subsetFonts?: boolean;
+    debugLabel?: string;
+    imageServices?: {
+      load?: (src: string) => Promise<Uint8Array | undefined>;
+      rasterizeSvg?: (svg: Uint8Array, width: number, height: number) => Promise<Uint8Array | undefined>;
+    };
+  }): Promise<Uint8Array>;
 };
 
 async function renderPreview(
@@ -188,6 +201,8 @@ async function renderPreview(
     activePreview = {
       updateId: serial,
       documentUri: document.uri.toString(),
+      documentVersion: document.version,
+      layout: result.layout,
       pages: result.layout.pages,
       stats: result.stats,
       pageMeta: result.layout.pages.map((page, index) => ({
@@ -211,24 +226,21 @@ async function exportPdf(panel?: VectorPreviewPanel): Promise<void> {
   const document = documentForExport();
   if (!document) return;
   pdfExportInProgress = true;
-  const sourceFormat = document.languageId === "latex" || document.fileName.endsWith(".tex") ? "latex" : "markdown";
   await panel?.setExportStatus("pending", "Exporting PDF...");
 
   try {
+    if (!activePreview || activePreview.documentUri !== document.uri.toString()) {
+      throw new Error("Open the Vector preview before exporting this document.");
+    }
+    if (activePreview.documentVersion !== document.version) {
+      throw new Error("The preview is still updating. Export again when the latest page is visible.");
+    }
     const bundle = loadPreviewBundle();
-    await bundle.loadNativeMathFonts();
-    const bibliographyFiles = await loadBibliographyFiles(document, sourceFormat);
-    const engine = bundle.createDocumentEngine({
-      sourceFormat,
-      mathRenderer: "native-openmath",
-      nativeMathProfile: "openmath",
-      bibliographyFiles
-    });
-    const result = await engine.layout(document.getText());
-    const bytes = await bundle.renderToPdf(result.layout, {
+    const bytes = await bundle.renderToPdf(activePreview.layout, {
       mathPdfMode: "vector",
       subsetFonts: true,
-      debugLabel: "vscode"
+      debugLabel: "vscode",
+      imageServices: createNodePdfImageServices(document)
     });
     const target = await exportTargetFor(document);
     if (!target) {
@@ -380,11 +392,20 @@ type DisplayPage = Parameters<typeof renderPageToSvg>[0];
 type ActivePreview = {
   updateId: number;
   documentUri: string;
+  documentVersion: number;
+  layout: PagedDisplayList;
   pages: DisplayPage[];
   stats: { pageCount: number; totalMs: number; parseMs?: number; layoutMs?: number };
   pageMeta: PageMeta[];
   renderedCache: Map<number, string>;
 };
+
+function applyDebugSettings(): void {
+  const enabled = vscode.workspace.getConfiguration("vector.debug").get<boolean>("pdf", false);
+  (globalThis as typeof globalThis & { __SVG_MD_DEBUG_LOGS__?: Record<string, boolean> }).__SVG_MD_DEBUG_LOGS__ = {
+    pdf: enabled
+  };
+}
 
 type PageMeta = {
   index: number;

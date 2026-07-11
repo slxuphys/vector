@@ -2,18 +2,25 @@ import type { PDFDocument, PDFPage } from "pdf-lib";
 import { rgb } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { sanitizeImageUrl } from "../../utils/sanitize";
+import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { svgToDataUrl } from "../math/renderKatex";
 import type { PdfFontSet } from "./pdfFonts";
 import { hexToRgb } from "./pdfText";
 
 type ImageObject = Extract<DisplayObject, { type: "image" }>;
 
+export type PdfImageServices = {
+  load?: (src: string) => Promise<Uint8Array | undefined>;
+  rasterizeSvg?: (svg: Uint8Array, width: number, height: number) => Promise<Uint8Array | undefined>;
+};
+
 export async function drawPdfImage(
   pdf: PDFDocument,
   page: PDFPage,
   object: ImageObject,
   fonts: PdfFontSet,
-  pageHeight: number
+  pageHeight: number,
+  services: PdfImageServices = {}
 ): Promise<boolean> {
   const src = sanitizeImageUrl(object.src);
   if (!src) {
@@ -22,10 +29,12 @@ export async function drawPdfImage(
   }
 
   try {
-    const bytes = await loadImageBytes(src);
+    const bytes = await services.load?.(src) ?? await loadImageBytes(src);
     const imageBytes = isSvg(bytes, src)
-      ? await rasterizeSvgBytes(bytes, object.width, object.height)
+      ? await services.rasterizeSvg?.(bytes, object.width, object.height)
+        ?? await rasterizeSvgBytes(bytes, object.width, object.height)
       : bytes;
+    if (isSvg(imageBytes, src)) throw new Error("SVG rasterization is unavailable in this runtime");
     const image = isJpeg(imageBytes, src)
       ? await pdf.embedJpg(imageBytes)
       : isPng(imageBytes, src) || isSvg(bytes, src)
@@ -43,7 +52,8 @@ export async function drawPdfImage(
       height: fitted.height
     });
     return true;
-  } catch {
+  } catch (error) {
+    if (isDebugLogEnabled("pdf")) console.warn("[pdf-image-fallback]", { src, error });
     drawImagePlaceholder(page, object, fonts, pageHeight);
     return false;
   }
