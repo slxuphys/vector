@@ -1,7 +1,7 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
 import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefAnchor, type CrossRefConfig, type CrossRefKind } from "./xrefTypes";
 
-const refPattern = /@(!)?((?:eq|fig|tbl|sec):[A-Za-z][\w:'-]*(?:\.[A-Za-z0-9_'-]+)*)/g;
+const refPattern = /@(!)?((?:eq|fig|tbl|sec)(?::|-)[A-Za-z][\w:'-]*(?:\.[A-Za-z0-9_'-]+)*)/g;
 
 export function resolveCrossReferences(
   ast: MarkdownAst,
@@ -26,7 +26,7 @@ function numberSectionHeadings(nodes: MarkdownNode[], enabled: boolean, style: "
   const firstHeading = nodes.find((node): node is Extract<MarkdownNode, { type: "heading" }> => node.type === "heading" && !node.title);
   const firstSectionLevel = firstHeading?.level ?? 1;
   return nodes.map((node) => {
-    if (node.type !== "heading" || node.title) return node;
+    if (node.type !== "heading" || node.title || node.unnumbered) return node;
     const rawLevel = Math.max(1, Math.min(6, node.level));
     const sectionLevel = Math.max(1, rawLevel - firstSectionLevel + 1);
     counters[sectionLevel - 1] += 1;
@@ -102,6 +102,10 @@ function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
   for (const node of nodes) {
     if (node.type === "heading") {
       if (node.title) continue;
+      if (node.unnumbered) {
+        if (node.label) anchors.set(node.label, { id: node.label, kind: "section", number: "" });
+        continue;
+      }
       const level = Math.max(1, Math.min(6, node.level));
       sectionCounters[level - 1] += 1;
       for (let index = level; index < sectionCounters.length; index += 1) sectionCounters[index] = 0;
@@ -180,7 +184,7 @@ function resolveTextReferences(node: Extract<InlineNode, { type: "text" }>, anch
     const index = match.index ?? 0;
     if (index > cursor) nodes.push({ ...node, text: text.slice(cursor, index) });
     const rawNumberOnly = Boolean(match[1]);
-    const id = match[2];
+    const id = canonicalReferenceId(match[2]);
     const anchor = anchors.get(id);
     const resolved = anchor
       ? rawNumberOnly ? anchor.number : formatReference(id, anchor, config)
@@ -226,4 +230,8 @@ function kindForPrefix(prefix: string): CrossRefKind | undefined {
   if (prefix === "tbl") return "table";
   if (prefix === "sec") return "section";
   return undefined;
+}
+
+function canonicalReferenceId(id: string): string {
+  return id.replace(/^(eq|fig|tbl|sec)-/, "$1:");
 }

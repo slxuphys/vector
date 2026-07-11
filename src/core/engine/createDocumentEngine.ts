@@ -10,6 +10,8 @@ import type { PageConfig } from "../layout/pageConfig";
 import { normalizeAst } from "../markdown/normalizeAst";
 import { parseMarkdown } from "../markdown/parseMarkdown";
 import { parseLatex } from "../latex/parseLatex";
+import { readLatexBibliographyPaths } from "../latex/parseLatex";
+import { resolveCitations } from "../citations/resolveCitations";
 import { resolveCrossReferences } from "../xref/resolveReferences";
 import { defaultTheme } from "../theme/defaultTheme";
 import {
@@ -98,7 +100,15 @@ function prepareMarkdownLayoutFromDocument(
     ...(resolvedOptions.document ?? {})
   };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const ast = resolveCrossReferences(parseSourceAst(document.markdown, resolvedOptions.sourceFormat, document.sourceOffset), crossRef, {
+  const sourceAst = parseSourceAst(document.markdown, resolvedOptions.sourceFormat, document.sourceOffset);
+  const bibliographyPaths = resolvedOptions.sourceFormat === "latex"
+    ? readLatexBibliographyPaths(document.markdown)
+    : document.frontMatter?.bibliography ? [document.frontMatter.bibliography] : [];
+  const citedAst = resolveCitations(sourceAst, {
+    paths: bibliographyPaths,
+    files: resolvedOptions.bibliographyFiles
+  });
+  const ast = resolveCrossReferences(citedAst, crossRef, {
     titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
     numberSections: documentOptions.numberSections,
     sectionNumberStyle: documentOptions.sectionNumberStyle
@@ -160,11 +170,35 @@ function buildTitleMatter(documentOptions: typeof defaultDocumentOptions): Title
   return {
     title: documentOptions.title ? flattenInline(parseInline(documentOptions.title)) : undefined,
     titleFontSize: documentOptions.titleFontSize,
-    authors: (documentOptions.authors ?? []).map((author) => flattenInline(parseInline(author))),
+    ...buildTitleAuthors(documentOptions.authors ?? []),
     date: documentOptions.date ? flattenInline(parseInline(documentOptions.date)) : undefined,
     abstract: documentOptions.abstract ? flattenInline(parseInline(documentOptions.abstract)) : undefined,
     abstractTitle: documentOptions.abstractTitle ?? defaultDocumentOptions.abstractTitle ?? "Abstract",
     style: documentOptions.titleStyle
+  };
+}
+
+function buildTitleAuthors(authors: NonNullable<typeof defaultDocumentOptions.authors>): Pick<TitleMatter, "authors" | "affiliations"> {
+  const affiliations: string[] = [];
+  const titleAuthors = authors.map((author) => {
+    const value = typeof author === "string" ? { name: author, affiliations: [] } : author;
+    const affiliationIndexes = (value.affiliations ?? []).map((affiliation) => {
+      let index = affiliations.indexOf(affiliation);
+      if (index === -1) {
+        index = affiliations.length;
+        affiliations.push(affiliation);
+      }
+      return index + 1;
+    });
+    return {
+      runs: flattenInline(parseInline(value.name)),
+      affiliationIndexes,
+      email: value.email ? flattenInline(parseInline(value.email)) : undefined
+    };
+  });
+  return {
+    authors: titleAuthors,
+    affiliations: affiliations.map((affiliation) => flattenInline(parseInline(affiliation)))
   };
 }
 

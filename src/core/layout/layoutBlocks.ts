@@ -11,6 +11,14 @@ export type InlineRun = {
   nonBreak?: boolean;
   color?: string;
   link?: string;
+  fontScale?: number;
+  baselineShift?: number;
+};
+
+export type TitleAuthor = {
+  runs: InlineRun[];
+  affiliationIndexes: number[];
+  email?: InlineRun[];
 };
 
 export type TableCellBlock = {
@@ -22,7 +30,8 @@ export type TableCellBlock = {
 export type TitleMatter = {
   title?: InlineRun[];
   titleFontSize?: number;
-  authors: InlineRun[][];
+  authors: TitleAuthor[];
+  affiliations: InlineRun[][];
   date?: InlineRun[];
   abstract?: InlineRun[];
   abstractTitle: string;
@@ -30,7 +39,7 @@ export type TitleMatter = {
 };
 
 export type LayoutBlock =
-  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; source?: SourceSpan }
+  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; unnumbered?: boolean; source?: SourceSpan }
   | { type: "paragraph"; runs: InlineRun[]; source?: SourceSpan }
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined>; source?: SourceSpan }
   | { type: "code"; language?: string; code: string; source?: SourceSpan }
@@ -46,6 +55,7 @@ export function flattenInline(nodes: InlineNode[], inherited: Partial<InlineRun>
     if (node.type === "text") return [{ ...inherited, text: node.text, nonBreak: node.nonBreak, color: node.color }];
     if (node.type === "code") return [{ ...inherited, text: node.text, code: true }];
     if (node.type === "math") return [{ ...inherited, text: node.text, math: true }];
+    if (node.type === "citation") return [{ ...inherited, text: "[??]", nonBreak: true, color: "#b42318" }];
     if (node.type === "strong") return flattenInline(node.children, { ...inherited, bold: true });
     if (node.type === "emphasis") return flattenInline(node.children, { ...inherited, italic: true });
     return flattenInline(node.children, { ...inherited, link: node.href });

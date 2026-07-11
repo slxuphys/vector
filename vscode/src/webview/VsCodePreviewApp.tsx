@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { Download, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
 import { PreviewSurface } from "../../../src/react/preview/PreviewSurface";
 import { vscode } from "./vscodeBridge";
 
@@ -19,6 +19,7 @@ export function VsCodePreviewApp() {
   const [zoom, setZoom] = useState(1);
   const [status, setStatus] = useState("Vector preview is ready.");
   const [error, setError] = useState<string | undefined>(undefined);
+  const [exporting, setExporting] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<PreviewState | undefined>(undefined);
   const pendingRef = useRef<PendingPreview | undefined>(undefined);
@@ -84,6 +85,11 @@ export function VsCodePreviewApp() {
       if (message.type === "error") {
         setError(String(message.message));
         setStatus("Preview failed");
+        return;
+      }
+      if (message.type === "exportStatus") {
+        setExporting(message.state === "pending");
+        setStatus(message.message ?? (message.state === "pending" ? "Exporting PDF..." : "PDF exported"));
         return;
       }
       if (message.type === "preview") {
@@ -164,7 +170,21 @@ export function VsCodePreviewApp() {
 
   const toolbar = (
     <div className="vector-webview-toolbar">
-      <div />
+      <div className="vector-webview-actions">
+        <button
+          type="button"
+          className="vector-webview-icon-button"
+          onClick={() => {
+            setExporting(true);
+            vscode.postMessage({ type: "exportPdf" });
+          }}
+          disabled={exporting || !preview}
+          title="Export PDF"
+          aria-label="Export PDF"
+        >
+          {exporting ? <LoaderCircle className="vector-webview-spin" size={17} /> : <Download size={17} />}
+        </button>
+      </div>
       <div className="vector-webview-zoom">
         <button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.05))} title="Zoom out" aria-label="Zoom out"><ZoomOut size={17} /></button>
         <input aria-label="Preview zoom" type="range" min="0.5" max="2" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />

@@ -12,6 +12,7 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           label: node.label,
           labelNumber: node.labelNumber,
           title: node.title,
+          unnumbered: node.unnumbered,
           source: node.sourceSpan
         };
       case "paragraph":
@@ -74,6 +75,8 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
         return { type: "rule", source: node.sourceSpan };
       case "pageBreak":
         return { type: "pageBreak", source: node.sourceSpan };
+      case "bibliography":
+        return { type: "paragraph", runs: [], source: node.sourceSpan };
     }
   });
 }

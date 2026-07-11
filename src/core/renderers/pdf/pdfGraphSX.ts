@@ -1,11 +1,10 @@
-import type { PDFDocument, PDFPage } from "pdf-lib";
+import type { PDFPage } from "pdf-lib";
 import { clip, concatTransformationMatrix, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb, rotateDegrees } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import {
   getDefaultOpenMathMetricsForProfile,
   layoutNativeMath
 } from "../math/nativeMath";
-import { svgToDataUrl } from "../math/renderKatex";
 import { drawPdfNativeMath } from "./pdfNativeMath";
 import { selectPdfTextFontFallbacks, type PdfFontSet } from "./pdfFonts";
 import { drawPdfText, hexToRgb, measurePdfTextWidth } from "./pdfText";
@@ -13,30 +12,19 @@ import { drawPdfText, hexToRgb, measurePdfTextWidth } from "./pdfText";
 type GraphSXObject = Extract<DisplayObject, { type: "graphsx" }>;
 type ClipRect = { x: number; y: number; width: number; height: number };
 
-export async function drawPdfGraphSX(
-  pdf: PDFDocument,
+export function drawPdfGraphSX(
   page: PDFPage,
   object: GraphSXObject,
   fonts: PdfFontSet,
   pageHeight: number
-): Promise<boolean> {
-  if (object.displayList) {
-    drawGraphSXDisplayList(page, object, fonts, pageHeight);
-    return true;
-  }
-
-  const pngBytes = await rasterizeSvg(object.svg, object.width, object.height);
-  if (!pngBytes) {
-    drawGraphSXPlaceholder(page, object, fonts, pageHeight);
+): boolean {
+  if (!object.displayList) {
+    console.warn("[graphsx-pdf] missing neutral display list; graph was not exported", {
+      summary: object.summary
+    });
     return false;
   }
-  const image = await pdf.embedPng(pngBytes);
-  page.drawImage(image, {
-    x: object.x,
-    y: pageHeight - object.y - object.height,
-    width: object.width,
-    height: object.height
-  });
+  drawGraphSXDisplayList(page, object, fonts, pageHeight);
   return true;
 }
 
@@ -307,54 +295,6 @@ function graphSXMathAnchorPosition(
   if (item.baseline === "middle" || item.baseline === "central") return { x, y: numberAttr(item.y) - height / 2 };
   if (item.baseline === "alphabetic") return { x, y: numberAttr(item.y) - baseline };
   return { x, y: numberAttr(item.y) - height / 2 };
-}
-
-async function rasterizeSvg(svg: string, width: number, height: number): Promise<Uint8Array | undefined> {
-  if (typeof document === "undefined" || typeof Image === "undefined") return undefined;
-  const scale = 3;
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.ceil(width * scale));
-  canvas.height = Math.max(1, Math.ceil(height * scale));
-  const context = canvas.getContext("2d");
-  if (!context) return undefined;
-
-  const image = await loadImage(svgToDataUrl(svg));
-  context.setTransform(scale, 0, 0, scale, 0, 0);
-  context.drawImage(image, 0, 0, width, height);
-
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) return undefined;
-  return new Uint8Array(await blob.arrayBuffer());
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not rasterize GraphSX SVG"));
-    image.src = src;
-  });
-}
-
-function drawGraphSXPlaceholder(page: PDFPage, object: GraphSXObject, fonts: PdfFontSet, pageHeight: number): void {
-  const y = pageHeight - object.y - object.height;
-  page.drawRectangle({
-    x: object.x,
-    y,
-    width: object.width,
-    height: object.height,
-    color: rgb(0.96, 0.97, 0.98),
-    borderColor: hexToRgb("#cfd7df"),
-    borderWidth: 0.7
-  });
-  page.drawText(object.summary || "GraphSX figure", {
-    x: object.x + 8,
-    y: y + object.height / 2 - 4,
-    size: 9,
-    font: fonts.italic,
-    color: hexToRgb("#667085"),
-    maxWidth: Math.max(0, object.width - 16)
-  });
 }
 
 function numberAttr(value: unknown, fallback = 0): number {

@@ -16,6 +16,7 @@ export type EngineOptions = {
   nativeMathProfile?: NativeMathFontProfileName;
   crossRef?: Partial<CrossRefConfig>;
   layout?: Partial<LayoutConfig>;
+  bibliographyFiles?: Record<string, string>;
   document?: Partial<DocumentOptions>;
 };
 
@@ -25,13 +26,19 @@ export type DocumentOptions = {
   titleFromFirstHeading: boolean;
   title?: string;
   titleFontSize?: number;
-  authors?: string[];
+  authors?: Array<string | DocumentAuthor>;
   date?: string;
   abstract?: string;
   abstractTitle?: string;
   titleStyle?: "default" | "latex-article" | "revtex";
   numberSections?: boolean;
   sectionNumberStyle?: "decimal" | "revtex";
+};
+
+export type DocumentAuthor = {
+  name: string;
+  affiliations?: string[];
+  email?: string;
 };
 
 export const defaultDocumentOptions: DocumentOptions = {

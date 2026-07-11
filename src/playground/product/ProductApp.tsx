@@ -35,8 +35,13 @@ export function ProductApp() {
     theme: {
       fontFamily: openMathTextFontStack("latin-modern"),
       fontFaceCss: openMathTextFontFaceCss("latin-modern")
-    }
-  }), [sourceFormat]);
+    },
+    bibliographyFiles: Object.fromEntries(
+      project.files
+        .filter((file) => file.language === "bibtex")
+        .map((file) => [file.path, file.content])
+    )
+  }), [project.files, sourceFormat]);
 
   return (
     <main className={`app app-product app-theme-${theme}`}>

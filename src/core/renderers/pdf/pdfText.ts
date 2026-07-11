@@ -1,10 +1,25 @@
-import { PDFPage, PDFFont, rgb } from "pdf-lib";
+import {
+  PDFName,
+  PDFPage,
+  PDFFont,
+  beginText,
+  endText,
+  moveText,
+  popGraphicsState,
+  pushGraphicsState,
+  setCharacterSpacing,
+  setFillingColor,
+  setFontAndSize,
+  showText,
+  rgb
+} from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { shapeTextWithFontFile, type ShapedTextRun } from "../text/textFontMetrics";
 import { addPdfLinkAnnotation, type PdfLinkTargets } from "./pdfLinks";
 
 const missingGlyphLogKeys = new Set<string>();
+const pageFontKeys = new WeakMap<PDFPage, Map<PDFFont, string>>();
 
 export function drawPdfText(
   page: PDFPage,
@@ -15,6 +30,12 @@ export function drawPdfText(
 ): void {
   const fonts = Array.isArray(font) ? font : [font];
   const text = object.text || " ";
+  const singleFont = fonts.find((candidate) => canEncode(candidate, text));
+  if (singleFont) {
+    drawFittedPdfText(page, object, singleFont, pageHeight);
+    if (object.link) addTextLink(page, object, pageHeight, object.width ?? singleFont.widthOfTextAtSize(text, object.fontSize), linkTargets);
+    return;
+  }
   const shaped = shapeTextWithFontFile(text, {
     fontSize: object.fontSize,
     fontFamily: object.fontFamily,
@@ -26,17 +47,44 @@ export function drawPdfText(
   if (shaped) drawShapedPdfText(page, object, fonts, pageHeight, shaped);
   else drawUnshapedPdfText(page, object, fonts, pageHeight);
 
-  if (object.link) {
-    const width = object.width && object.width > 0
+  if (object.link) addTextLink(
+    page,
+    object,
+    pageHeight,
+    object.width && object.width > 0
       ? object.width
-      : shaped?.width ?? measurePdfTextWidth(text, fonts, object.fontSize, object.fontFamily);
-    addPdfLinkAnnotation(page, {
-      x: object.x,
-      y: pageHeight - object.y - object.fontSize * 0.25,
-      width,
-      height: object.fontSize * 1.2
-    }, object.link, linkTargets);
-  }
+      : shaped?.width ?? measurePdfTextWidth(text, fonts, object.fontSize, object.fontFamily),
+    linkTargets
+  );
+}
+
+function drawFittedPdfText(
+  page: PDFPage,
+  object: Extract<DisplayObject, { type: "text" }>,
+  font: PDFFont,
+  pageHeight: number
+): void {
+  const text = object.text || " ";
+  const naturalWidth = font.widthOfTextAtSize(text, object.fontSize);
+  const gapCount = Math.max(0, Array.from(text).length - 1);
+  const targetWidth = object.width && object.width > 0 ? object.width : naturalWidth;
+  const characterSpacing = gapCount > 0 ? (targetWidth - naturalWidth) / gapCount : 0;
+  drawCachedPdfText(page, text, font, object.x, pageHeight - object.y, object.fontSize, object.color, characterSpacing);
+}
+
+function addTextLink(
+  page: PDFPage,
+  object: Extract<DisplayObject, { type: "text" }>,
+  pageHeight: number,
+  width: number,
+  linkTargets?: PdfLinkTargets
+): void {
+  addPdfLinkAnnotation(page, {
+    x: object.x,
+    y: pageHeight - object.y - object.fontSize * 0.25,
+    width,
+    height: object.fontSize * 1.2
+  }, object.link!, linkTargets);
 }
 
 function drawUnshapedPdfText(
@@ -51,13 +99,7 @@ function drawUnshapedPdfText(
 
   const flush = () => {
     if (!run || !runFont) return;
-    page.drawText(run, {
-      x: cursorX,
-      y: pageHeight - object.y,
-      size: object.fontSize,
-      font: runFont,
-      color: hexToRgb(object.color)
-    });
+    drawCachedPdfText(page, run, runFont, cursorX, pageHeight - object.y, object.fontSize, object.color);
     cursorX += runFont.widthOfTextAtSize(run, object.fontSize) + justifyExtraForText(run, object, fonts);
     run = "";
     runFont = undefined;
@@ -87,21 +129,78 @@ function drawShapedPdfText(
   const clusters = shapedClusters(object.text || " ", shaped);
   const extraBySpace = justifyExtraBySpace(object, shaped.width);
   let cursorX = object.x;
+  let run = "";
+  let runAdvance = 0;
+  let runFont: PDFFont | undefined;
+
+  const flush = () => {
+    if (!run || !runFont) return;
+    drawCachedPdfText(page, run, runFont, cursorX, pageHeight - object.y, object.fontSize, object.color);
+    cursorX += runAdvance;
+    run = "";
+    runAdvance = 0;
+    runFont = undefined;
+  };
+
   for (const cluster of clusters) {
-    const selectedFont = fonts.find((candidate) => canEncode(candidate, cluster.text));
-    if (selectedFont) {
-      page.drawText(cluster.text, {
-        x: cursorX,
-        y: pageHeight - object.y,
-        size: object.fontSize,
-        font: selectedFont,
-        color: hexToRgb(object.color)
-      });
-    } else {
-      logMissingPdfGlyph("text", cluster.text, object.fontFamily);
+    if (isStretchCluster(cluster.text)) {
+      flush();
+      cursorX += cluster.advance + extraBySpace;
+      continue;
     }
-    cursorX += cluster.advance + (isStretchCluster(cluster.text) ? extraBySpace : 0);
+
+    const selectedFont = fonts.find((candidate) => canEncode(candidate, cluster.text));
+    if (!selectedFont) {
+      flush();
+      logMissingPdfGlyph("text", cluster.text, object.fontFamily);
+      cursorX += cluster.advance;
+      continue;
+    }
+    if (runFont && runFont !== selectedFont) flush();
+    runFont = selectedFont;
+    run += cluster.text;
+    runAdvance += cluster.advance;
   }
+  flush();
+}
+
+function drawCachedPdfText(
+  page: PDFPage,
+  text: string,
+  font: PDFFont,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  characterSpacing = 0
+): void {
+  const fontKey = cachedPageFontKey(page, font);
+  page.pushOperators(
+    pushGraphicsState(),
+    beginText(),
+    setFillingColor(hexToRgb(color)),
+    setFontAndSize(fontKey, size),
+    setCharacterSpacing(characterSpacing),
+    moveText(x, y),
+    showText(font.encodeText(text)),
+    endText(),
+    popGraphicsState()
+  );
+}
+
+function cachedPageFontKey(page: PDFPage, font: PDFFont): string {
+  let fonts = pageFontKeys.get(page);
+  if (!fonts) {
+    fonts = new Map();
+    pageFontKeys.set(page, fonts);
+  }
+  const cached = fonts.get(font);
+  if (cached) return cached;
+
+  const key = `VectorText${fonts.size + 1}`;
+  page.node.setFontDictionary(PDFName.of(key), font.ref);
+  fonts.set(font, key);
+  return key;
 }
 
 function shapedClusters(text: string, shaped: ShapedTextRun): Array<{ text: string; advance: number }> {

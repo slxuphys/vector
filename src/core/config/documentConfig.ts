@@ -10,6 +10,7 @@ import { defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 import { readLatexDocumentClass, readLatexPreamble } from "../latex/parseLatex";
 
 export type DocumentFrontMatter = {
+  bibliography?: string;
   document?: {
     titleFromFirstHeading?: boolean;
     title?: string;
@@ -167,9 +168,9 @@ function latexArticleDefaults(source: string): EngineOptions {
         indent: fontSize * 1.5
       },
       headingFontSizes: {
-        1: fontSize * 1.8,
-        2: fontSize * 1.4,
-        3: fontSize * 1.2,
+        1: articleSectionSize(fontSize),
+        2: articleSubsectionSize(fontSize),
+        3: Math.max(fontSize, 12),
         4: fontSize,
         5: fontSize,
         6: fontSize
@@ -187,6 +188,15 @@ function latexArticleDefaults(source: string): EngineOptions {
       numberSections: true
     }
   };
+}
+
+function articleSectionSize(fontSize: number): number {
+  if (fontSize >= 12) return 17.28;
+  return 14.4;
+}
+
+function articleSubsectionSize(fontSize: number): number {
+  return fontSize >= 12 ? 14.4 : 12;
 }
 
 function latexRevtexDefaults(source: string): EngineOptions {
@@ -391,12 +401,15 @@ function parseSimpleYaml(lines: string[], warnings: string[]): Record<string, Ya
 function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]): DocumentFrontMatter {
   const config: DocumentFrontMatter = {};
   const page = readObject(raw.page);
+  const bibliography = readString(raw.bibliography);
   const document = readObject(raw.document);
   const typography = readObject(raw.typography);
   const theme = readObject(raw.theme);
   const math = readObject(raw.math);
   const crossref = readObject(raw.crossref);
   const layout = readObject(raw.layout);
+
+  if (bibliography !== undefined) config.bibliography = bibliography;
 
   if (document) {
     const titleFromFirstHeading = readBoolean(document.titleFromFirstHeading);

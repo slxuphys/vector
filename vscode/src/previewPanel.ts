@@ -7,6 +7,7 @@ export class VectorPreviewPanel {
   private previewShownHandlers: Array<(message: PreviewShownMessage) => void> = [];
   private pageRequestHandlers: Array<(message: PageRequestMessage) => void> = [];
   private sourceRevealHandlers: Array<(message: SourceRevealMessage) => void> = [];
+  private exportHandlers: Array<() => void> = [];
 
   private constructor(extensionUri: vscode.Uri, onDispose: () => void) {
     this.panel = vscode.window.createWebviewPanel(
@@ -26,6 +27,8 @@ export class VectorPreviewPanel {
         this.pageRequestHandlers.forEach((handler) => handler(message));
       } else if (isSourceRevealMessage(message)) {
         this.sourceRevealHandlers.forEach((handler) => handler(message));
+      } else if (isExportPdfMessage(message)) {
+        this.exportHandlers.forEach((handler) => handler());
       }
     });
     this.panel.webview.html = webviewHtml(this.panel.webview, extensionUri);
@@ -66,6 +69,15 @@ export class VectorPreviewPanel {
 
   onSourceReveal(handler: (message: SourceRevealMessage) => void): void {
     this.sourceRevealHandlers.push(handler);
+  }
+
+  onExportPdf(handler: () => void): void {
+    this.exportHandlers.push(handler);
+  }
+
+  setExportStatus(state: "pending" | "complete" | "error", message?: string): Thenable<boolean> {
+    if (this.disposed) return Promise.resolve(false);
+    return this.panel.webview.postMessage({ type: "exportStatus", state, message });
   }
 
   revealSource(anchor: { page: number; y: number; source: { start: number; end: number } }): Thenable<boolean> {
@@ -121,6 +133,7 @@ export type PreviewShownMessage = {
 
 export type PageRequestMessage = { type: "requestPages"; updateId: number; indexes: number[] };
 export type SourceRevealMessage = { type: "revealSource"; start: number; end: number };
+type ExportPdfMessage = { type: "exportPdf" };
 type PageMeta = { index: number; width: number; height: number };
 type RenderedPagePayload = { index: number; svg: string };
 
@@ -161,6 +174,10 @@ function isSourceRevealMessage(message: unknown): message is SourceRevealMessage
   if (!message || typeof message !== "object") return false;
   const record = message as Record<string, unknown>;
   return record.type === "revealSource" && typeof record.start === "number" && typeof record.end === "number";
+}
+
+function isExportPdfMessage(message: unknown): message is ExportPdfMessage {
+  return Boolean(message && typeof message === "object" && (message as Record<string, unknown>).type === "exportPdf");
 }
 
 function randomNonce(): string {

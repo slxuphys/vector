@@ -87,7 +87,8 @@ export function collectMathMeasureRequests(
     const titleFontSize = titleMatter.titleFontSize ?? headingSize(1, theme.fontSize, true, layoutConfig.headingFontSizes);
     titleMatter.title?.forEach((run) => addRun(run, titleFontSize, theme.text));
     const authorFontSize = theme.fontSize * 1.05;
-    titleMatter.authors.forEach((author) => author.forEach((run) => addRun(run, authorFontSize, theme.mutedText)));
+    titleMatter.authors.forEach((author) => author.runs.forEach((run) => addRun(run, authorFontSize, theme.mutedText)));
+    titleMatter.affiliations.forEach((affiliation) => affiliation.forEach((run) => addRun(run, theme.fontSize * 0.8, theme.text)));
     titleMatter.abstract?.forEach((run) => addRun(run, theme.fontSize, theme.text));
   }
 

@@ -19,9 +19,11 @@ export type PdfRenderOptions = {
   rasterizeMath?: boolean;
   mathPdfMode?: "raster" | "vector" | "glyph";
   subsetFonts?: boolean;
+  debugLabel?: string;
 };
 
 export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOptions = {}): Promise<Uint8Array> {
+  logPdfDisplayList(layout, options.debugLabel ?? "unknown");
   const subsetFonts = options.subsetFonts ?? false;
   if (!subsetFonts) return renderToPdfAttempt(layout, options, false);
 
@@ -34,6 +36,48 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
     }
     return renderToPdfAttempt(layout, options, false, "subset-fallback");
   }
+}
+
+function logPdfDisplayList(layout: PagedDisplayList, source: string): void {
+  const serialized = JSON.stringify(layout);
+  const pdfComparable = JSON.stringify({
+    ...layout,
+    theme: { ...layout.theme, fontFaceCss: undefined },
+    pages: layout.pages.map(({ fontFaceCss: _fontFaceCss, ...page }) => page)
+  });
+  const summary = {
+    source,
+    signature: displayListSignature(serialized),
+    bytes: serialized.length,
+    pdfSignature: displayListSignature(pdfComparable),
+    pdfComparableBytes: pdfComparable.length,
+    pages: layout.pages.length,
+    pageSignatures: layout.pages.map((page, index) => {
+      const value = JSON.stringify(page);
+      return { index, signature: displayListSignature(value), bytes: value.length };
+    })
+  };
+
+  if (source === "vscode") {
+    // Extension Host drops large object arguments before they reach its console.
+    console.log("[pdf-display-list]", JSON.stringify(summary));
+    console.log("[pdf-display-list-pdf-comparable]", pdfComparable);
+    return;
+  }
+
+  console.log("[pdf-display-list]", {
+    ...summary,
+    layout
+  });
+}
+
+function displayListSignature(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 async function renderToPdfAttempt(
@@ -105,7 +149,7 @@ async function renderToPdfAttempt(
         await drawPdfImage(pdf, page, object, fonts, displayPage.height);
       } else if (object.type === "graphsx") {
         objectCounts.graphsx += 1;
-        await drawPdfGraphSX(pdf, page, object, fonts, displayPage.height);
+        drawPdfGraphSX(page, object, fonts, displayPage.height);
       } else {
         objectCounts.shape += 1;
         drawPdfShape(page, object, displayPage.height);

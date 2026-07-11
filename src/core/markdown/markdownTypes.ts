@@ -8,7 +8,8 @@ export type InlineNode =
   | { type: "emphasis"; children: InlineNode[] }
   | { type: "code"; text: string }
   | { type: "link"; href: string; children: InlineNode[] }
-  | { type: "math"; text: string };
+  | { type: "math"; text: string }
+  | import("../citations/citationTypes").CitationNode;
 
 export type TableAlign = "left" | "center" | "right";
 export type ImageAlign = "left" | "center" | "right";
@@ -30,7 +31,7 @@ export type LabeledNode = {
 };
 
 export type MarkdownNode =
-  | (({ type: "heading"; level: number; children: InlineNode[]; title?: boolean } & LabeledNode) & SourceMapped)
+  | (({ type: "heading"; level: number; children: InlineNode[]; title?: boolean; unnumbered?: boolean } & LabeledNode) & SourceMapped)
   | ({ type: "paragraph"; children: InlineNode[] } & SourceMapped)
   | ({ type: "list"; ordered: boolean; items: InlineNode[][]; checked?: Array<boolean | undefined> } & SourceMapped)
   | ({ type: "codeBlock"; language?: string; code: string } & SourceMapped)
@@ -38,6 +39,7 @@ export type MarkdownNode =
   | (ImageNode & SourceMapped)
   | (GraphSXNode & SourceMapped)
   | (({ type: "mathBlock"; text: string } & LabeledNode) & SourceMapped)
+  | ({ type: "bibliography" } & SourceMapped)
   | ({ type: "thematicBreak" } & SourceMapped)
   | ({ type: "pageBreak" } & SourceMapped);
 

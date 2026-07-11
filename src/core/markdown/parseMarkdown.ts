@@ -23,6 +23,15 @@ export function parseMarkdown(markdown: string, sourceOffset = 0): MarkdownAst {
       continue;
     }
 
+    if (/^:::\s*bibliography\s*$/i.test(line.trim())) {
+      const blockStart = i;
+      i += 1;
+      while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) i += 1;
+      if (i < lines.length) i += 1;
+      children.push({ type: "bibliography", sourceSpan: sourceForLines(normalized, lineStarts, blockStart, i, sourceOffset) });
+      continue;
+    }
+
     const fence = line.match(/^```([^\s`]*)\s*(.*?)$/);
     if (fence) {
       const blockStart = i;

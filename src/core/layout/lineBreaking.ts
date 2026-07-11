@@ -104,15 +104,16 @@ export function breakRunsIntoLines(
         }
       }
 
+      const runFontSize = fontSize * (run.fontScale ?? 1);
       const width = run.math
-        ? measureMathChunk(word, fontSize, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile)
+        ? measureMathChunk(word, runFontSize, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile)
         : measureText(word, {
-        fontSize,
+        fontSize: runFontSize,
         fontFamily: theme.fontFamily,
         monoFontFamily: theme.monoFontFamily,
         ...run
       });
-      const height = run.math ? measureMathHeight(word, fontSize, lineHeight, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile) : lineHeight;
+      const height = run.math ? measureMathHeight(word, runFontSize, lineHeight, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile) : lineHeight;
       const sticky = run.nonBreak || gluedToPrevious || isNoBreakBeforeToken(word);
       if (current.length > 0 && currentWidth + width > maxWidth && !sticky) pushLine();
       if (run.math) {
@@ -124,7 +125,7 @@ export function breakRunsIntoLines(
       if (width > maxWidth) {
         for (const char of word) {
           const charWidth = measureText(char, {
-            fontSize,
+            fontSize: runFontSize,
             fontFamily: theme.fontFamily,
             monoFontFamily: theme.monoFontFamily,
             ...run

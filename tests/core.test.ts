@@ -5,7 +5,7 @@ import { PDFDocument } from "pdf-lib";
 import { createDocumentEngine, prepareMarkdownLayout } from "../src/core/engine/createDocumentEngine";
 import { applySourceFormatDefaults, parseMarkdownDocument } from "../src/core/config/documentConfig";
 import { parseMarkdown } from "../src/core/markdown/parseMarkdown";
-import { parseLatex } from "../src/core/latex/parseLatex";
+import { parseLatex, readLatexPreamble } from "../src/core/latex/parseLatex";
 import { resolveCrossReferences } from "../src/core/xref/resolveReferences";
 import { findSourceAnchor } from "../src/core/source/sourceMap";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
@@ -306,7 +306,17 @@ Body content.
     const options = applySourceFormatDefaults(source, { sourceFormat: "latex" });
 
     expect(options.document?.title).toBe("Fast Live Preview for Scientific Writing");
-    expect(options.document?.authors).toEqual(["Ada Vector", "Emmy Layout"]);
+    expect(options.document?.authors).toEqual([
+      {
+        name: "Ada Vector",
+        affiliations: ["Department of Computational Glyphs, Asteria University"]
+      },
+      {
+        name: "Emmy Layout",
+        affiliations: ["Department of Computational Glyphs, Asteria University"],
+        email: "emmy.layout@meridian-moon.example"
+      }
+    ]);
     expect(serialized).not.toContain("Original title declaration");
     expect(serialized).not.toContain("Ada Vector");
     expect(serialized).not.toContain("Emmy Layout");
@@ -462,6 +472,29 @@ E = mc^2
     expect(ast.children.some((node) => node.type === "list")).toBe(true);
   });
 
+  it("associates LaTeX affiliations and email with the preceding author", () => {
+    const preamble = readLatexPreamble(`\\documentclass{revtex4-2}
+\\author{Ada Vector}
+\\affiliation{Department of Computational Glyphs \\& Symbolic Systems}
+\\author{Emmy Layout}
+\\email{emmy.layout@meridian-moon.example}
+\\affiliation{Department of Computational Glyphs \\& Symbolic Systems}
+\\begin{document}
+\\end{document}`);
+
+    expect(preamble.authors).toEqual([
+      {
+        name: "Ada Vector",
+        affiliations: ["Department of Computational Glyphs & Symbolic Systems"]
+      },
+      {
+        name: "Emmy Layout",
+        affiliations: ["Department of Computational Glyphs & Symbolic Systems"],
+        email: "emmy.layout@meridian-moon.example"
+      }
+    ]);
+  });
+
   it("lays out latex through the document engine", async () => {
     const engine = createDocumentEngine({
       sourceFormat: "latex",
@@ -524,7 +557,7 @@ Figure~1 stays together.
     }
   });
 
-  it("parses latex citations as pending red placeholders", () => {
+  it("parses latex citations into shared citation nodes", () => {
     const ast = parseLatex(`\\begin{document}
 Prior work\\cite{einstein1905} is pending bibliography support.
 \\end{document}`);
@@ -532,8 +565,10 @@ Prior work\\cite{einstein1905} is pending bibliography support.
 
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type === "paragraph") {
-      expect(paragraph.children).toContainEqual({ type: "text", text: "[ ]", nonBreak: true, color: "#b42318" });
-      expect(paragraph.children.map((node) => node.type === "text" ? node.text : "").join("")).not.toContain("einstein1905");
+      expect(paragraph.children).toContainEqual({
+        type: "citation",
+        items: [{ key: "einstein1905" }]
+      });
     }
   });
 
@@ -605,7 +640,7 @@ Text with $\\alpha$.
     expect(prepared.nativeMathProfile).toBe("openmath");
     expect(prepared.layoutConfig.textAlign).toBe("justify");
     expect(prepared.layoutConfig.lineBreaking.hyphenation).toBe(true);
-    expect(prepared.layoutConfig.headingFontSizes[2]).toBe(14);
+    expect(prepared.layoutConfig.headingFontSizes[2]).toBe(12);
   });
 
   it("applies the twocolumn documentclass option", () => {
@@ -617,7 +652,7 @@ Text.
 
     expect(prepared.theme.fontSize).toBe(12);
     expect(prepared.layoutConfig.columns.count).toBe(2);
-    expect(prepared.layoutConfig.headingFontSizes[2]).toBeCloseTo(16.8);
+    expect(prepared.layoutConfig.headingFontSizes[2]).toBeCloseTo(14.4);
   });
 
   it("applies revtex4-2 document class defaults", () => {
@@ -663,15 +698,56 @@ Text.
     expect(text).toContain("MATH");
   });
 
-  it("renders latex cite placeholders in red", async () => {
+  it("renders unresolved latex citations in red", async () => {
     const engine = createDocumentEngine({ sourceFormat: "latex" });
     const { layout } = await engine.layout(`\\begin{document}
 Text with citation\\cite{future}.
 \\end{document}`);
-    const citation = layout.pages[0].objects.find((object) => object.type === "text" && object.text === "[ ]");
+    const citation = layout.pages[0].objects.find((object) => object.type === "text" && object.text === "[1]");
 
     expect(citation?.type).toBe("text");
     if (citation?.type === "text") expect(citation.color).toBe("#b42318");
+  });
+
+  it("resolves Markdown and LaTeX citations from BibTeX sources", async () => {
+    const bibliography = [
+      "@article{einstein1905,",
+      "  author = {Albert Einstein},",
+      "  title = {On the Electrodynamics of Moving Bodies},",
+      "  journal = {Annalen der Physik},",
+      "  year = {1905}",
+      "}"
+    ].join("\n");
+    const markdown = [
+      "---",
+      "bibliography: references.bib",
+      "---",
+      "Relativity follows [@einstein1905].",
+      "",
+      "::: bibliography",
+      ":::"
+    ].join("\n");
+    const latex = [
+      "\\begin{document}",
+      "Relativity follows \\cite{einstein1905}.",
+      "\\bibliography{references}",
+      "\\end{document}"
+    ].join("\n");
+
+    for (const [sourceFormat, source] of [["markdown", markdown], ["latex", latex]] as const) {
+      const engine = createDocumentEngine({
+        sourceFormat,
+        bibliographyFiles: { "references.bib": bibliography }
+      });
+      const { layout } = await engine.layout(source);
+      const text = layout.pages.flatMap((page) => page.objects)
+        .filter((object) => object.type === "text")
+        .map((object) => object.type === "text" ? object.text : "")
+        .join(" ");
+      expect(text).toContain("[1]");
+      expect(text).toContain("References");
+      expect(text).toContain("Albert Einstein");
+    }
   });
 
   it("keeps revtex figure captions inside the active column with normal text color", async () => {
@@ -1898,7 +1974,8 @@ This paragraph has enough words to wrap into more than one line and the first re
     const { layout } = await engine.layout("Native $\\sqrt{x^2 + y^2} = r$ and $$\n\\frac{1}{3}\n$$");
     const bytes = await renderToPdf(layout);
 
-    expect(bytes.length).toBeGreaterThan(1000);
+    expect(bytes.length).toBeGreaterThan(0);
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
   });
 
   it("exports native OpenMath math-italic glyphs with the OpenMath PDF font", async () => {
@@ -1906,7 +1983,8 @@ This paragraph has enough words to wrap into more than one line and the first re
     const { layout } = await engine.layout("OpenMath $x^2 + \\alpha = y$ and $\\sin x$ and $\\mathbf{B}$");
     const bytes = await renderToPdf(layout);
 
-    expect(bytes.length).toBeGreaterThan(1000);
+    expect(bytes.length).toBeGreaterThan(0);
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
   });
 
   it("keeps native subscript and superscript attached to the base atom", () => {

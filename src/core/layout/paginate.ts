@@ -428,7 +428,7 @@ function drawTitleMatter(
       }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
     } else {
       for (const author of titleMatter.authors) {
-        const lines = breakRunsIntoLines(author, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+        const lines = breakRunsIntoLines(author.runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
         drawLines(cursor, lines, fontSize, theme, {
           color: theme.mutedText,
           lineHeight: 1.25,
@@ -438,6 +438,25 @@ function drawTitleMatter(
       }
     }
     cursor.y += latexArticle ? theme.fontSize * 0.6 : revtex ? theme.fontSize * 0.8 : 12;
+  }
+
+  if (titleMatter.affiliations.length) {
+    const fontSize = theme.fontSize * 0.8;
+    for (let index = 0; index < titleMatter.affiliations.length; index += 1) {
+      const runs: InlineRun[] = [
+        { text: String(index + 1), fontScale: 0.72, baselineShift: -0.36, nonBreak: true },
+        { text: " ", nonBreak: true },
+        ...titleMatter.affiliations[index]
+      ];
+      const lines = breakRunsIntoLines(runs, cursor.contentWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+      drawLines(cursor, lines, fontSize, theme, {
+        color: theme.text,
+        lineHeight: 1.18,
+        align: "center",
+        maxWidth: cursor.contentWidth
+      }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+    }
+    cursor.y += revtex ? theme.fontSize * 0.9 : theme.fontSize * 0.7;
   }
 
   if (titleMatter.date?.length) {
@@ -499,10 +518,14 @@ function drawTitleMatter(
   }
 }
 
-function joinAuthorRuns(authors: InlineRun[][]): InlineRun[] {
-  return authors.flatMap((author, index) => index === 0
-    ? author
-    : [{ text: "        " }, ...author]);
+function joinAuthorRuns(authors: TitleMatter["authors"]): InlineRun[] {
+  return authors.flatMap((author, index) => [
+    ...(index === 0 ? [] : [{ text: "        " }]),
+    ...author.runs,
+    ...(author.affiliationIndexes.length
+      ? [{ text: author.affiliationIndexes.join(","), fontScale: 0.72, baselineShift: -0.36, nonBreak: true }]
+      : [])
+  ]);
 }
 
 function sectionHeadingRuns(
@@ -728,16 +751,17 @@ function drawLines(
     for (const run of line.runs) {
       if (run.math) {
         flushText();
+        const runFontSize = fontSize * (run.fontScale ?? 1);
         const latex = run.text.trim();
-        const measured = getMeasuredMath(mathMeasurements, latex, false, fontSize, mathRenderer, nativeMathMetrics, nativeMathProfile);
-        const width = measured?.width ?? measureInlineMathBoxWidth(latex, fontSize, theme);
-        const advance = measured?.advance ?? measureInlineMathAdvance(latex, fontSize, theme);
-        const height = measured?.height ?? fontSize * options.lineHeight;
+        const measured = getMeasuredMath(mathMeasurements, latex, false, runFontSize, mathRenderer, nativeMathMetrics, nativeMathProfile);
+        const width = measured?.width ?? measureInlineMathBoxWidth(latex, runFontSize, theme);
+        const advance = measured?.advance ?? measureInlineMathAdvance(latex, runFontSize, theme);
+        const height = measured?.height ?? runFontSize * options.lineHeight;
         const y = isMathJaxRenderer(mathRenderer)
           ? cursor.y
           : measured?.baseline !== undefined
             ? baseline - measured.baseline
-            : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - fontSize * 0.12;
+            : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - runFontSize * 0.12;
         cursor.page.objects.push(createMathObject({
           latex,
           displayMode: false,
@@ -746,7 +770,7 @@ function drawLines(
           width,
           height,
           advance,
-          fontSize,
+          fontSize: runFontSize,
           color: run.link ? theme.link : run.color ?? options.color,
           mathRenderer,
           nativeMathMetrics,
@@ -758,8 +782,9 @@ function drawLines(
         continue;
       }
       const font = run.code ? theme.monoFontFamily : theme.fontFamily;
+      const runFontSize = fontSize * (run.fontScale ?? 1);
       const textWidth = measureText(run.text, {
-        fontSize,
+        fontSize: runFontSize,
         fontFamily: theme.fontFamily,
         monoFontFamily: theme.monoFontFamily,
         ...run,
@@ -770,9 +795,9 @@ function drawLines(
         type: "text",
         text: run.text,
         x,
-        y: baseline,
+        y: baseline + fontSize * (run.baselineShift ?? 0),
         width: stretchedWidth,
-        fontSize,
+        fontSize: runFontSize,
         fontFamily: font,
         color: run.link ? theme.link : run.color ?? options.color,
         bold: options.bold || run.bold,

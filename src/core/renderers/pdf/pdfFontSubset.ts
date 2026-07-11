@@ -1,8 +1,3 @@
-const harfbuzzSubsetWasmUrl = new URL(
-  "../../../../node_modules/subset-font/node_modules/harfbuzzjs/hb-subset.wasm",
-  import.meta.url
-).href;
-
 type HarfbuzzSubsetExports = WebAssembly.Exports & {
   memory: WebAssembly.Memory;
   malloc(size: number): number;
@@ -139,3 +134,4 @@ function toArrayBuffer(bytes: ArrayBuffer | Uint8Array<ArrayBufferLike>): ArrayB
   copy.set(bytes);
   return copy.buffer;
 }
+import harfbuzzSubsetWasmUrl from "../../../../node_modules/subset-font/node_modules/harfbuzzjs/hb-subset.wasm?url";

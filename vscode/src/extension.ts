@@ -1,10 +1,13 @@
 import * as vscode from "vscode";
+import * as path from "node:path";
 import { PageRequestMessage, VectorPreviewPanel } from "./previewPanel";
-import { createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg } from "./previewBundle";
+import { createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg, renderToPdf } from "./previewBundle";
+import type { PagedDisplayList } from "../../src/core/display-list/displayTypes";
 
 const previewDebounceMs = 150;
 const pendingUpdates = new Map<number, PreviewTiming>();
 let activePreview: ActivePreview | undefined;
+let pdfExportInProgress = false;
 
 export function activate(context: vscode.ExtensionContext) {
   let previewPanel: VectorPreviewPanel | undefined;
@@ -54,6 +57,9 @@ export function activate(context: vscode.ExtensionContext) {
           editor.selection = new vscode.Selection(start, start);
           editor.revealRange(new vscode.Range(start, start), vscode.TextEditorRevealType.InCenter);
         });
+        previewPanel.onExportPdf(() => {
+          void exportPdf(previewPanel);
+        });
         previewPanel.onPreviewShown((message) => {
           if (message.updateId === undefined) return;
           const timing = pendingUpdates.get(message.updateId);
@@ -97,12 +103,7 @@ export function activate(context: vscode.ExtensionContext) {
       scheduleRender(document, 0);
     }),
     vscode.commands.registerCommand("vector.exportPdf", async () => {
-      const document = activeTextDocument();
-      if (!document) return;
-      const target = document.uri.with({
-        path: document.uri.path.replace(/\.[^.\/\\]+$/, "") + ".pdf"
-      });
-      await vscode.window.showInformationMessage(`Vector PDF export shell is ready: ${target.fsPath.split(/[\\/]/).pop() ?? "document.pdf"}`);
+      await exportPdf(previewPanel);
     }),
     vscode.commands.registerCommand("vector.revealCursorInPreview", () => {
       const editor = vscode.window.activeTextEditor;
@@ -140,13 +141,19 @@ function activeTextDocument(): vscode.TextDocument | undefined {
 
 type VectorPreviewBundle = {
   loadNativeMathFonts(): Promise<void>;
-  createDocumentEngine(options: { sourceFormat: "markdown" | "latex" }): {
+  createDocumentEngine(options: {
+    sourceFormat: "markdown" | "latex";
+    mathRenderer: "native-openmath";
+    nativeMathProfile: "openmath";
+    bibliographyFiles?: Record<string, string>;
+  }): {
       layout(source: string): Promise<{
-      layout: { pages: DisplayPage[] };
+      layout: PagedDisplayList;
       stats: { pageCount: number; totalMs: number; parseMs?: number; layoutMs?: number };
     }>;
   };
   renderPageToSvg(page: DisplayPage, options?: { includeFontCss?: boolean }): string;
+  renderToPdf(layout: PagedDisplayList, options?: { mathPdfMode?: "vector"; subsetFonts?: boolean; debugLabel?: string }): Promise<Uint8Array>;
 };
 
 async function renderPreview(
@@ -161,9 +168,15 @@ async function renderPreview(
     const bundle = loadPreviewBundle();
     const sourceFormat = document.languageId === "latex" || document.fileName.endsWith(".tex") ? "latex" : "markdown";
     const fontLoadStartedAt = performance.now();
-    if (sourceFormat === "latex") await bundle.loadNativeMathFonts();
+    await bundle.loadNativeMathFonts();
     if (timing) timing.fontLoadMs = performance.now() - fontLoadStartedAt;
-    const engine = bundle.createDocumentEngine({ sourceFormat });
+    const bibliographyFiles = await loadBibliographyFiles(document, sourceFormat);
+    const engine = bundle.createDocumentEngine({
+      sourceFormat,
+      mathRenderer: "native-openmath",
+      nativeMathProfile: "openmath",
+      bibliographyFiles
+    });
     const result = await engine.layout(document.getText());
     if (timing) {
       timing.parseMs = result.stats.parseMs ?? 0;
@@ -191,6 +204,100 @@ async function renderPreview(
     if (!panel.alive || serial !== latestSerial()) return;
     panel.setError(document, error instanceof Error ? error.message : String(error));
   }
+}
+
+async function exportPdf(panel?: VectorPreviewPanel): Promise<void> {
+  if (pdfExportInProgress) return;
+  const document = documentForExport();
+  if (!document) return;
+  pdfExportInProgress = true;
+  const sourceFormat = document.languageId === "latex" || document.fileName.endsWith(".tex") ? "latex" : "markdown";
+  await panel?.setExportStatus("pending", "Exporting PDF...");
+
+  try {
+    const bundle = loadPreviewBundle();
+    await bundle.loadNativeMathFonts();
+    const bibliographyFiles = await loadBibliographyFiles(document, sourceFormat);
+    const engine = bundle.createDocumentEngine({
+      sourceFormat,
+      mathRenderer: "native-openmath",
+      nativeMathProfile: "openmath",
+      bibliographyFiles
+    });
+    const result = await engine.layout(document.getText());
+    const bytes = await bundle.renderToPdf(result.layout, {
+      mathPdfMode: "vector",
+      subsetFonts: true,
+      debugLabel: "vscode"
+    });
+    const target = await exportTargetFor(document);
+    if (!target) {
+      await panel?.setExportStatus("complete", "PDF export cancelled");
+      return;
+    }
+    await vscode.workspace.fs.writeFile(target, bytes);
+    const filename = path.basename(target.fsPath || target.path);
+    await panel?.setExportStatus("complete", "Saved " + filename);
+    void vscode.window.showInformationMessage("Vector exported " + filename, "Open PDF").then((action) => {
+      if (action === "Open PDF") void vscode.commands.executeCommand("vscode.open", target);
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await panel?.setExportStatus("error", "PDF export failed");
+    void vscode.window.showErrorMessage("Vector PDF export failed: " + message);
+    console.error("[vector-pdf-export]", error);
+  } finally {
+    pdfExportInProgress = false;
+  }
+}
+
+function documentForExport(): vscode.TextDocument | undefined {
+  const previewDocument = activePreview
+    ? vscode.workspace.textDocuments.find((document) => document.uri.toString() === activePreview?.documentUri)
+    : undefined;
+  return previewDocument ?? activeTextDocument();
+}
+
+async function exportTargetFor(document: vscode.TextDocument): Promise<vscode.Uri | undefined> {
+  if (document.uri.scheme === "file") {
+    return document.uri.with({ path: document.uri.path.replace(/\.[^.\/\\]+$/, "") + ".pdf" });
+  }
+  return vscode.window.showSaveDialog({
+    defaultUri: document.uri.with({ path: document.uri.path.replace(/\.[^.\/\\]+$/, "") + ".pdf" }),
+    filters: { PDF: ["pdf"] },
+    title: "Export Vector PDF"
+  });
+}
+
+async function loadBibliographyFiles(
+  document: vscode.TextDocument,
+  sourceFormat: "markdown" | "latex"
+): Promise<Record<string, string>> {
+  const source = document.getText();
+  const paths = sourceFormat === "latex"
+    ? [...source.matchAll(/\\bibliography\s*\{([^}]+)}/g)].flatMap((match) => match[1].split(","))
+    : [source.match(/^---[\s\S]*?^bibliography:\s*["']?([^#\n"']+)/m)?.[1] ?? ""];
+  const files: Record<string, string> = {};
+  const root = vscode.Uri.file(path.dirname(document.uri.fsPath));
+
+  for (const rawPath of paths) {
+    const requested = rawPath.trim();
+    if (!requested) continue;
+    const candidates = requested.toLowerCase().endsWith(".bib") ? [requested] : [requested, requested + ".bib"];
+    for (const candidate of candidates) {
+      try {
+        const uri = vscode.Uri.joinPath(root, ...candidate.replaceAll("\\", "/").split("/"));
+        const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+        files[requested] = content;
+        files[candidate] = content;
+        break;
+      } catch {
+        // The resolver renders unresolved citations in red and keeps the preview usable.
+      }
+    }
+  }
+
+  return files;
 }
 
 async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message: PageRequestMessage): Promise<void> {
@@ -297,8 +404,10 @@ function round(value: number): number {
 function loadPreviewBundle(): VectorPreviewBundle {
   return {
     createDocumentEngine,
+    findSourceAnchorInPages,
     loadNativeMathFonts,
-    renderPageToSvg
+    renderPageToSvg,
+    renderToPdf
   };
 }
 

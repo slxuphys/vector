@@ -35,6 +35,12 @@ button, input { font: inherit; }
 }
 
 .vector-webview-zoom { display: flex; align-items: center; justify-self: center; gap: 6px; }
+.vector-webview-actions { min-width: 32px; justify-self: start; }
+.vector-webview-icon-button { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--vscode-button-border, transparent); border-radius: 5px; color: var(--vscode-foreground); background: transparent; cursor: pointer; }
+.vector-webview-icon-button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
+.vector-webview-icon-button:disabled { opacity: 0.55; cursor: default; }
+.vector-webview-spin { animation: vector-webview-spin 0.8s linear infinite; }
+@keyframes vector-webview-spin { to { transform: rotate(360deg); } }
 .vector-webview-zoom input { width: 132px; }
 .vector-webview-zoom span { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 .vector-webview-zoom button { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--vscode-button-border, transparent); border-radius: 5px; color: var(--vscode-foreground); background: transparent; cursor: pointer; }

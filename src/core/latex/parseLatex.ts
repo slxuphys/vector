@@ -2,11 +2,16 @@ import type { ImageLength, InlineNode, MarkdownAst, MarkdownNode } from "../mark
 import { parseInline } from "../markdown/parseInline";
 
 const nonBreakingSpaceMarker = "\uE110";
-const citationPlaceholderMarker = "\uE111";
+
+export type LatexAuthor = {
+  name: string;
+  affiliations: string[];
+  email?: string;
+};
 
 type LatexPreamble = {
   title?: string;
-  authors: string[];
+  authors: LatexAuthor[];
   date?: string;
   abstract?: string;
 };
@@ -117,13 +122,55 @@ export function readLatexDocumentClass(source: string): LatexDocumentClass {
 export function readLatexPreamble(source: string): LatexPreamble {
   const expanded = expandLatexMacros(normalizeLatexSource(source));
   const rawDate = readCommandArgument(expanded, "date");
-  const authorCommands = readCommandArguments(expanded, "author");
   return {
     title: optionalLatexInline(readCommandArgument(expanded, "title")),
-    authors: authorCommands.length ? authorCommands.flatMap(splitAuthors) : [],
+    authors: readLatexAuthors(expanded),
     date: rawDate === undefined ? undefined : latexInlineToMarkdown(rawDate),
     abstract: optionalLatexInline(readEnvironment(expanded, "abstract")?.body.trim())
   };
+}
+
+export function readLatexBibliographyPaths(source: string): string[] {
+  return readCommandArguments(source, "bibliography")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function readLatexAuthors(source: string): LatexAuthor[] {
+  const authors: LatexAuthor[] = [];
+  let current: LatexAuthor[] = [];
+  let cursor = 0;
+
+  while (cursor < source.length) {
+    if (source[cursor] === "%" && !isEscaped(source, cursor)) {
+      const end = source.indexOf("\n", cursor);
+      cursor = end === -1 ? source.length : end + 1;
+      continue;
+    }
+    const command = readLatexControlSequence(source, cursor);
+    if (!command || !["author", "affiliation", "email"].includes(command.name)) {
+      cursor = command?.end ?? cursor + 1;
+      continue;
+    }
+    const argument = readDelimitedLatexArgument(source, skipLatexWhitespace(source, command.end), "{", "}");
+    if (!argument) {
+      cursor = command.end;
+      continue;
+    }
+    const value = optionalLatexInline(argument.value);
+    if (command.name === "author" && value) {
+      current = splitAuthors(argument.value).map((name) => ({ name, affiliations: [] }));
+      authors.push(...current);
+    } else if (command.name === "affiliation" && value) {
+      for (const author of current) author.affiliations.push(value);
+    } else if (command.name === "email" && value) {
+      for (const author of current) author.email = value;
+    }
+    cursor = argument.end;
+  }
+
+  return authors;
 }
 
 function normalizeLatexSource(source: string): string {
@@ -406,6 +453,7 @@ function parseLatexBlocks(source: string, sourceOffset: number): MarkdownNode[] 
 function findNextBlock(source: string, cursor: number): LatexBlockMatch | undefined {
   const candidates = [
     matchFigure(source, cursor),
+    matchBibliography(source, cursor),
     matchMathEnvironment(source, cursor),
     matchDisplayMath(source, cursor),
     matchList(source, cursor),
@@ -414,6 +462,17 @@ function findNextBlock(source: string, cursor: number): LatexBlockMatch | undefi
   ].filter((match): match is LatexBlockMatch => match !== undefined);
   candidates.sort((a, b) => a.index - b.index);
   return candidates[0];
+}
+
+function matchBibliography(source: string, cursor: number): LatexBlockMatch | undefined {
+  const match = /\\bibliography\s*\{([^}]+)}/g.exec(source.slice(cursor));
+  if (!match || match.index === undefined) return undefined;
+  const index = cursor + match.index;
+  return {
+    index,
+    end: index + match[0].length,
+    nodes: [{ type: "bibliography" }]
+  };
 }
 
 function matchFigure(source: string, cursor: number): LatexBlockMatch | undefined {
@@ -556,12 +615,15 @@ function latexInlineToMarkdown(source: string): string {
     let transformed = replaceInlineCommands(value);
     transformed = transformed
       .replace(/~/g, nonBreakingSpaceMarker)
-      .replace(/\\cite\{[^{}]*}/g, citationPlaceholderMarker)
+      .replace(/\\(?:cite|citep)(?:\[[^\]]*])?\{([^{}]+)}/g, (_match, keys: string) =>
+        "[" + keys.split(",").map((key) => "@" + key.trim()).join("; ") + "]")
+      .replace(/\\citet(?:\[[^\]]*])?\{([^{}]+)}/g, (_match, key: string) => "@" + key.trim())
       .replace(/\\ref\{([A-Za-z][\w:.'-]*)}/g, "@!$1")
       .replace(/\\(?:eqref|autoref|cref)\{([A-Za-z][\w:.'-]*)}/g, "@$1")
       .replace(/\\LaTeX\b/g, "LaTeX")
       .replace(/\\TeX\b/g, "TeX")
       .replace(/\\and\b/g, ", ")
+      .replace(/\\([&#_%$])/g, "$1")
       .replace(/\\label\{([A-Za-z][\w:.'-]*)}/g, "")
       .replace(/\\(?:noindent|quad|qquad|,|;|:|!)/g, " ")
       .replace(/\\[a-zA-Z]+\*?(?:\[[^\]]*])?/g, "");

@@ -1,6 +1,20 @@
 export type ProductFormat = "markdown" | "latex";
 export type ProductExampleKey = "markdownNote" | "latexArticle" | "latexRevtex";
 
+export const sampleBibliography = `@article{shor1995,
+  author = {Peter W. Shor},
+  title = {Scheme for reducing decoherence in quantum computer memory},
+  journal = {Physical Review A},
+  year = {1995}
+}
+
+@book{knuth1984,
+  author = {Donald E. Knuth},
+  title = {The TeXbook},
+  publisher = {Addison-Wesley},
+  year = {1984}
+}`;
+
 export const productExamples = {
   markdownNote: `---
 document:
@@ -13,6 +27,7 @@ typography:
   lineHeight: 1.35
 layout:
   textAlign: justify
+bibliography: references.bib
 ---
 
 # A Clean Preview
@@ -26,6 +41,11 @@ $$
 $$
 
 The preview renders only nearby pages and uses the same display list for PDF export.
+
+The underlying layout model remains intentionally small [@knuth1984].
+
+::: bibliography
+:::
 `,
   latexArticle: `\\documentclass{article}
 \\usepackage{amsmath}
@@ -53,13 +73,20 @@ Display equations keep labels and equation references.
 
 Equation \\eqref{eq:integral} is generated from the same display list as the preview.
 
+This example cites \\cite{knuth1984}.
+
+\\bibliography{references}
+
 \\end{document}
 `,
   latexRevtex: `\\documentclass[aps,prd,10pt,twocolumn]{revtex4-2}
 \\usepackage{amsmath}
 \\title{Fast Live Preview for Scientific Writing}
 \\author{Ada Vector}
+\\affiliation{Department of Computational Glyphs \& Symbolic Systems, Asteria University, College Station, Texas 77843, USA}
 \\author{Emmy Layout}
+\\email{emmy.layout@meridian-moon.example}
+\\affiliation{Department of Computational Glyphs \& Symbolic Systems, Asteria University, College Station, Texas 77843, USA}
 
 \\begin{document}
 \\maketitle
@@ -71,11 +98,15 @@ This short REVTeX-style sample checks title matter, abstract layout, two-column 
 \\section{Introduction}
 Scientific notation and compact prose provide a useful stress test for dense technical layouts. The text engine should preserve compact columns and keep inline math such as $E=mc^2$ aligned with the surrounding text.
 
+The standard error-correction construction is discussed in \\cite{shor1995}.
+
 \\section{Setup and notation}
 We consider a channel $\\mathcal{E}$ acting on a state $\\rho$ and write a representative expression as
 \\begin{equation}
 \\mathcal{E}(\\rho)=\\sum_i E_i \\rho E_i^\\dagger .
 \\end{equation}
+
+\\bibliography{references}
 
 \\end{document}
 `
