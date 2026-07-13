@@ -122,7 +122,7 @@ export function isOperatorText(text: string): boolean {
 }
 
 export function isRelationOperator(text: string): boolean {
-  return ["=", "≤", "≥", "≠", "≫", "≪", "<", ">", "←", "→", "↑", "↓", "⇒", "∈", "⟂"].includes(text);
+  return ["=", "≈", "≤", "≥", "≠", "≫", "≪", "<", ">", "←", "→", "↑", "↓", "⇒", "∈", "⟂"].includes(text);
 }
 
 export function isBinaryOperator(text: string): boolean {

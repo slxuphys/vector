@@ -1,4 +1,8 @@
 import type { DocumentTheme } from "./themeTypes";
+import {
+  latinModernRomanFontFaceCss,
+  latinModernRomanFontStack
+} from "../renderers/text/latinModernRomanFont";
 
 export const defaultTheme: DocumentTheme = {
   pageBackground: "#ffffff",
@@ -10,7 +14,8 @@ export const defaultTheme: DocumentTheme = {
   tableHeaderBackground: "#eef3f7",
   tableBorder: "#cfd7df",
   link: "#145ea8",
-  fontFamily: "Arial, Helvetica, sans-serif",
+  fontFamily: latinModernRomanFontStack,
+  fontFaceCss: latinModernRomanFontFaceCss(),
   monoFontFamily: "Consolas, Monaco, monospace",
   fontSize: 12,
   lineHeight: 1.45

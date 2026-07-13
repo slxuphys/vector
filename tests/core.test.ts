@@ -42,6 +42,15 @@ import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
 
 describe("markdown parser", () => {
+  it("uses Latin Modern Roman for Markdown without front matter", async () => {
+    const { layout } = await createDocumentEngine().layout("Plain Markdown text.");
+    const text = layout.pages[0].objects.find((object) => object.type === "text");
+
+    expect(layout.theme.fontFamily).toContain("Latin Modern Roman");
+    expect(layout.theme.fontFaceCss).toContain("Latin Modern Roman");
+    expect(text?.type === "text" ? text.fontFamily : "").toContain("Latin Modern Roman");
+  });
+
   it("records Markdown block source spans", () => {
     const source = `# Heading
 
@@ -2917,6 +2926,24 @@ This paragraph has enough words to wrap into more than one line and the first re
       expect(dot.italic).toBe(false);
       expect(y.x - dot.x).toBeGreaterThan(compactY.x - compactDot.x);
     }
+  });
+
+  it("renders cdots and treats approx as a relation", () => {
+    const layout = layoutNativeMath("a \\cdots b \\approx c", false, 12, defaultOpenMathMetrics, "openmath");
+    const compact = layoutNativeMath("a \\cdots b \\approx c", false, 12, {
+      ...defaultOpenMathMetrics,
+      relationMargin: 0
+    }, "openmath");
+    const text = layout.nodes
+      .filter((node) => node.type === "glyph")
+      .map((node) => node.text)
+      .join("");
+
+    expect(text).toContain("⋯");
+    expect(text).toContain("≈");
+    expect(text).not.toContain("cdots");
+    expect(text).not.toContain("approx");
+    expect(layout.width).toBeGreaterThan(compact.width);
   });
 
   it("normalizes meaningless inline math spaces for measurement keys", () => {
