@@ -20,7 +20,12 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = f
           source: node.sourceSpan
         };
       case "paragraph":
-        return { type: "paragraph", runs: flattenInline(node.children), source: node.sourceSpan };
+        return {
+          type: "paragraph",
+          runs: flattenInline(node.children),
+          continuation: node.continuation,
+          source: node.sourceSpan
+        };
       case "list":
         return {
           type: "list",

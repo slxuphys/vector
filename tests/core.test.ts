@@ -992,7 +992,7 @@ Text with citation\\cite{future}.
     const { layout } = await engine.layout(`\\documentclass{revtex4-2}
 \\begin{document}
 \\section{Intro}
-First paragraph after the heading should stay flush.
+First paragraph after the heading should use the resolved stylesheet indent.
 
 Second paragraph should use the resolved stylesheet indent.
 \\end{document}`);
@@ -1002,9 +1002,54 @@ Second paragraph should use the resolved stylesheet indent.
     expect(first?.type).toBe("text");
     expect(second?.type).toBe("text");
     if (first?.type === "text" && second?.type === "text") {
-      expect(first.x).toBeCloseTo(layout.page.margin.left);
-      expect(second.x).toBeGreaterThan(first.x + 10);
+      expect(first.x).toBeGreaterThan(layout.page.margin.left + 10);
+      expect(second.x).toBeCloseTo(first.x);
     }
+  });
+
+  it("indents a new revtex paragraph after display math", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
+    const { layout } = await engine.layout(`\\documentclass{revtex4-2}
+\\begin{document}
+\\[
+x^2 + y^2 = r^2
+\\]
+
+This is a new paragraph after display math.
+\\end{document}`);
+    const paragraph = layout.pages[0].objects.find(
+      (object) => object.type === "text" && object.text.startsWith("This is a new paragraph")
+    );
+
+    expect(paragraph?.type).toBe("text");
+    if (paragraph?.type === "text") {
+      expect(paragraph.x).toBeGreaterThan(layout.page.margin.left + 10);
+    }
+  });
+
+  it("does not indent revtex text that continues directly after display math", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex" });
+    const source = `\\documentclass{revtex4-2}
+\\begin{document}
+Before the equation:
+\\begin{equation}
+x^2 + y^2 = r^2
+\\end{equation}
+Following text continues the same paragraph.
+\\end{document}`;
+    const ast = parseLatex(source);
+    const continuation = ast.children.find(
+      (node) => node.type === "paragraph" && node.children.some((child) => child.type === "text" && child.text.includes("Following text"))
+    );
+    const { layout } = await engine.layout(source);
+    const rendered = layout.pages[0].objects.find(
+      (object) => object.type === "text" && object.text.startsWith("Following text")
+    );
+
+    expect(continuation?.type).toBe("paragraph");
+    if (continuation?.type === "paragraph") expect(continuation.continuation).toBe(true);
+    expect(rendered?.type).toBe("text");
+    if (rendered?.type === "text") expect(rendered.x).toBeCloseTo(layout.page.margin.left);
   });
 
   it("accepts separate page margins from front matter", async () => {

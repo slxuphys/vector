@@ -40,7 +40,7 @@ export type TitleMatter = {
 
 export type LayoutBlock =
   | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; unnumbered?: boolean; source?: SourceSpan }
-  | { type: "paragraph"; runs: InlineRun[]; source?: SourceSpan }
+  | { type: "paragraph"; runs: InlineRun[]; continuation?: boolean; source?: SourceSpan }
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined>; source?: SourceSpan }
   | { type: "code"; language?: string; code: string; source?: SourceSpan }
   | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string; source?: SourceSpan }

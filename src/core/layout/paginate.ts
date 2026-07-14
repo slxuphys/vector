@@ -157,7 +157,7 @@ export function paginate(
 
     if (block.type === "paragraph") {
       const fontSize = theme.fontSize;
-      const indent = paragraphIndent(layoutConfig, previousBlockKind);
+      const indent = paragraphIndent(layoutConfig, previousBlockKind, block.continuation);
       const paragraphRuns = indent > 0 && block.runs.length > 0
         ? [
             { ...block.runs[0], text: "\u2003", nonBreak: true },
@@ -379,7 +379,12 @@ export function paginate(
   return pages;
 }
 
-function paragraphIndent(layoutConfig: LayoutConfig, previousBlockKind: ParagraphSuppressAfter | undefined): number {
+function paragraphIndent(
+  layoutConfig: LayoutConfig,
+  previousBlockKind: ParagraphSuppressAfter | undefined,
+  continuation = false
+): number {
+  if (continuation) return 0;
   const indent = Math.max(0, layoutConfig.paragraph.indent);
   if (!indent || !previousBlockKind) return 0;
   return layoutConfig.paragraph.suppressAfter.includes(previousBlockKind) ? 0 : indent;

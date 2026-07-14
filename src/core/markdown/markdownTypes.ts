@@ -32,7 +32,7 @@ export type LabeledNode = {
 
 export type MarkdownNode =
   | (({ type: "heading"; level: number; children: InlineNode[]; title?: boolean; unnumbered?: boolean } & LabeledNode) & SourceMapped)
-  | ({ type: "paragraph"; children: InlineNode[] } & SourceMapped)
+  | ({ type: "paragraph"; children: InlineNode[]; continuation?: boolean } & SourceMapped)
   | ({ type: "list"; ordered: boolean; items: InlineNode[][]; checked?: Array<boolean | undefined> } & SourceMapped)
   | ({ type: "codeBlock"; language?: string; code: string } & SourceMapped)
   | (({ type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] } & LabeledNode) & SourceMapped)

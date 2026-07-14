@@ -85,7 +85,11 @@ function revtexDefaults(context: LatexDocumentClassContext): EngineOptions {
       lineBreaking: { ...defaultLayoutConfig.lineBreaking, hyphenation: true },
       headingStyle: "revtex",
       columns: { count: options.has("twocolumn") ? 2 : 1, gap: 24 },
-      paragraph: { ...defaultLayoutConfig.paragraph, indent: fontSize * 1.5 },
+      paragraph: {
+        ...defaultLayoutConfig.paragraph,
+        indent: fontSize * 1.5,
+        suppressAfter: []
+      },
       headingFontSizes: {
         1: fontSize * 1.2,
         2: fontSize * 1.05,

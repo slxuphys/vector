@@ -455,15 +455,29 @@ function parseLatexBlocks(
   const nodes: MarkdownNode[] = [];
   const commandDefinitions = latexCommandSyntaxForMode(plugins, mode);
   let cursor = 0;
+  let previousBlockContinuesParagraph = false;
 
   while (cursor < source.length) {
     const match = findNextBlock(source, cursor, plugins, mode, commandDefinitions);
     if (!match) {
-      nodes.push(...parseLatexParagraphs(source.slice(cursor), sourceOffset + cursor));
+      const remainder = source.slice(cursor);
+      nodes.push(...parseLatexParagraphs(
+        remainder,
+        sourceOffset + cursor,
+        previousBlockContinuesParagraph && !startsWithParagraphBreak(remainder)
+      ));
       break;
     }
-    if (match.index > cursor) nodes.push(...parseLatexParagraphs(source.slice(cursor, match.index), sourceOffset + cursor));
+    if (match.index > cursor) {
+      const between = source.slice(cursor, match.index);
+      nodes.push(...parseLatexParagraphs(
+        between,
+        sourceOffset + cursor,
+        previousBlockContinuesParagraph && !startsWithParagraphBreak(between)
+      ));
+    }
     nodes.push(...match.nodes.map((node) => ({ ...node, sourceSpan: { start: sourceOffset + match.index, end: sourceOffset + match.end } })));
+    previousBlockContinuesParagraph = match.nodes.some((node) => node.type === "mathBlock");
     cursor = match.end;
   }
 
@@ -658,7 +672,7 @@ function matchList(source: string, cursor: number): LatexBlockMatch | undefined 
   };
 }
 
-function parseLatexParagraphs(source: string, sourceOffset: number): MarkdownNode[] {
+function parseLatexParagraphs(source: string, sourceOffset: number, firstParagraphContinuation = false): MarkdownNode[] {
   const cleaned = stripLatexComments(source);
   const nodes: MarkdownNode[] = [];
   let cursor = 0;
@@ -672,6 +686,7 @@ function parseLatexParagraphs(source: string, sourceOffset: number): MarkdownNod
     nodes.push({
       type: "paragraph",
       children: parseLatexInline(paragraph),
+      continuation: nodes.length === 0 && firstParagraphContinuation || undefined,
       sourceSpan: {
         start: sourceOffset + index + leadingWhitespace,
         end: sourceOffset + index + rawParagraph.length - trailingWhitespace
@@ -679,6 +694,11 @@ function parseLatexParagraphs(source: string, sourceOffset: number): MarkdownNod
     });
   }
   return nodes;
+}
+
+function startsWithParagraphBreak(source: string): boolean {
+  const leadingWhitespace = source.match(/^\s*/)?.[0] ?? "";
+  return /\n[\t ]*\n/.test(leadingWhitespace);
 }
 
 function parseLatexInline(source: string): InlineNode[] {
