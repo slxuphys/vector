@@ -55,6 +55,7 @@ export type ImageNode = {
 
 export type GraphSXNode = {
   type: "graphsx";
+  syntax?: "graphsx" | "tikz";
   source: string;
   caption?: string;
   width?: ImageLength;

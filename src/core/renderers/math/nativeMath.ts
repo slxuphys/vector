@@ -1,4 +1,6 @@
+import type { GraphSXDisplayList } from "@slxu/graphsx";
 import type { DisplayObject } from "../../display-list/displayTypes";
+import { defaultTheme } from "../../theme/defaultTheme";
 import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { escapeXml } from "../../utils/sanitize";
 import {
@@ -26,6 +28,7 @@ import {
   type NativeMathFontProfileName,
   type NativeMathProfile
 } from "./nativeMathProfiles";
+import { renderGraphSX } from "../graphsx/renderGraphSX";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -72,7 +75,19 @@ export type NativeGlyphPath = {
   color?: string;
 };
 
-export type NativeNode = NativeGlyph | NativeRule | NativePath | NativeGlyphPath;
+export type NativeGraphSX = {
+  type: "graphsx";
+  source: string;
+  svgBody: string;
+  summary: string;
+  displayList: GraphSXDisplayList;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type NativeNode = NativeGlyph | NativeRule | NativePath | NativeGlyphPath | NativeGraphSX;
 
 export type NativeMathLayout = {
   width: number;
@@ -545,6 +560,10 @@ export function renderNativeMathSvg(object: NativeMathObject, options: { include
       return `<path d="${escapeXml(node.d)}" transform="translate(${round(object.x + node.x)} ${round(object.y + node.y)}) scale(${roundScale(node.scale)} ${roundScale(-node.scale)})" fill="${escapeXml(node.color ?? object.color)}" />`;
     }
 
+    if (node.type === "graphsx") {
+      return `<g transform="translate(${round(object.x + node.x)} ${round(object.y + node.y)})">${node.svgBody}</g>`;
+    }
+
     const style = [
       `font-family:${node.fontFamily ?? profile.renderFontFamily(Boolean(node.italic))}`,
       node.italic ? "font-style:italic" : "",
@@ -621,7 +640,8 @@ const knownEnvironmentNames = new Set([
   "gather",
   "gather*",
   "cases",
-  "smallmatrix"
+  "smallmatrix",
+  "tikzpicture"
 ]);
 const environmentDelimiters: Record<string, [string, string]> = {
   pmatrix: ["(", ")"],
@@ -1956,6 +1976,10 @@ function layoutEnvironment(
     return errorMarkerBox(unknownEnvironmentMessage(environment.name), fontSize, profile);
   }
 
+  if (environment.name === "tikzpicture") {
+    return layoutTikzEnvironment(environment, fontSize, metrics, profile);
+  }
+
   const body = environment.known && matrixEnvironmentNames.has(environment.name)
     ? layoutMatrixEnvironment(environment, fontSize, displayMode, metrics, profile)
     : environment.known && alignedEnvironmentNames.has(environment.name)
@@ -1967,6 +1991,39 @@ function layoutEnvironment(
 
   const message = `environment not closed: ${environment.name || "?"}`;
   return prependErrorMarker(message, bodyBox, fontSize, profile);
+}
+
+function layoutTikzEnvironment(
+  environment: ParsedEnvironment,
+  fontSize: number,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const source = `\\begin{tikzpicture}${environment.body}\\end{tikzpicture}`;
+  const artifact = renderGraphSX(source, defaultTheme, profile.name, "tikz");
+  const baseline = artifact.height / 2 + fontSize * metrics.fractionAxisOffset;
+  const ascent = baseline;
+  const descent = Math.max(0, artifact.height - baseline);
+  return {
+    width: artifact.width,
+    height: artifact.height,
+    baseline,
+    ascent,
+    descent,
+    inkTop: 0,
+    inkBottom: artifact.height,
+    nodes: [{
+      type: "graphsx",
+      source,
+      svgBody: artifact.svgBody,
+      summary: artifact.summary,
+      displayList: artifact.displayList,
+      x: 0,
+      y: 0,
+      width: artifact.width,
+      height: artifact.height
+    }]
+  };
 }
 
 function unknownEnvironmentMessage(name: string): string {
@@ -2457,6 +2514,16 @@ function logNativeMathParse(
           height: roundNumber(node.height),
           actualAscent: roundNumber(-node.inkTopOffset),
           actualDescent: roundNumber(node.inkBottomOffset)
+        };
+      }
+      if (node.type === "graphsx") {
+        return {
+          type: node.type,
+          x: roundNumber(node.x),
+          y: roundNumber(node.y),
+          width: roundNumber(node.width),
+          height: roundNumber(node.height),
+          summary: node.summary
         };
       }
       return {

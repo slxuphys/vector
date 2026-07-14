@@ -677,7 +677,7 @@ function layoutGraphSXBlock(
   warnings: string[];
 } {
   const profile = nativeMathProfile ?? "openmath";
-  const artifact = renderGraphSX(block.source, theme, profile);
+  const artifact = renderGraphSX(block.source, theme, profile, block.syntax ?? "graphsx");
   const requestedWidth = resolveImageLength(block.width, contentWidth);
   const width = requestedWidth === undefined ? artifact.width : Math.min(contentWidth, requestedWidth);
   const scale = artifact.width > 0 ? width / artifact.width : 1;

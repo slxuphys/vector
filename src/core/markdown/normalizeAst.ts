@@ -61,6 +61,7 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
       case "graphsx":
         return {
           type: "graphsx",
+          syntax: node.syntax,
           source: node.source,
           caption: node.caption,
           width: node.width,

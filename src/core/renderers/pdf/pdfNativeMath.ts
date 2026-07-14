@@ -4,6 +4,7 @@ import { layoutNativeMath, nativeMathProfileForRenderer, type NativeGlyph } from
 import { getOpenMathFontProfile, openMathFontProfiles } from "../math/openMathFont";
 import type { PdfFontSet } from "./pdfFonts";
 import { canEncodePdfText, hexToRgb, logMissingPdfGlyph } from "./pdfText";
+import { drawPdfGraphSX } from "./pdfGraphSX";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -21,6 +22,23 @@ export function drawPdfNativeMath(
     object.nativeMathProfile ?? nativeMathProfileForRenderer(object.renderer)
   );
   for (const node of layout.nodes) {
+    if (node.type === "graphsx") {
+      drawPdfGraphSX(page, {
+        type: "graphsx",
+        source: node.source,
+        svg: "",
+        svgBody: node.svgBody,
+        viewBox: `0 0 ${node.width} ${node.height}`,
+        summary: node.summary,
+        displayList: node.displayList,
+        nativeMathProfile: object.nativeMathProfile,
+        x: object.x + node.x,
+        y: object.y + node.y,
+        width: node.width,
+        height: node.height
+      }, fonts, pageHeight);
+      continue;
+    }
     if (node.type === "rule") {
       page.drawRectangle({
         x: object.x + node.x,

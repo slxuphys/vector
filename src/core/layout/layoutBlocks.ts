@@ -45,7 +45,7 @@ export type LayoutBlock =
   | { type: "code"; language?: string; code: string; source?: SourceSpan }
   | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
-  | { type: "graphsx"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; sourceSpan?: SourceSpan }
+  | { type: "graphsx"; syntax?: "graphsx" | "tikz"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; sourceSpan?: SourceSpan }
   | { type: "math"; text: string; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "rule"; source?: SourceSpan }
   | { type: "pageBreak"; source?: SourceSpan };

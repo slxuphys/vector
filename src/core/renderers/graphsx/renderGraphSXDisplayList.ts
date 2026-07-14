@@ -5,13 +5,15 @@ import {
   layoutNativeMath,
   renderNativeMathSvg
 } from "../math/nativeMath";
-import type { NativeMathFontProfileName } from "../math/nativeMathProfiles";
+import { getNativeMathProfile, type NativeMathFontProfileName } from "../math/nativeMathProfiles";
 
 export function renderGraphSXDisplayListToSvg(
   displayList: GraphSXDisplayList,
   nativeMathProfile: NativeMathFontProfileName = "openmath"
 ): string {
-  const body = displayList.type === "graph"
+  const fontFaceCss = getNativeMathProfile(nativeMathProfile).svgFontFaceCss;
+  const fontFace = fontFaceCss ? `<style>${fontFaceCss}</style>` : "";
+  const body = displayList.type !== "plot"
     ? [
         renderGraphArrowDefs(displayList),
         renderLayer(displayList, "edge", nativeMathProfile),
@@ -22,14 +24,14 @@ export function renderGraphSXDisplayListToSvg(
         renderClipDefs(displayList),
         ...displayList.items.map((item) => renderItem(item, displayList, nativeMathProfile))
       ].join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${round(displayList.width)}" height="${round(displayList.height)}" viewBox="0 0 ${round(displayList.width)} ${round(displayList.height)}">${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${round(displayList.width)}" height="${round(displayList.height)}" viewBox="0 0 ${round(displayList.width)} ${round(displayList.height)}">${fontFace}${body}</svg>`;
 }
 
 export function renderGraphSXDisplayListBody(
   displayList: GraphSXDisplayList,
   nativeMathProfile: NativeMathFontProfileName = "openmath"
 ): string {
-  return displayList.type === "graph"
+  return displayList.type !== "plot"
     ? [
         renderGraphArrowDefs(displayList),
         renderLayer(displayList, "edge", nativeMathProfile),
@@ -117,7 +119,7 @@ function renderMathItem(item: GraphSXDisplayItem, nativeMathProfile: NativeMathF
     nativeMetrics: metrics,
     nativeMathProfile,
     nativeLayout: layout
-  });
+  }, { includeFontCss: false });
   return item.rotate ? `<g transform="rotate(${round(item.rotate)} ${round(item.x ?? x)} ${round(item.y ?? y)})">${svg}</g>` : svg;
 }
 

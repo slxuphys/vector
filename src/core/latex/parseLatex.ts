@@ -453,6 +453,7 @@ function parseLatexBlocks(source: string, sourceOffset: number): MarkdownNode[] 
 function findNextBlock(source: string, cursor: number): LatexBlockMatch | undefined {
   const candidates = [
     matchFigure(source, cursor),
+    matchTikzPicture(source, cursor),
     matchBibliography(source, cursor),
     matchMathEnvironment(source, cursor),
     matchDisplayMath(source, cursor),
@@ -480,6 +481,23 @@ function matchFigure(source: string, cursor: number): LatexBlockMatch | undefine
   if (!match || match.index === undefined) return undefined;
   const index = cursor + match.index;
   const body = match[1];
+  const tikz = body.match(/\\begin\{tikzpicture}(?:\[[\s\S]*?])?[\s\S]*?\\end\{tikzpicture}/);
+  if (tikz) {
+    const caption = optionalLatexInline(readCommandArgument(body, "caption"));
+    const label = readCommandArgument(body, "label");
+    return {
+      index,
+      end: index + match[0].length,
+      nodes: [{
+        type: "graphsx",
+        syntax: "tikz",
+        source: tikz[0],
+        caption,
+        label,
+        align: "center"
+      }]
+    };
+  }
   const include = body.match(/\\includegraphics(?:\[([^\]]*)])?\{([^}]+)}/);
   if (!include) {
     return {
@@ -501,6 +519,22 @@ function matchFigure(source: string, cursor: number): LatexBlockMatch | undefine
       caption,
       label,
       width: parseLatexGraphicsWidth(include[1] ?? ""),
+      align: "center"
+    }]
+  };
+}
+
+function matchTikzPicture(source: string, cursor: number): LatexBlockMatch | undefined {
+  const match = /\\begin\{tikzpicture}(?:\[[\s\S]*?])?[\s\S]*?\\end\{tikzpicture}/g.exec(source.slice(cursor));
+  if (!match || match.index === undefined) return undefined;
+  const index = cursor + match.index;
+  return {
+    index,
+    end: index + match[0].length,
+    nodes: [{
+      type: "graphsx",
+      syntax: "tikz",
+      source: match[0],
       align: "center"
     }]
   };

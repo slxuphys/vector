@@ -414,6 +414,13 @@ function collectNativeLayoutFontUsage(nodes: unknown[] | undefined, usage: PdfFo
   const openMathUrl = openMathFontUrlForProfile(profile);
   for (const node of nodes ?? []) {
     if (node && typeof node === "object") {
+      if ("type" in node && node.type === "graphsx" && "displayList" in node && node.displayList) {
+        collectGraphSXFontUsage(
+          node.displayList as Record<string, any>,
+          usage,
+          (profile as NativeMathFontProfileName | undefined) ?? "openmath"
+        );
+      }
       if ("text" in node && typeof node.text === "string") {
         addSubsetText(usage, openMathUrl, node.text);
       }

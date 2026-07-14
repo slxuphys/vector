@@ -33,7 +33,7 @@ function drawGraphSXDisplayList(page: PDFPage, object: GraphSXObject, fonts: Pdf
   if (!displayList) return;
   const scale = displayList.width > 0 ? object.width / displayList.width : 1;
   const clips = collectClipRects(displayList);
-  const items = displayList.type === "graph"
+  const items = displayList.type !== "plot"
     ? [
         ...displayList.items.filter((item: Record<string, any>) => item.layer === "edge"),
         ...displayList.items.filter((item: Record<string, any>) => item.layer === "path"),

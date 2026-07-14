@@ -1,6 +1,6 @@
 declare module "@slxu/graphsx" {
   export type GraphSXDocumentModel = {
-    type: "graph" | "plot";
+    type: "graph" | "plot" | "tikz";
     attrs?: Record<string, unknown>;
   };
 
@@ -18,7 +18,7 @@ declare module "@slxu/graphsx" {
   };
 
   export type GraphSXDisplayList = {
-    type: "graph" | "plot";
+    type: "graph" | "plot" | "tikz";
     width: number;
     height: number;
     bounds?: unknown;
@@ -77,4 +77,30 @@ declare module "@slxu/graphsx" {
     rotate?: number;
     baseline?: string;
   };
+}
+
+declare module "@slxu/graphsx/tikz" {
+  import type { GraphSXDisplayList } from "@slxu/graphsx";
+
+  export type TikzModel = {
+    type: "tikz";
+    units: {
+      cm: number;
+      mm: number;
+      pt: number;
+      px: number;
+    };
+    nodes: unknown[];
+    paths: unknown[];
+    coordinates: unknown[];
+  };
+
+  export type TikzParseOptions = {
+    units?: Partial<TikzModel["units"]>;
+    defaults?: Record<string, unknown>;
+  };
+
+  export function parseTikz(source: string, options?: TikzParseOptions): TikzModel;
+  export function buildTikzDisplayList(model: TikzModel, options?: Record<string, unknown>): GraphSXDisplayList;
+  export function tikzSummary(model: TikzModel): { text: string; [key: string]: unknown };
 }

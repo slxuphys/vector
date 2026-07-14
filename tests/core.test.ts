@@ -9,6 +9,7 @@ import { parseLatex, readLatexPreamble } from "../src/core/latex/parseLatex";
 import { resolveCrossReferences } from "../src/core/xref/resolveReferences";
 import { findSourceAnchor } from "../src/core/source/sourceMap";
 import { renderPageToSvg } from "../src/core/renderers/svg/renderPageToSvg";
+import { renderGraphSX } from "../src/core/renderers/graphsx/renderGraphSX";
 import { renderToPdf } from "../src/core/renderers/pdf/renderToPdf";
 import { tokenizeLatex } from "../src/core/renderers/pdf/pdfMath";
 import { subsetFontWithHarfbuzz } from "../src/core/renderers/pdf/pdfFontSubset";
@@ -42,6 +43,12 @@ import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
 
 describe("markdown parser", () => {
+  it("keeps TikZ fences as code in Markdown", () => {
+    const ast = parseMarkdown("```tikz\n\\draw (0,0) -- (1,0);\n```");
+
+    expect(ast.children[0]).toMatchObject({ type: "codeBlock", language: "tikz" });
+  });
+
   it("uses Latin Modern Roman for Markdown without front matter", async () => {
     const { layout } = await createDocumentEngine().layout("Plain Markdown text.");
     const text = layout.pages[0].objects.find((object) => object.type === "text");
@@ -275,6 +282,115 @@ $$
 });
 
 describe("latex parser", () => {
+  const tikzPicture = String.raw`\begin{tikzpicture}
+\node[draw] (a) at (0,0) {$A$};
+\draw[->] (a.east) -- (1,0);
+\end{tikzpicture}`;
+
+  it("parses standalone TikZ pictures as LaTeX-only graph blocks", () => {
+    const ast = parseLatex(`\\begin{document}\n${tikzPicture}\n\\end{document}`);
+
+    expect(ast.children).toHaveLength(1);
+    expect(ast.children[0]).toMatchObject({ type: "graphsx", syntax: "tikz", align: "center" });
+  });
+
+  it("maps one TikZ centimeter to PDF document points", () => {
+    const artifact = renderGraphSX(
+      String.raw`\begin{tikzpicture}\draw (0,0) -- (1,0);\end{tikzpicture}`,
+      undefined,
+      "openmath",
+      "tikz"
+    );
+
+    expect(artifact.displayList.bounds).toMatchObject({ minX: 0, maxX: 72 / 2.54 });
+  });
+
+  it("maps one TikZ point to one Vector document unit", () => {
+    const artifact = renderGraphSX(
+      String.raw`\begin{tikzpicture}\node[draw, minimum width=100pt, minimum height=100pt] (a) at (0,0) {};\end{tikzpicture}`,
+      undefined,
+      "openmath",
+      "tikz"
+    );
+    const rect = artifact.displayList.items.find((item) => item.type === "rect") as { props?: { width?: number; height?: number } } | undefined;
+
+    expect(rect?.props?.width).toBeCloseTo(100);
+    expect(rect?.props?.height).toBeCloseTo(100);
+  });
+
+  it("never duplicates math font data inside a TikZ page body", () => {
+    const artifact = renderGraphSX(
+      String.raw`\begin{tikzpicture}\node (x) at (0,0) {$x$};\node (y) at (1,0) {$y$};\end{tikzpicture}`,
+      undefined,
+      "openmath",
+      "tikz"
+    );
+
+    expect((artifact.svg.match(/<style>/g) ?? []).length).toBeLessThanOrEqual(1);
+    expect(artifact.svgBody).not.toContain("<style>");
+    expect(artifact.svgBody).not.toContain("data:font/");
+    const mathLabels = artifact.displayList.items.filter((item) => item.type === "math") as Array<{ box?: { width: number } }>;
+    expect(mathLabels).toHaveLength(2);
+    expect(mathLabels.every((item) => (item.box?.width ?? Infinity) < 20)).toBe(true);
+    expect(artifact.width).toBeLessThan(50);
+  });
+
+  it("keeps TikZ figure captions and labels", () => {
+    const ast = parseLatex(String.raw`\begin{document}
+\begin{figure}
+${tikzPicture}
+\caption{A TikZ diagram}
+\label{fig:tikz}
+\end{figure}
+\end{document}`);
+
+    expect(ast.children).toHaveLength(1);
+    expect(ast.children[0]).toMatchObject({
+      type: "graphsx",
+      syntax: "tikz",
+      caption: "A TikZ diagram",
+      label: "fig:tikz"
+    });
+  });
+
+  it("lays out TikZ as an inline math atom on the math axis", () => {
+    const layout = layoutNativeMath(`x ${tikzPicture} y`, false, 12, defaultOpenMathMetrics, "openmath");
+    const graph = layout.nodes.find((node) => node.type === "graphsx");
+    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+
+    expect(graph?.type).toBe("graphsx");
+    if (!graph || graph.type !== "graphsx") return;
+    expect(graph.x).toBeGreaterThan(glyphs[0]?.x ?? -1);
+    expect(glyphs.at(-1)?.x).toBeGreaterThan(graph.x + graph.width);
+    expect(graph.y + graph.height / 2).toBeCloseTo(
+      layout.baseline - 12 * defaultOpenMathMetrics.fractionAxisOffset,
+      4
+    );
+  });
+
+  it("exports TikZ figures through the neutral vector PDF path", async () => {
+    const source = String.raw`\documentclass{article}
+\begin{document}
+\begin{figure}
+${tikzPicture}
+\caption{A TikZ diagram}
+\end{figure}
+\end{document}`;
+    const { layout } = await createDocumentEngine({
+      sourceFormat: "latex",
+      mathRenderer: "native-openmath",
+      nativeMathProfile: "openmath"
+    }).layout(source);
+    const graph = layout.pages.flatMap((page) => page.objects).find((object) => object.type === "graphsx");
+    const svg = renderPageToSvg(layout.pages[0]);
+    const pdf = await renderToPdf(layout, { mathPdfMode: "vector", subsetFonts: true });
+
+    expect(graph?.type === "graphsx" ? graph.displayList?.type : undefined).toBe("tikz");
+    expect(svg).toContain("tikz-path");
+    expect(svg).toContain("tikz-node");
+    expect(pdf.byteLength).toBeGreaterThan(1_000);
+  });
+
   it("does not parse title matter again as normal body paragraphs", () => {
     const source = `\\documentclass{article}
 \\title{Unique document title}
@@ -2267,15 +2383,21 @@ This paragraph has enough words to wrap into more than one line and the first re
     if (marker?.type === "glyph") expect(marker.color).toBe("#b42318");
   });
 
-  it("collapses tikzpicture math environments to a compact unsupported marker", () => {
-    const layout = layoutNativeMath("\\begin{tikzpicture}\\node at (0,0) {$x$};\\end{tikzpicture}", false, 12);
-    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
-    const text = glyphs.map((node) => node.text).join("");
+  it("renders tikzpicture math environments as measured graph atoms", () => {
+    const layout = layoutNativeMath(
+      "\\begin{tikzpicture}\\node[draw] (a) at (0,0) {$x$};\\end{tikzpicture}",
+      false,
+      12
+    );
+    const graph = layout.nodes.find((node) => node.type === "graphsx");
 
-    expect(text).toContain("unsupported TikZ");
-    expect(text).not.toContain("node");
-    expect(glyphs.length).toBe(1);
-    expect(layout.width).toBeLessThan(120);
+    expect(graph?.type).toBe("graphsx");
+    if (graph?.type === "graphsx") {
+      expect(graph.displayList.type).toBe("tikz");
+      expect(graph.width).toBeGreaterThan(0);
+      expect(graph.height).toBeGreaterThan(0);
+      expect(layout.width).toBeGreaterThanOrEqual(graph.width);
+    }
   });
 
   it("renders native left/right delimiters around tall content", () => {
