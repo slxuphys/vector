@@ -1,5 +1,15 @@
 import type { ImageLength, InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
 import { parseInline } from "../markdown/parseInline";
+import {
+  findNextLatexCommand,
+  findNextLatexEnvironment,
+  type LatexCommandMatch,
+  type LatexCommandSyntax,
+  type LatexEnvironmentMatch
+} from "./latexSyntax";
+import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
+import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
+import type { LatexParserMode } from "../plugins/pluginTypes";
 
 const nonBreakingSpaceMarker = "\uE110";
 
@@ -9,7 +19,7 @@ export type LatexAuthor = {
   email?: string;
 };
 
-type LatexPreamble = {
+export type LatexPreamble = {
   title?: string;
   authors: LatexAuthor[];
   date?: string;
@@ -41,7 +51,11 @@ type MacroExpansionState = {
 const maxMacroExpansionDepth = 64;
 const maxMacroExpansions = 10_000;
 
-export function parseLatex(source: string, sourceOffset = 0): MarkdownAst {
+export function parseLatex(
+  source: string,
+  sourceOffset = 0,
+  plugins: VectorPluginRegistry = firstPartyPlugins
+): MarkdownAst {
   const normalized = normalizeLatexSource(source);
   const expanded = expandLatexMacros(normalized);
   const documentStart = /\\begin\{document}/.exec(expanded);
@@ -53,7 +67,7 @@ export function parseLatex(source: string, sourceOffset = 0): MarkdownAst {
     : maskLatexDocumentOnlyContent(expanded.slice(documentStart.index + documentStart[0].length));
   return {
     type: "document",
-    children: parseLatexBlocks(stripLatexComments(body), bodyOffset)
+    children: parseLatexBlocks(stripLatexComments(body), bodyOffset, plugins, "vertical")
   };
 }
 
@@ -432,12 +446,18 @@ function stripPreamble(source: string): string {
     .replace(/\\end\{document}/g, "");
 }
 
-function parseLatexBlocks(source: string, sourceOffset: number): MarkdownNode[] {
+function parseLatexBlocks(
+  source: string,
+  sourceOffset: number,
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode
+): MarkdownNode[] {
   const nodes: MarkdownNode[] = [];
+  const commandDefinitions = latexCommandSyntaxForMode(plugins, mode);
   let cursor = 0;
 
   while (cursor < source.length) {
-    const match = findNextBlock(source, cursor);
+    const match = findNextBlock(source, cursor, plugins, mode, commandDefinitions);
     if (!match) {
       nodes.push(...parseLatexParagraphs(source.slice(cursor), sourceOffset + cursor));
       break;
@@ -450,48 +470,43 @@ function parseLatexBlocks(source: string, sourceOffset: number): MarkdownNode[] 
   return nodes;
 }
 
-function findNextBlock(source: string, cursor: number): LatexBlockMatch | undefined {
+function findNextBlock(
+  source: string,
+  cursor: number,
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode,
+  commandDefinitions: ReadonlyMap<string, LatexCommandSyntax>
+): LatexBlockMatch | undefined {
   const candidates = [
-    matchFigure(source, cursor),
-    matchTikzPicture(source, cursor),
-    matchBibliography(source, cursor),
+    matchFigure(source, cursor, plugins),
+    matchRegisteredEnvironment(source, cursor, plugins, mode),
+    matchRegisteredCommand(source, cursor, plugins, mode, commandDefinitions),
     matchMathEnvironment(source, cursor),
     matchDisplayMath(source, cursor),
     matchList(source, cursor),
-    matchSection(source, cursor),
-    matchPageBreak(source, cursor)
   ].filter((match): match is LatexBlockMatch => match !== undefined);
   candidates.sort((a, b) => a.index - b.index);
   return candidates[0];
 }
 
-function matchBibliography(source: string, cursor: number): LatexBlockMatch | undefined {
-  const match = /\\bibliography\s*\{([^}]+)}/g.exec(source.slice(cursor));
-  if (!match || match.index === undefined) return undefined;
-  const index = cursor + match.index;
-  return {
-    index,
-    end: index + match[0].length,
-    nodes: [{ type: "bibliography" }]
-  };
-}
-
-function matchFigure(source: string, cursor: number): LatexBlockMatch | undefined {
+function matchFigure(source: string, cursor: number, plugins: VectorPluginRegistry): LatexBlockMatch | undefined {
   const match = /\\begin\{figure\*?}([\s\S]*?)\\end\{figure\*?}/g.exec(source.slice(cursor));
   if (!match || match.index === undefined) return undefined;
   const index = cursor + match.index;
   const body = match[1];
-  const tikz = body.match(/\\begin\{tikzpicture}(?:\[[\s\S]*?])?[\s\S]*?\\end\{tikzpicture}/);
-  if (tikz) {
+  const packageEnvironment = findNextLatexEnvironment(body, 0, plugins.latexEnvironmentNames());
+  const packageNodes = packageEnvironment
+    ? runLatexEnvironmentHandler(packageEnvironment, plugins, "vertical")
+    : undefined;
+  const packagedGraph = packageNodes?.find((node) => node.type === "graphsx");
+  if (packagedGraph?.type === "graphsx") {
     const caption = optionalLatexInline(readCommandArgument(body, "caption"));
     const label = readCommandArgument(body, "label");
     return {
       index,
       end: index + match[0].length,
       nodes: [{
-        type: "graphsx",
-        syntax: "tikz",
-        source: tikz[0],
+        ...packagedGraph,
         caption,
         label,
         align: "center"
@@ -524,20 +539,74 @@ function matchFigure(source: string, cursor: number): LatexBlockMatch | undefine
   };
 }
 
-function matchTikzPicture(source: string, cursor: number): LatexBlockMatch | undefined {
-  const match = /\\begin\{tikzpicture}(?:\[[\s\S]*?])?[\s\S]*?\\end\{tikzpicture}/g.exec(source.slice(cursor));
-  if (!match || match.index === undefined) return undefined;
-  const index = cursor + match.index;
-  return {
-    index,
-    end: index + match[0].length,
-    nodes: [{
-      type: "graphsx",
-      syntax: "tikz",
-      source: match[0],
-      align: "center"
-    }]
-  };
+function matchRegisteredCommand(
+  source: string,
+  cursor: number,
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode,
+  definitions: ReadonlyMap<string, LatexCommandSyntax>
+): LatexBlockMatch | undefined {
+  const match = findNextLatexCommand(source, cursor, definitions);
+  if (!match) return undefined;
+  const nodes = runLatexCommandHandler(match, plugins, mode);
+  return nodes ? { index: match.index, end: match.end, nodes } : undefined;
+}
+
+function latexCommandSyntaxForMode(
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode
+): ReadonlyMap<string, LatexCommandSyntax> {
+  return new Map(plugins.latexCommandNames().flatMap((name) => {
+    const definition = plugins.latexCommand(name);
+    return definition?.modes.includes(mode)
+      ? [[name, { arguments: definition.arguments, trailingLabel: definition.trailingLabel }] as const]
+      : [];
+  }));
+}
+
+function runLatexCommandHandler(
+  match: LatexCommandMatch,
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode
+): MarkdownNode[] | undefined {
+  const definition = plugins.latexCommand(match.name);
+  if (!definition?.modes.includes(mode)) return undefined;
+  return definition.handler({
+    name: match.name,
+    source: match.source,
+    starred: match.starred,
+    requiredArguments: match.requiredArguments,
+    optionalArguments: match.optionalArguments,
+    trailingLabel: match.trailingLabel,
+    mode,
+    parseInline: parseLatexInline
+  });
+}
+
+function matchRegisteredEnvironment(
+  source: string,
+  cursor: number,
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode
+): LatexBlockMatch | undefined {
+  const match = findNextLatexEnvironment(source, cursor, plugins.latexEnvironmentNames());
+  if (!match) return undefined;
+  const nodes = runLatexEnvironmentHandler(match, plugins, mode);
+  return nodes ? { index: match.index, end: match.end, nodes } : undefined;
+}
+
+function runLatexEnvironmentHandler(
+  match: LatexEnvironmentMatch,
+  plugins: VectorPluginRegistry,
+  mode: LatexParserMode
+): MarkdownNode[] | undefined {
+  return plugins.latexEnvironment(match.name)?.({
+    name: match.name,
+    source: match.source,
+    body: match.body,
+    options: match.options,
+    mode
+  });
 }
 
 function matchMathEnvironment(source: string, cursor: number): LatexBlockMatch | undefined {
@@ -586,34 +655,6 @@ function matchList(source: string, cursor: number): LatexBlockMatch | undefined 
     index,
     end: index + match[0].length,
     nodes: items.length ? [{ type: "list", ordered, items }] : []
-  };
-}
-
-function matchSection(source: string, cursor: number): LatexBlockMatch | undefined {
-  const match = /\\(section|subsection|subsubsection)\*?\{((?:[^{}]|\{[^{}]*})*)}(\s*\\label\{([A-Za-z][\w:.'-]*)})?/g.exec(source.slice(cursor));
-  if (!match || match.index === undefined) return undefined;
-  const index = cursor + match.index;
-  const command = match[1];
-  return {
-    index,
-    end: index + match[0].length,
-    nodes: [{
-      type: "heading",
-      level: command === "section" ? 2 : command === "subsection" ? 3 : 4,
-      children: parseLatexInline(match[2]),
-      label: match[4]
-    }]
-  };
-}
-
-function matchPageBreak(source: string, cursor: number): LatexBlockMatch | undefined {
-  const match = /\\(?:newpage|clearpage|pagebreak)\b/g.exec(source.slice(cursor));
-  if (!match || match.index === undefined) return undefined;
-  const index = cursor + match.index;
-  return {
-    index,
-    end: index + match[0].length,
-    nodes: [{ type: "pageBreak" }]
   };
 }
 

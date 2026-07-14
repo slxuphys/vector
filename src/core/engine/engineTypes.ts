@@ -5,6 +5,7 @@ import type { NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { CrossRefConfig } from "../xref/xrefTypes";
+import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
 
 export type EngineOptions = {
   sourceFormat?: SourceFormat;
@@ -18,6 +19,7 @@ export type EngineOptions = {
   layout?: Partial<LayoutConfig>;
   bibliographyFiles?: Record<string, string>;
   document?: Partial<DocumentOptions>;
+  plugins?: VectorPluginRegistry;
 };
 
 export type SourceFormat = "markdown" | "latex";

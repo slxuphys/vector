@@ -31,6 +31,8 @@ import { defaultDocumentOptions, type EngineOptions, type MathRendererName } fro
 import type { CrossRefConfig } from "../xref/xrefTypes";
 import { flattenInline, type TitleMatter } from "../layout/layoutBlocks";
 import { parseInline } from "../markdown/parseInline";
+import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
+import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
 
 export type DocumentEngine = {
   layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
@@ -100,7 +102,12 @@ function prepareMarkdownLayoutFromDocument(
     ...(resolvedOptions.document ?? {})
   };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const sourceAst = parseSourceAst(document.markdown, resolvedOptions.sourceFormat, document.sourceOffset);
+  const sourceAst = parseSourceAst(
+    document.markdown,
+    resolvedOptions.sourceFormat,
+    document.sourceOffset,
+    resolvedOptions.plugins
+  );
   const bibliographyPaths = resolvedOptions.sourceFormat === "latex"
     ? readLatexBibliographyPaths(document.markdown)
     : document.frontMatter?.bibliography ? [document.frontMatter.bibliography] : [];
@@ -113,7 +120,7 @@ function prepareMarkdownLayoutFromDocument(
     numberSections: documentOptions.numberSections,
     sectionNumberStyle: documentOptions.sectionNumberStyle
   });
-  const blocks = normalizeAst(ast);
+  const blocks = normalizeAst(ast, resolvedOptions.plugins ?? firstPartyPlugins);
   const titleMatter = buildTitleMatter(documentOptions);
   const parseMs = now() - parseStart;
   const page = createPageConfig(resolvedOptions.pageSize ?? "letter", resolvedOptions.margin ?? 72);
@@ -126,8 +133,15 @@ function prepareMarkdownLayoutFromDocument(
   return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
 }
 
-function parseSourceAst(source: string, format: EngineOptions["sourceFormat"] = "markdown", sourceOffset = 0) {
-  return format === "latex" ? parseLatex(source, sourceOffset) : parseMarkdown(source, sourceOffset);
+function parseSourceAst(
+  source: string,
+  format: EngineOptions["sourceFormat"] = "markdown",
+  sourceOffset = 0,
+  plugins: VectorPluginRegistry = firstPartyPlugins
+) {
+  return format === "latex"
+    ? parseLatex(source, sourceOffset, plugins)
+    : parseMarkdown(source, sourceOffset, plugins);
 }
 
 function needsNativeMathFontsBeforeFrontMatter(document: ParsedMarkdownDocument, options: EngineOptions): boolean {

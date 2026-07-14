@@ -1,9 +1,15 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "./markdownTypes";
 import { parseInline } from "./parseInline";
-import { parseImageAttributes, parseImageBlock } from "./parseImage";
+import { parseImageBlock } from "./parseImage";
 import { isTableStart, parseTableAt } from "./parseTable";
+import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
+import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
 
-export function parseMarkdown(markdown: string, sourceOffset = 0): MarkdownAst {
+export function parseMarkdown(
+  markdown: string,
+  sourceOffset = 0,
+  plugins: VectorPluginRegistry = firstPartyPlugins
+): MarkdownAst {
   const normalized = markdown.replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n");
   const lineStarts = lineStartOffsets(lines);
@@ -36,27 +42,26 @@ export function parseMarkdown(markdown: string, sourceOffset = 0): MarkdownAst {
     if (fence) {
       const blockStart = i;
       const language = fence[1] || undefined;
-      const fenceInfo = parseFenceInfo(language, fence[2] ?? "");
       const code: string[] = [];
       i += 1;
       while (i < lines.length && !/^```\s*$/.test(lines[i])) {
         code.push(lines[i]);
         i += 1;
       }
-      if (language === "graphsx") {
-        const node: MarkdownNode = {
-          type: "graphsx",
-          source: code.join("\n"),
-          caption: fenceInfo.caption,
-          width: fenceInfo.width,
-          align: fenceInfo.align,
-          label: fenceInfo.label,
-          sourceSpan: sourceForLines(normalized, lineStarts, blockStart, Math.min(lines.length, i + 1), sourceOffset)
-        };
+      const sourceSpan = sourceForLines(normalized, lineStarts, blockStart, Math.min(lines.length, i + 1), sourceOffset);
+      const fenceHandler = language ? plugins.markdownFence(language) : undefined;
+      const packageNode = fenceHandler?.({
+        language: language ?? "",
+        info: fence[2] ?? "",
+        source: code.join("\n"),
+        sourceSpan
+      });
+      if (packageNode) {
+        const node: MarkdownNode = packageNode;
         children.push(withFollowingLabel(node, lines, i + 1));
         if (followingLabel(lines[i + 1])) i += 1;
       } else {
-        children.push({ type: "codeBlock", language, code: code.join("\n"), sourceSpan: sourceForLines(normalized, lineStarts, blockStart, Math.min(lines.length, i + 1), sourceOffset) });
+        children.push({ type: "codeBlock", language, code: code.join("\n"), sourceSpan });
       }
       i += 1;
       continue;
@@ -166,20 +171,6 @@ function sourceForLines(source: string, lineStarts: number[], startLine: number,
   const start = sourceOffset + (lineStarts[Math.max(0, startLine)] ?? source.length);
   const end = sourceOffset + (endLine >= lineStarts.length ? source.length : lineStarts[Math.max(0, endLine)] ?? source.length);
   return { start, end };
-}
-
-function parseFenceInfo(language: string | undefined, rest: string): {
-  caption?: string;
-  width?: ReturnType<typeof parseImageAttributes>["width"];
-  align?: ReturnType<typeof parseImageAttributes>["align"];
-  label?: string;
-} {
-  if (language !== "graphsx" || !rest.trim()) return {};
-  const body = rest.trim().startsWith("{") ? rest.trim() : `{${rest.trim()}}`;
-  const attrs = parseImageAttributes(body);
-  const captionMatch = rest.match(/(?:^|\s)caption=("([^"]*)"|'([^']*)'|[^\s]+)/);
-  const caption = captionMatch?.[2] ?? captionMatch?.[3] ?? captionMatch?.[1]?.replace(/^["']|["']$/g, "");
-  return { caption, width: attrs.width, align: attrs.align, label: attrs.label };
 }
 
 function stripTrailingLabel(text: string): { text: string; label?: string } {

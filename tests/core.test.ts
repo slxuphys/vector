@@ -41,6 +41,85 @@ import { loadHarfbuzzTextShaper, loadTextFontFromBytes, shapeTextWithFontFile } 
 import { latinModernRomanFontFamily, newComputerModernFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
 import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
+import { createFirstPartyPluginRegistry } from "../src/core/plugins/firstPartyPlugins";
+import { findNextLatexEnvironment } from "../src/core/latex/latexSyntax";
+
+describe("plugin registry", () => {
+  it("exposes GraphSX as one package for Markdown and LaTeX", () => {
+    const plugins = createFirstPartyPluginRegistry();
+
+    expect(plugins.pluginNames()).toContain("@vector/graphsx");
+    expect(plugins.markdownFence("graphsx")).toBeTypeOf("function");
+    expect(plugins.latexEnvironment("tikzpicture")).toBeTypeOf("function");
+  });
+
+  it("lets one plugin add syntax to both source formats", () => {
+    const plugins = createFirstPartyPluginRegistry().register({
+      name: "test/notice",
+      markdown: {
+        fences: {
+          notice: ({ source, sourceSpan }) => ({
+            type: "paragraph",
+            children: [{ type: "text", text: source.trim() }],
+            sourceSpan
+          })
+        }
+      },
+      latex: {
+        environments: {
+          notice: ({ body, mode }) => mode === "vertical"
+            ? [{ type: "paragraph", children: [{ type: "text", text: body.trim() }] }]
+            : undefined
+        },
+        commands: {
+          vectornote: {
+            arguments: ["required"],
+            modes: ["vertical"],
+            handler: ({ requiredArguments, parseInline }) => [{
+              type: "paragraph",
+              children: parseInline(requiredArguments[0])
+            }]
+          }
+        }
+      }
+    });
+
+    expect(parseMarkdown("```notice\nMarkdown notice\n```", 0, plugins).children[0]).toMatchObject({
+      type: "paragraph",
+      children: [{ type: "text", text: "Markdown notice" }]
+    });
+    expect(parseLatex("\\begin{notice}LaTeX notice\\end{notice}", 0, plugins).children[0]).toMatchObject({
+      type: "paragraph",
+      children: [{ type: "text", text: "LaTeX notice" }]
+    });
+    expect(parseLatex("\\vectornote{Command notice}", 0, plugins).children[0]).toMatchObject({
+      type: "paragraph",
+      children: [{ type: "text", text: "Command notice" }]
+    });
+  });
+
+  it("uses registered document-class profiles", () => {
+    const plugins = createFirstPartyPluginRegistry().register({
+      name: "test/class",
+      latex: {
+        documentClasses: {
+          compact: () => ({ sourceFormat: "latex", pageSize: "letter", margin: 18 })
+        }
+      }
+    });
+    const options = applySourceFormatDefaults("\\documentclass{compact}", { sourceFormat: "latex", plugins });
+
+    expect(options.margin).toBe(18);
+  });
+
+  it("matches nested environments structurally", () => {
+    const source = "before \\begin{notice}outer \\begin{notice}inner\\end{notice} tail\\end{notice} after";
+    const match = findNextLatexEnvironment(source, 0, ["notice"]);
+
+    expect(match?.body).toContain("\\begin{notice}inner\\end{notice}");
+    expect(match?.source).toBe("\\begin{notice}outer \\begin{notice}inner\\end{notice} tail\\end{notice}");
+  });
+});
 
 describe("markdown parser", () => {
   it("keeps TikZ fences as code in Markdown", () => {

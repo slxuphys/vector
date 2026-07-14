@@ -1,8 +1,12 @@
 import { flattenInline, type LayoutBlock } from "../layout/layoutBlocks";
 import type { MarkdownAst } from "./markdownTypes";
+import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
+import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
 
-export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
+export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = firstPartyPlugins): LayoutBlock[] {
   return ast.children.map((node): LayoutBlock => {
+    const packageBlock = plugins.astNormalizer(node.type)?.(node);
+    if (packageBlock) return packageBlock;
     switch (node.type) {
       case "heading":
         return {
@@ -59,17 +63,7 @@ export function normalizeAst(ast: MarkdownAst): LayoutBlock[] {
           source: node.sourceSpan
         };
       case "graphsx":
-        return {
-          type: "graphsx",
-          syntax: node.syntax,
-          source: node.source,
-          caption: node.caption,
-          width: node.width,
-          align: node.align,
-          label: node.label,
-          labelNumber: node.labelNumber,
-          sourceSpan: node.sourceSpan
-        };
+        throw new Error("GraphSX AST nodes require the @vector/graphsx package normalizer.");
       case "mathBlock":
         return { type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber, source: node.sourceSpan };
       case "thematicBreak":

@@ -8,6 +8,8 @@ import { openMathTextFontFaceCss, openMathTextFontStack } from "../renderers/tex
 import type { DocumentTheme } from "../theme/themeTypes";
 import { defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 import { readLatexDocumentClass, readLatexPreamble } from "../latex/parseLatex";
+import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
+import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
 
 export type DocumentFrontMatter = {
   bibliography?: string;
@@ -76,7 +78,7 @@ export function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
 
 export function applySourceFormatDefaults(source: string, options: EngineOptions): EngineOptions {
   if (options.sourceFormat !== "latex") return options;
-  return mergeEngineOptions(latexDocumentClassDefaults(source), options);
+  return mergeEngineOptions(latexDocumentClassDefaults(source, options.plugins), options);
 }
 
 export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: DocumentFrontMatter | undefined): EngineOptions {
@@ -120,174 +122,14 @@ export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: Do
   };
 }
 
-function latexDocumentClassDefaults(source: string): EngineOptions {
-  const documentClass = readLatexDocumentClass(source);
-  if (documentClass.name.toLowerCase() === "revtex4-2") return latexRevtexDefaults(source);
-  return latexArticleDefaults(source);
-}
-
-function latexArticleDefaults(source: string): EngineOptions {
+function latexDocumentClassDefaults(source: string, plugins: VectorPluginRegistry = firstPartyPlugins): EngineOptions {
   const documentClass = readLatexDocumentClass(source);
   const preamble = readLatexPreamble(source);
-  const options = new Set(documentClass.options.map((option) => option.toLowerCase()));
-  const fontSize = options.has("12pt") ? 12 : options.has("11pt") ? 11 : 10;
-  const nativeMathProfile = nativeMathProfileForOpenMathFont("latin-modern");
-  const date = preamble.date === undefined ? latexToday() : preamble.date || undefined;
-
-  return {
-    sourceFormat: "latex",
-    pageSize: "letter",
-    margin: {
-      top: 72,
-      right: 134,
-      bottom: 72,
-      left: 134
-    },
-    mathRenderer: "native-openmath",
-    nativeMathProfile,
-    nativeMathMetrics: getDefaultOpenMathMetricsForProfile(nativeMathProfile),
-    theme: {
-      fontFamily: openMathTextFontStack("latin-modern"),
-      fontFaceCss: openMathTextFontFaceCss("latin-modern"),
-      fontSize,
-      lineHeight: 1.2
-    },
-    layout: {
-      textAlign: "justify",
-      lineBreaking: {
-        ...defaultLayoutConfig.lineBreaking,
-        hyphenation: true
-      },
-      headingStyle: "default",
-      columns: {
-        count: options.has("twocolumn") ? 2 : 1,
-        gap: 24
-      },
-      paragraph: {
-        ...defaultLayoutConfig.paragraph,
-        indent: fontSize * 1.5
-      },
-      headingFontSizes: {
-        1: articleSectionSize(fontSize),
-        2: articleSubsectionSize(fontSize),
-        3: Math.max(fontSize, 12),
-        4: fontSize,
-        5: fontSize,
-        6: fontSize
-      }
-    },
-    document: {
-      titleFromFirstHeading: false,
-      title: preamble.title,
-      titleFontSize: fontSize * 1.7,
-      authors: preamble.authors,
-      date,
-      abstract: preamble.abstract,
-      abstractTitle: "Abstract",
-      titleStyle: "latex-article",
-      numberSections: true
-    }
-  };
-}
-
-function articleSectionSize(fontSize: number): number {
-  if (fontSize >= 12) return 17.28;
-  return 14.4;
-}
-
-function articleSubsectionSize(fontSize: number): number {
-  return fontSize >= 12 ? 14.4 : 12;
-}
-
-function latexRevtexDefaults(source: string): EngineOptions {
-  const documentClass = readLatexDocumentClass(source);
-  const preamble = readLatexPreamble(source);
-  const options = new Set(documentClass.options.map((option) => option.toLowerCase()));
-  const fontSize = options.has("12pt") ? 12 : options.has("11pt") ? 11 : 10;
-  const nativeMathProfile = nativeMathProfileForOpenMathFont("latin-modern");
-
-  return {
-    sourceFormat: "latex",
-    pageSize: "letter",
-    margin: {
-      top: 72,
-      right: 72,
-      bottom: 72,
-      left: 72
-    },
-    mathRenderer: "native-openmath",
-    nativeMathProfile,
-    nativeMathMetrics: getDefaultOpenMathMetricsForProfile(nativeMathProfile),
-    theme: {
-      fontFamily: openMathTextFontStack("latin-modern"),
-      fontFaceCss: openMathTextFontFaceCss("latin-modern"),
-      fontSize,
-      lineHeight: 1.28
-    },
-    layout: {
-      textAlign: "justify",
-      lineBreaking: {
-        ...defaultLayoutConfig.lineBreaking,
-        hyphenation: true
-      },
-      headingStyle: "revtex",
-      columns: {
-        count: options.has("twocolumn") ? 2 : 1,
-        gap: 24
-      },
-      paragraph: {
-        ...defaultLayoutConfig.paragraph,
-        indent: fontSize * 1.5
-      },
-      headingFontSizes: {
-        1: fontSize * 1.2,
-        2: fontSize * 1.05,
-        3: fontSize,
-        4: fontSize,
-        5: fontSize,
-        6: fontSize
-      }
-    },
-    crossRef: {
-      section: {
-        captionFormat: "{number}.",
-        referenceFormat: "{number}"
-      },
-      equation: {
-        captionFormat: "({number})",
-        referenceFormat: "({number})"
-      },
-      figure: {
-        captionFormat: "FIG. {number}.",
-        referenceFormat: "Fig. {number}"
-      },
-      table: {
-        captionFormat: "TABLE {number}.",
-        referenceFormat: "Table {number}"
-      }
-    },
-    document: {
-      titleFromFirstHeading: false,
-      title: preamble.title,
-      titleFontSize: fontSize * 1.18,
-      authors: preamble.authors,
-      date: preamble.date || undefined,
-      abstract: preamble.abstract,
-      abstractTitle: "",
-      titleStyle: "revtex",
-      numberSections: true,
-      sectionNumberStyle: "revtex"
-    }
-  };
-}
-
-function latexToday(): string {
-  const date = new Date();
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric"
-  });
+  const handler = plugins.latexDocumentClass(documentClass.name)
+    ?? plugins.latexDocumentClass("article")
+    ?? firstPartyPlugins.latexDocumentClass("article");
+  if (!handler) throw new Error("The first-party LaTeX article document class is not registered.");
+  return handler({ source, ...documentClass, preamble });
 }
 
 function mergeEngineOptions(base: EngineOptions, override: EngineOptions): EngineOptions {
