@@ -968,6 +968,22 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.svg-md-page-item {
+  flex: 0 0 auto;
+}
+
+.svg-md-page-number {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-muted, #667085);
+  font: 500 11px/1 ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  pointer-events: none;
+}
+
 .svg-md-page-placeholder {
   flex: 0 0 auto;
   pointer-events: none;
@@ -1104,6 +1120,7 @@ button:disabled {
   .svg-md-side-panel,
   .svg-md-file-panel,
   .svg-md-page-placeholder,
+  .svg-md-page-number,
   .svg-md-error {
     display: none;
   }
@@ -1125,14 +1142,18 @@ button:disabled {
     padding: 0;
   }
 
-  .svg-md-page {
+  .svg-md-page-item {
     margin: 0;
-    box-shadow: none;
     break-after: page;
     page-break-after: always;
   }
 
-  .svg-md-page:last-child {
+  .svg-md-page {
+    margin: 0;
+    box-shadow: none;
+  }
+
+  .svg-md-page-item:last-child {
     break-after: auto;
     page-break-after: auto;
   }

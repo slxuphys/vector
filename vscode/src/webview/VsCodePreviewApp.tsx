@@ -235,13 +235,18 @@ export function VsCodePreviewApp() {
               key={meta.index}
               style={{ width: meta.width * zoom, height: meta.height * zoom }}
             >
-              {preview.pages.has(meta.index) ? (
-                <div
-                  className="vector-webview-page-svg"
-                  style={{ width: meta.width * zoom, height: meta.height * zoom }}
-                  dangerouslySetInnerHTML={{ __html: scaleSvg(preview.pages.get(meta.index)!, meta, zoom) }}
-                />
-              ) : null}
+              <div className="vector-preview-page-sheet">
+                {preview.pages.has(meta.index) ? (
+                  <div
+                    className="vector-webview-page-svg"
+                    style={{ width: meta.width * zoom, height: meta.height * zoom }}
+                    dangerouslySetInnerHTML={{ __html: scaleSvg(preview.pages.get(meta.index)!, meta, zoom) }}
+                  />
+                ) : null}
+              </div>
+              <div className="vector-preview-page-number" aria-label={`Page ${meta.index + 1}`}>
+                {meta.index + 1}
+              </div>
             </div>
           ))}
         </div>

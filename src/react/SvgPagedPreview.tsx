@@ -96,13 +96,17 @@ export function SvgPagedPreview({
           : (
             <div
               key={page.index}
-              className="svg-md-page-placeholder"
+              className="svg-md-page-item"
               aria-hidden="true"
               style={{
                 width: page.width * numericZoom,
-                height: page.height * numericZoom
+                height: page.height * numericZoom,
+                position: "relative"
               }}
-            />
+            >
+              <div className="svg-md-page-placeholder" style={{ width: "100%", height: "100%" }} />
+              <div className="svg-md-page-number">{page.index + 1}</div>
+            </div>
           )
       ))}
     </div>

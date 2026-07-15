@@ -60,45 +60,53 @@ export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }
 
   return (
     <div
-      className="svg-md-page"
+      className="svg-md-page-item"
       style={{
         width: page.width * zoom,
         height: page.height * zoom,
         position: "relative"
       }}
     >
-      <div
-        ref={svgContainerRef}
-        onClick={(event: MouseEvent<HTMLDivElement>) => {
-          if (!event.ctrlKey && !event.metaKey) return;
-          const target = event.target instanceof Element
-            ? event.target.closest<SVGGElement>("[data-vector-source-start]")
-            : undefined;
-          const start = Number(target?.dataset.vectorSourceStart);
-          const end = Number(target?.dataset.vectorSourceEnd);
-          if (Number.isInteger(start) && Number.isInteger(end)) onSourceClick?.({ start, end });
-        }}
-        style={{
-          transform: `scale(${zoom})`,
-          transformOrigin: "top left",
-          width: page.width,
-          height: page.height
-        }}
-        dangerouslySetInnerHTML={{ __html: svg }}
-      />
-      {warnings.map((warning, index) => (
+      <div className="svg-md-page" style={{ width: "100%", height: "100%", position: "relative" }}>
         <div
-          key={`${warning.x}-${warning.y}-${index}`}
-          className="svg-md-page-warning"
-          style={{
-            left: warning.x * zoom,
-            top: (warning.y + 6) * zoom,
-            maxWidth: Math.max(180, (page.width - warning.x - 16) * zoom)
+          ref={svgContainerRef}
+          onClick={(event: MouseEvent<HTMLDivElement>) => {
+            if (!event.ctrlKey && !event.metaKey) return;
+            const target = event.target instanceof Element
+              ? event.target.closest<SVGGElement>("[data-vector-source-start]")
+              : undefined;
+            const start = Number(target?.dataset.vectorSourceStart);
+            const end = Number(target?.dataset.vectorSourceEnd);
+            if (Number.isInteger(start) && Number.isInteger(end)) onSourceClick?.({ start, end });
           }}
-        >
-          {warning.message}
-        </div>
-      ))}
+          style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: "top left",
+            width: page.width,
+            height: page.height
+          }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+        {warnings.map((warning, index) => (
+          <div
+            key={`${warning.x}-${warning.y}-${index}`}
+            className="svg-md-page-warning"
+            style={{
+              left: warning.x * zoom,
+              top: (warning.y + 6) * zoom,
+              maxWidth: Math.max(180, (page.width - warning.x - 16) * zoom)
+            }}
+          >
+            {warning.message}
+          </div>
+        ))}
+      </div>
+      <div
+        className="svg-md-page-number"
+        aria-label={`Page ${page.index + 1}`}
+      >
+        {page.index + 1}
+      </div>
     </div>
   );
 }
