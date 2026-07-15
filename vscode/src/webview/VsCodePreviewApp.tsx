@@ -161,11 +161,38 @@ export function VsCodePreviewApp() {
   };
 
   const onSourceClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (!event.ctrlKey && !event.metaKey) return;
-    const target = (event.target as Element).closest<HTMLElement>("[data-vector-source-start]");
-    const start = Number(target?.dataset.vectorSourceStart);
-    const end = Number(target?.dataset.vectorSourceEnd);
-    if (Number.isInteger(start) && Number.isInteger(end)) vscode.postMessage({ type: "revealSource", start, end });
+    const element = event.target instanceof Element ? event.target : undefined;
+    if (!element) return;
+
+    if (event.ctrlKey || event.metaKey) {
+      const target = element.closest<HTMLElement>("[data-vector-source-start]");
+      const start = Number(target?.dataset.vectorSourceStart);
+      const end = Number(target?.dataset.vectorSourceEnd);
+      if (Number.isInteger(start) && Number.isInteger(end)) {
+        event.preventDefault();
+        vscode.postMessage({ type: "revealSource", start, end });
+      }
+      return;
+    }
+
+    const link = element.closest<SVGAElement>("a[href]");
+    const href = link?.getAttribute("href");
+    if (!href?.startsWith("#")) return;
+    event.preventDefault();
+    revealRenderedAnchor(href.slice(1));
+  };
+
+  const revealRenderedAnchor = (encodedId: string) => {
+    const pane = scrollRef.current;
+    if (!pane) return;
+    const id = decodeFragmentId(encodedId);
+    const target = pane.querySelector<SVGElement>(`#${CSS.escape(id)}`);
+    if (!target) return;
+    const paneRect = pane.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    pane.scrollTo({
+      top: Math.max(0, pane.scrollTop + targetRect.top - paneRect.top - pane.clientHeight * 0.35)
+    });
   };
 
   const toolbar = (
@@ -228,6 +255,14 @@ function scaleSvg(svg: string, meta: PageMeta, zoom: number): string {
     const withoutSize = attrs.replace(/\s(?:width|height)="[^"]*"/g, "");
     return `<svg${withoutSize} width="${meta.width * zoom}" height="${meta.height * zoom}">`;
   });
+}
+
+function decodeFragmentId(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function visibleIndexesForMeta(metaList: PageMeta[], pane: HTMLDivElement | null, zoom: number): number[] {
