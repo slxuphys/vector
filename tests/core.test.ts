@@ -373,6 +373,74 @@ describe("latex parser", () => {
     expect(ast.children[0]).toMatchObject({ type: "graphsx", syntax: "tikz", align: "center" });
   });
 
+  it("applies preamble TikZ styles and pics to later pictures", () => {
+    const definition = String.raw`\tikzset{
+  global node/.style={draw, thick},
+  global pair/.pic={\node[global node] (-body) at (0,0) {$U$};}
+}`;
+    const ast = parseLatex(String.raw`\documentclass{article}
+${definition}
+\begin{document}
+\begin{tikzpicture}
+  \pic (u) at (0,0) {global pair};
+\end{tikzpicture}
+\end{document}`);
+    const graph = ast.children.find((node) => node.type === "graphsx");
+
+    expect(graph?.type).toBe("graphsx");
+    if (graph?.type === "graphsx") {
+      expect(graph.source.indexOf(definition)).toBe(0);
+      expect(graph.source).toContain("\\pic (u) at (0,0) {global pair}");
+      const artifact = renderGraphSX(graph.source, undefined, "openmath", "tikz");
+      expect(artifact.summary).not.toMatch(/error/i);
+      expect(artifact.displayList.items.some((item) => item.type === "rect")).toBe(true);
+    }
+  });
+
+  it("applies body TikZ definitions only to following pictures", () => {
+    const ast = parseLatex(String.raw`\begin{document}
+\begin{tikzpicture}\node (a) at (0,0) {$A$};\end{tikzpicture}
+
+\tikzset{later/.style={draw, thick}}
+
+\begin{tikzpicture}\node[later] (b) at (0,0) {$B$};\end{tikzpicture}
+\end{document}`);
+    const graphs = ast.children.filter((node) => node.type === "graphsx");
+
+    expect(graphs).toHaveLength(2);
+    expect(graphs[0]?.type === "graphsx" ? graphs[0].source : "").not.toContain("later/.style");
+    expect(graphs[1]?.type === "graphsx" ? graphs[1].source : "").toContain("later/.style");
+  });
+
+  it("keeps transparent TikZ definitions from splitting surrounding prose", () => {
+    const ast = parseLatex(String.raw`\begin{document}
+Before \tikzset{inline/.style={draw}} after.
+\end{document}`);
+    const paragraphs = ast.children.filter((node) => node.type === "paragraph");
+
+    expect(paragraphs).toHaveLength(1);
+    expect(JSON.stringify(paragraphs[0])).toContain("Before");
+    expect(JSON.stringify(paragraphs[0])).toContain("after.");
+    expect(JSON.stringify(paragraphs[0])).not.toContain("tikzset");
+  });
+
+  it("injects visible global TikZ definitions into pictures inside math", () => {
+    const ast = parseLatex(String.raw`\documentclass{article}
+\tikzset{math node/.style={draw, thick}}
+\begin{document}
+\begin{equation}
+A\begin{tikzpicture}\node[math node] (u) at (0,0) {$U$};\end{tikzpicture}B
+\end{equation}
+\end{document}`);
+    const math = ast.children.find((node) => node.type === "mathBlock");
+
+    expect(math?.type).toBe("mathBlock");
+    if (math?.type === "mathBlock") {
+      expect(math.text).toContain("\\begin{tikzpicture}\n\\tikzset{math node/.style={draw, thick}}");
+      expect(math.text).toContain("\\node[math node]");
+    }
+  });
+
   it("maps one TikZ centimeter to PDF document points", () => {
     const artifact = renderGraphSX(
       String.raw`\begin{tikzpicture}\draw (0,0) -- (1,0);\end{tikzpicture}`,

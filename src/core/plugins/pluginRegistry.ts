@@ -1,6 +1,7 @@
 import type {
   LatexDocumentClassHandler,
   LatexCommandDefinition,
+  LatexMathTransform,
   AstNodeNormalizer,
   LatexEnvironmentHandler,
   MarkdownFenceHandler,
@@ -13,6 +14,7 @@ export class VectorPluginRegistry {
   private readonly latexCommands = new Map<string, LatexCommandDefinition>();
   private readonly latexEnvironments = new Map<string, LatexEnvironmentHandler>();
   private readonly latexDocumentClasses = new Map<string, LatexDocumentClassHandler>();
+  private readonly latexMathTransforms: LatexMathTransform[] = [];
   private readonly astNormalizers = new Map<string, AstNodeNormalizer>();
 
   register(plugin: VectorPlugin): this {
@@ -22,6 +24,7 @@ export class VectorPluginRegistry {
     registerEntries(this.latexCommands, plugin.latex?.commands, plugin.name, "LaTeX command");
     registerEntries(this.latexEnvironments, plugin.latex?.environments, plugin.name, "LaTeX environment");
     registerEntries(this.latexDocumentClasses, plugin.latex?.documentClasses, plugin.name, "LaTeX document class");
+    if (plugin.latex?.transformMath) this.latexMathTransforms.push(plugin.latex.transformMath);
     registerEntries(this.astNormalizers, plugin.ast?.normalizers, plugin.name, "AST normalizer");
     return this;
   }
@@ -52,6 +55,13 @@ export class VectorPluginRegistry {
 
   latexDocumentClass(name: string): LatexDocumentClassHandler | undefined {
     return this.latexDocumentClasses.get(normalizeName(name));
+  }
+
+  transformLatexMath(context: Parameters<LatexMathTransform>[0]): string {
+    return this.latexMathTransforms.reduce(
+      (source, transform) => transform({ ...context, source }),
+      context.source
+    );
   }
 
   astNormalizer(nodeType: string): AstNodeNormalizer | undefined {

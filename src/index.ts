@@ -6,6 +6,7 @@ export { renderToPdf, downloadPdf } from "./core/renderers/pdf/renderToPdf";
 export { VectorPluginRegistry } from "./core/plugins/pluginRegistry";
 export { createFirstPartyPluginRegistry } from "./core/plugins/firstPartyPlugins";
 export type { VectorPlugin, LatexParserMode } from "./core/plugins/pluginTypes";
+export type { VectorPluginDocumentContext } from "./core/plugins/pluginDocumentContext";
 export { loadNativeMathFonts } from "./core/renderers/math/nativeFontMetrics";
 export { MarkdownEditorPreview } from "./react/MarkdownEditorPreview";
 export { MarkdownEditor } from "./react/editor/MarkdownEditor";

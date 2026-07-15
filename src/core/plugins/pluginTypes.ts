@@ -2,6 +2,7 @@ import type { EngineOptions } from "../engine/engineTypes";
 import type { InlineNode, MarkdownNode } from "../markdown/markdownTypes";
 import type { SourceSpan } from "../source/sourceTypes";
 import type { LayoutBlock } from "../layout/layoutBlocks";
+import type { VectorPluginDocumentContext } from "./pluginDocumentContext";
 
 export type LatexParserMode = "preamble" | "vertical" | "horizontal" | "math";
 
@@ -20,6 +21,7 @@ export type LatexEnvironmentContext = {
   body: string;
   options?: string;
   mode: LatexParserMode;
+  document: VectorPluginDocumentContext;
 };
 
 export type LatexEnvironmentHandler = (context: LatexEnvironmentContext) => MarkdownNode[] | undefined;
@@ -35,14 +37,24 @@ export type LatexCommandContext = {
   trailingLabel?: string;
   mode: LatexParserMode;
   parseInline: (source: string) => InlineNode[];
+  document: VectorPluginDocumentContext;
 };
 
 export type LatexCommandDefinition = {
   arguments?: LatexCommandArgument[];
   modes: LatexParserMode[];
   trailingLabel?: boolean;
+  transparent?: boolean;
   handler: (context: LatexCommandContext) => MarkdownNode[] | undefined;
 };
+
+export type LatexMathTransformContext = {
+  source: string;
+  mode: LatexParserMode;
+  document: VectorPluginDocumentContext;
+};
+
+export type LatexMathTransform = (context: LatexMathTransformContext) => string;
 
 export type LatexAuthorMetadata = {
   name: string;
@@ -77,6 +89,7 @@ export type VectorPlugin = {
     commands?: Record<string, LatexCommandDefinition>;
     environments?: Record<string, LatexEnvironmentHandler>;
     documentClasses?: Record<string, LatexDocumentClassHandler>;
+    transformMath?: LatexMathTransform;
   };
   ast?: {
     normalizers?: Record<string, AstNodeNormalizer>;

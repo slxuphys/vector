@@ -1,9 +1,16 @@
 import { parseImageAttributes } from "../../markdown/parseImage";
 import type { GraphSXNode } from "../../markdown/markdownTypes";
 import type { VectorPlugin } from "../pluginTypes";
+import type { VectorPluginDocumentContext } from "../pluginDocumentContext";
+
+const graphsxPluginName = "@vector/graphsx";
+
+type GraphSXLatexState = {
+  tikzDefinitions: string[];
+};
 
 export const graphsxPackage: VectorPlugin = {
-  name: "@vector/graphsx",
+  name: graphsxPluginName,
   markdown: {
     fences: {
       graphsx: ({ info, source, sourceSpan }) => ({
@@ -15,11 +22,28 @@ export const graphsxPackage: VectorPlugin = {
     }
   },
   latex: {
+    commands: {
+      tikzset: {
+        arguments: ["required"],
+        modes: ["preamble", "vertical"],
+        transparent: true,
+        handler: ({ source, document }) => {
+          tikzState(document).tikzDefinitions.push(source);
+          return [];
+        }
+      }
+    },
     environments: {
-      tikzpicture: ({ source, mode }) => mode === "vertical"
-        ? [{ type: "graphsx", syntax: "tikz", source, align: "center" }]
+      tikzpicture: ({ source, mode, document }) => mode === "vertical"
+        ? [{
+            type: "graphsx",
+            syntax: "tikz",
+            source: effectiveTikzSource(source, document),
+            align: "center"
+          }]
         : undefined
-    }
+    },
+    transformMath: ({ source, document }) => injectTikzDefinitions(source, tikzState(document).tikzDefinitions)
   },
   ast: {
     normalizers: {
@@ -39,6 +63,24 @@ export const graphsxPackage: VectorPlugin = {
     }
   }
 };
+
+function tikzState(document: VectorPluginDocumentContext): GraphSXLatexState {
+  return document.getState(graphsxPluginName, () => ({ tikzDefinitions: [] }));
+}
+
+function effectiveTikzSource(source: string, document: VectorPluginDocumentContext): string {
+  const definitions = tikzState(document).tikzDefinitions;
+  return definitions.length ? `${definitions.join("\n")}\n${source}` : source;
+}
+
+function injectTikzDefinitions(source: string, definitions: string[]): string {
+  if (!definitions.length || !source.includes("\\begin{tikzpicture}")) return source;
+  const prefix = `\n${definitions.join("\n")}\n`;
+  return source.replace(
+    /\\begin\{tikzpicture\}(\s*\[[^\]]*])?/g,
+    (begin) => `${begin}${prefix}`
+  );
+}
 
 function parseGraphSXFenceInfo(info: string): Pick<GraphSXNode, "caption" | "width" | "align" | "label"> {
   if (!info.trim()) return {};
