@@ -22,6 +22,7 @@ export type GraphSXArtifact = {
   viewBox: string;
   width: number;
   height: number;
+  baseline: number;
   summary: string;
   displayList: GraphSXDisplayList;
 };
@@ -80,6 +81,7 @@ export function renderGraphSX(
       viewBox: `0 0 ${displayList.width} ${displayList.height}`,
       width: displayList.width,
       height: displayList.height,
+      baseline: syntax === "tikz" ? tikzNaturalBaseline(displayList) : displayList.height,
       summary,
       displayList
     };
@@ -87,6 +89,14 @@ export function renderGraphSX(
     const message = error instanceof Error ? error.message : "Could not render GraphSX block";
     return errorGraphSXArtifact(message);
   }
+}
+
+function tikzNaturalBaseline(displayList: GraphSXDisplayList): number {
+  const bounds = displayList.bounds as { minY?: unknown };
+  if (typeof bounds?.minY !== "number" || !Number.isFinite(bounds.minY)) {
+    throw new Error("TikZ display list is missing numeric bounds");
+  }
+  return -bounds.minY;
 }
 
 function graphSXMeasure(theme: DocumentTheme, nativeMathProfile: NativeMathFontProfileName) {
@@ -162,6 +172,7 @@ function errorGraphSXArtifact(message: string): GraphSXArtifact {
     viewBox: `0 0 ${width} ${height}`,
     width,
     height,
+    baseline: height,
     summary: `GraphSX error: ${message}`,
     displayList: {
       type: "graph",

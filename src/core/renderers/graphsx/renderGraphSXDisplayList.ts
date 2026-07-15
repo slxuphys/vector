@@ -100,7 +100,14 @@ function renderMathItem(item: GraphSXDisplayItem, nativeMathProfile: NativeMathF
   const color = stringProp(item.textStyle?.fill ?? item.style?.fill, "#111111");
   const metrics = getDefaultOpenMathMetricsForProfile(nativeMathProfile);
   const layout = layoutNativeMath(source, false, fontSize, metrics, nativeMathProfile);
-  const { x, y } = mathAnchorPosition(item, layout.width, layout.height, layout.baseline);
+  const { x, y } = mathAnchorPosition(
+    item,
+    layout.width,
+    layout.height,
+    layout.baseline,
+    layout.inkTop,
+    layout.inkBottom
+  );
   const svg = renderNativeMathSvg({
     type: "math",
     renderer: "native-openmath",
@@ -137,7 +144,9 @@ function mathAnchorPosition(
   item: GraphSXDisplayItem,
   width: number,
   height: number,
-  baseline: number
+  baseline: number,
+  inkTop?: number,
+  inkBottom?: number
 ): { x: number; y: number } {
   if (item.x == null || item.y == null) {
     return {
@@ -148,9 +157,17 @@ function mathAnchorPosition(
 
   const x = anchorLeft(item.x, width, item.anchor);
   if (item.baseline === "hanging") return { x, y: item.y };
-  if (item.baseline === "middle" || item.baseline === "central") return { x, y: item.y - height / 2 };
+  if (item.baseline === "middle" || item.baseline === "central") {
+    return { x, y: item.y - inkCenter(height, inkTop, inkBottom) };
+  }
   if (item.baseline === "alphabetic") return { x, y: item.y - baseline };
-  return { x, y: item.y - height / 2 };
+  return { x, y: item.y - inkCenter(height, inkTop, inkBottom) };
+}
+
+function inkCenter(height: number, inkTop?: number, inkBottom?: number): number {
+  return Number.isFinite(inkTop) && Number.isFinite(inkBottom)
+    ? (Number(inkTop) + Number(inkBottom)) / 2
+    : height / 2;
 }
 
 function renderGraphArrowDefs(displayList: GraphSXDisplayList): string {

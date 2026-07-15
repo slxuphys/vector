@@ -1,5 +1,6 @@
 import type { GraphSXDisplayList } from "@slxu/graphsx";
 import type { DisplayObject } from "../../display-list/displayTypes";
+import { measureText as measureDocumentText } from "../../layout/measureText";
 import { defaultTheme } from "../../theme/defaultTheme";
 import { isDebugLogEnabled } from "../../utils/debugSettings";
 import { escapeXml } from "../../utils/sanitize";
@@ -29,6 +30,7 @@ import {
   type NativeMathProfile
 } from "./nativeMathProfiles";
 import { renderGraphSX } from "../graphsx/renderGraphSX";
+import { openMathTextFontStack } from "../text/latinModernRomanFont";
 
 type NativeMathObject = Extract<DisplayObject, { type: "math" }>;
 
@@ -94,6 +96,8 @@ export type NativeMathLayout = {
   height: number;
   baseline: number;
   advance: number;
+  inkTop?: number;
+  inkBottom?: number;
   nodes: NativeNode[];
 };
 
@@ -534,6 +538,8 @@ export function layoutNativeMath(
     height: Math.max(fontSize * 1.2, layout.height + padding * 2),
     baseline: layout.baseline + padding,
     advance: layout.width + padding * 2,
+    inkTop: layout.inkTop + padding,
+    inkBottom: layout.inkBottom + padding,
     nodes: translateNodes(layout.nodes, padding, padding)
   };
   nativeMathLayoutCallCount += 1;
@@ -787,6 +793,23 @@ function layoutSequence(
         maxTop = Math.max(maxTop, box.ascent);
         maxBottom = Math.max(maxBottom, box.descent);
         index = environment.end;
+        continue;
+      }
+
+      if (command.name === "\\hbox" || command.name === "\\vcenter") {
+        const mathClass = applyAtomSpacing("mord");
+        const body = readArgument(input, command.end + 1);
+        const box = command.name === "\\hbox"
+          ? layoutHBox(body.value, fontSize, displayMode, metrics, profile)
+          : layoutVCenterBox(body.value, fontSize, displayMode, metrics, profile);
+        nodes.push(...translateNodes(box.nodes, x, -box.baseline));
+        inkTop = Math.min(inkTop, -box.baseline + box.inkTop);
+        inkBottom = Math.max(inkBottom, -box.baseline + box.inkBottom);
+        lastAtom = { x, width: box.width, ascent: box.ascent, descent: box.descent, scriptAdvance: 0, italicCorrection: 0, mathClass };
+        x += box.width + glyphGap;
+        maxTop = Math.max(maxTop, box.ascent);
+        maxBottom = Math.max(maxBottom, box.descent);
+        index = body.end;
         continue;
       }
 
@@ -1805,6 +1828,7 @@ const scriptGroupedCommandArgs: Record<string, number> = {
   "\\dot": 1,
   "\\frac": 2,
   "\\hat": 1,
+  "\\hbox": 1,
   "\\ket": 1,
   "\\left": 1,
   "\\mathcal": 1,
@@ -1813,6 +1837,7 @@ const scriptGroupedCommandArgs: Record<string, number> = {
   "\\mathrm": 1,
   "\\sqrt": 1,
   "\\text": 1,
+  "\\vcenter": 1,
   "\\vec": 1
 };
 
@@ -1995,15 +2020,15 @@ function layoutEnvironment(
 
 function layoutTikzEnvironment(
   environment: ParsedEnvironment,
-  fontSize: number,
-  metrics: NativeMathMetrics,
+  _fontSize: number,
+  _metrics: NativeMathMetrics,
   profile: NativeMathProfile
 ): Box {
   const source = `\\begin{tikzpicture}${environment.body}\\end{tikzpicture}`;
   const artifact = renderGraphSX(source, defaultTheme, profile.name, "tikz");
-  const baseline = artifact.height / 2 + fontSize * metrics.fractionAxisOffset;
+  const baseline = artifact.baseline;
   const ascent = baseline;
-  const descent = Math.max(0, artifact.height - baseline);
+  const descent = artifact.height - baseline;
   return {
     width: artifact.width,
     height: artifact.height,
@@ -2024,6 +2049,153 @@ function layoutTikzEnvironment(
       height: artifact.height
     }]
   };
+}
+
+function layoutHBox(
+  source: string,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const boxes: Box[] = [];
+  let cursor = 0;
+  let textStart = 0;
+  const flushText = (end: number) => {
+    if (end <= textStart) return;
+    boxes.push(layoutHBoxText(source.slice(textStart, end), fontSize, profile));
+  };
+
+  while (cursor < source.length) {
+    if (source[cursor] === "$") {
+      const end = findUnescapedDollar(source, cursor + 1);
+      if (end >= 0) {
+        flushText(cursor);
+        boxes.push(layoutSequence(source.slice(cursor + 1, end), fontSize, displayMode, metrics, profile));
+        cursor = end + 1;
+        textStart = cursor;
+        continue;
+      }
+    }
+
+    if (source.startsWith("\\begin{tikzpicture}", cursor)) {
+      const command = readCommand(source, cursor);
+      const environment = readEnvironment(source, command.end);
+      if (environment.name === "tikzpicture" && environment.closed) {
+        flushText(cursor);
+        boxes.push(layoutTikzEnvironment(environment, fontSize, metrics, profile));
+        cursor = environment.end + 1;
+        textStart = cursor;
+        continue;
+      }
+    }
+
+    cursor += 1;
+  }
+
+  flushText(source.length);
+  return composeHorizontalBoxes(boxes);
+}
+
+function layoutVCenterBox(
+  source: string,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const child = layoutBoxArgument(source, fontSize, displayMode, metrics, profile);
+  const baseline = child.height / 2 + fontSize * metrics.fractionAxisOffset;
+  return {
+    ...child,
+    baseline,
+    ascent: baseline,
+    descent: child.height - baseline
+  };
+}
+
+function layoutBoxArgument(
+  source: string,
+  fontSize: number,
+  displayMode: boolean,
+  metrics: NativeMathMetrics,
+  profile: NativeMathProfile
+): Box {
+  const trimmed = source.trim();
+  if (trimmed.startsWith("\\hbox")) {
+    const command = readCommand(trimmed, 0);
+    const body = readArgument(trimmed, command.end + 1);
+    if (body.end === trimmed.length - 1) {
+      return layoutHBox(body.value, fontSize, displayMode, metrics, profile);
+    }
+  }
+  return layoutSequence(trimmed, fontSize, displayMode, metrics, profile);
+}
+
+function layoutHBoxText(text: string, fontSize: number, profile: NativeMathProfile): Box {
+  const value = plainTextArgument(text);
+  if (!value) return emptyBox();
+  const fontFamily = profile.openMathProfileName
+    ? openMathTextFontStack(profile.openMathProfileName)
+    : defaultTheme.fontFamily;
+  const style = { italic: false, fontFamily };
+  const width = measureDocumentText(value, {
+    fontSize,
+    fontFamily,
+    monoFontFamily: defaultTheme.monoFontFamily
+  });
+  const baseline = fontSize * 0.8;
+  const descent = fontSize * 0.2;
+  const height = baseline + descent;
+  return {
+    width,
+    height,
+    baseline,
+    ascent: baseline,
+    descent,
+    inkTop: 0,
+    inkBottom: height,
+    nodes: [glyph(value, 0, baseline, fontSize, style)]
+  };
+}
+
+function composeHorizontalBoxes(boxes: Box[]): Box {
+  if (!boxes.length) return emptyBox();
+  const baseline = Math.max(0, ...boxes.map((box) => box.baseline));
+  const descent = Math.max(0, ...boxes.map((box) => box.height - box.baseline));
+  const height = baseline + descent;
+  const nodes: NativeNode[] = [];
+  let x = 0;
+  let inkTop = Number.POSITIVE_INFINITY;
+  let inkBottom = Number.NEGATIVE_INFINITY;
+  for (const box of boxes) {
+    const dy = baseline - box.baseline;
+    nodes.push(...translateNodes(box.nodes, x, dy));
+    inkTop = Math.min(inkTop, dy + box.inkTop);
+    inkBottom = Math.max(inkBottom, dy + box.inkBottom);
+    x += box.width;
+  }
+  return {
+    width: x,
+    height,
+    baseline,
+    ascent: baseline,
+    descent,
+    inkTop: Number.isFinite(inkTop) ? inkTop : 0,
+    inkBottom: Number.isFinite(inkBottom) ? inkBottom : height,
+    nodes
+  };
+}
+
+function emptyBox(): Box {
+  return { width: 0, height: 0, baseline: 0, ascent: 0, descent: 0, inkTop: 0, inkBottom: 0, nodes: [] };
+}
+
+function findUnescapedDollar(source: string, start: number): number {
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === "$" && source[index - 1] !== "\\") return index;
+  }
+  return -1;
 }
 
 function unknownEnvironmentMessage(name: string): string {

@@ -235,7 +235,16 @@ function drawGraphSXMath(
   const localLayoutWidth = layout.width / safeScale;
   const localLayoutHeight = layout.height / safeScale;
   const localBaseline = layout.baseline / safeScale;
-  const localPosition = graphSXMathAnchorPosition(item, localLayoutWidth, localLayoutHeight, localBaseline);
+  const localInkTop = layout.inkTop == null ? undefined : layout.inkTop / safeScale;
+  const localInkBottom = layout.inkBottom == null ? undefined : layout.inkBottom / safeScale;
+  const localPosition = graphSXMathAnchorPosition(
+    item,
+    localLayoutWidth,
+    localLayoutHeight,
+    localBaseline,
+    localInkTop,
+    localInkBottom
+  );
   const x = object.x + offsetX + localPosition.x * scale;
   const y = object.y + offsetY + localPosition.y * scale;
   const rotate = numberAttr(item.rotate, 0);
@@ -281,7 +290,9 @@ function graphSXMathAnchorPosition(
   item: Record<string, any>,
   width: number,
   height: number,
-  baseline: number
+  baseline: number,
+  inkTop?: number,
+  inkBottom?: number
 ): { x: number; y: number } {
   if (item.x == null || item.y == null) {
     return {
@@ -292,9 +303,17 @@ function graphSXMathAnchorPosition(
 
   const x = anchorLeft(numberAttr(item.x), width, item.anchor);
   if (item.baseline === "hanging") return { x, y: numberAttr(item.y) };
-  if (item.baseline === "middle" || item.baseline === "central") return { x, y: numberAttr(item.y) - height / 2 };
+  if (item.baseline === "middle" || item.baseline === "central") {
+    return { x, y: numberAttr(item.y) - inkCenter(height, inkTop, inkBottom) };
+  }
   if (item.baseline === "alphabetic") return { x, y: numberAttr(item.y) - baseline };
-  return { x, y: numberAttr(item.y) - height / 2 };
+  return { x, y: numberAttr(item.y) - inkCenter(height, inkTop, inkBottom) };
+}
+
+function inkCenter(height: number, inkTop?: number, inkBottom?: number): number {
+  return Number.isFinite(inkTop) && Number.isFinite(inkBottom)
+    ? (Number(inkTop) + Number(inkBottom)) / 2
+    : height / 2;
 }
 
 function numberAttr(value: unknown, fallback = 0): number {

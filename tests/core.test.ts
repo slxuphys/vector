@@ -500,19 +500,43 @@ ${tikzPicture}
     });
   });
 
-  it("lays out TikZ as an inline math atom on the math axis", () => {
-    const layout = layoutNativeMath(`x ${tikzPicture} y`, false, 12, defaultOpenMathMetrics, "openmath");
+  it("uses the original TikZ coordinate axis as its natural math baseline", () => {
+    const verticalTikz = String.raw`\begin{tikzpicture}\draw (0,0) -- (0,1);\end{tikzpicture}`;
+    const artifact = renderGraphSX(verticalTikz, undefined, "openmath", "tikz");
+    const layout = layoutNativeMath(`x ${verticalTikz} y`, false, 12, defaultOpenMathMetrics, "openmath");
     const graph = layout.nodes.find((node) => node.type === "graphsx");
-    const glyphs = layout.nodes.filter((node) => node.type === "glyph");
 
     expect(graph?.type).toBe("graphsx");
     if (!graph || graph.type !== "graphsx") return;
-    expect(graph.x).toBeGreaterThan(glyphs[0]?.x ?? -1);
-    expect(glyphs.at(-1)?.x).toBeGreaterThan(graph.x + graph.width);
-    expect(graph.y + graph.height / 2).toBeCloseTo(
-      layout.baseline - 12 * defaultOpenMathMetrics.fractionAxisOffset,
+    expect(layout.baseline - graph.y).toBeCloseTo(artifact.baseline, 4);
+  });
+
+  it("preserves a TikZ natural baseline through hbox and centers it only through vcenter", () => {
+    const verticalTikz = String.raw`\begin{tikzpicture}\draw (0,0) -- (0,1);\end{tikzpicture}`;
+    const raw = layoutNativeMath(verticalTikz, false, 12, defaultOpenMathMetrics, "openmath");
+    const hbox = layoutNativeMath(String.raw`\hbox{${verticalTikz}}`, false, 12, defaultOpenMathMetrics, "openmath");
+    const centered = layoutNativeMath(String.raw`\vcenter{\hbox{${verticalTikz}}}`, false, 12, defaultOpenMathMetrics, "openmath");
+    const rawGraph = raw.nodes.find((node) => node.type === "graphsx");
+    const hboxGraph = hbox.nodes.find((node) => node.type === "graphsx");
+    const centeredGraph = centered.nodes.find((node) => node.type === "graphsx");
+
+    expect(rawGraph?.type).toBe("graphsx");
+    expect(hboxGraph?.type).toBe("graphsx");
+    expect(centeredGraph?.type).toBe("graphsx");
+    if (rawGraph?.type !== "graphsx" || hboxGraph?.type !== "graphsx" || centeredGraph?.type !== "graphsx") return;
+    expect(hbox.baseline - hboxGraph.y).toBeCloseTo(raw.baseline - rawGraph.y, 4);
+    expect(centeredGraph.y + centeredGraph.height / 2).toBeCloseTo(
+      centered.baseline - 12 * defaultOpenMathMetrics.fractionAxisOffset,
       4
     );
+  });
+
+  it("lays out hbox text upright while preserving spaces", () => {
+    const layout = layoutNativeMath(String.raw`x+\hbox{plain text}+y`, false, 12, defaultOpenMathMetrics, "openmath");
+    const text = layout.nodes.find((node) => node.type === "glyph" && node.text === "plain text");
+
+    expect(text).toMatchObject({ type: "glyph", text: "plain text", italic: false });
+    expect(text?.type === "glyph" ? text.fontFamily : "").toContain("Latin Modern Roman");
   });
 
   it("exports TikZ figures through the neutral vector PDF path", async () => {
@@ -3611,6 +3635,28 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(looseBody?.type).toBe("glyph");
     if (tightBody?.type === "glyph" && looseBody?.type === "glyph") {
       expect(looseBody.y - tightBody.y).toBeCloseTo(12 * 0.12, 5);
+    }
+  });
+
+  it("centers TikZ math labels by their native glyph ink bounds", () => {
+    loadNativeFontFromBytes("openMath", readFileSync("src/assets/fonts/latinmodern-math.otf"));
+    const artifact = renderGraphSX(
+      String.raw`\begin{tikzpicture}\node[draw, minimum width=1.6cm, minimum height=1cm] (u) at (0,0) {$U$};\end{tikzpicture}`,
+      { ...defaultTheme, fontSize: 10 },
+      "openmath",
+      "tikz"
+    );
+    const mathItem = artifact.displayList.items.find((item) => item.type === "math" && item.source === "U") as { y?: number } | undefined;
+    const glyphMetrics = getNativeGlyphMetrics("openMath", "𝑈", 10);
+    const svgGlyph = artifact.svgBody.match(/<text[^>]*y="([^"]+)"[^>]*>𝑈<\/text>/);
+
+    expect(mathItem?.y).toBeTypeOf("number");
+    expect(glyphMetrics).toBeDefined();
+    expect(svgGlyph).not.toBeNull();
+    if (typeof mathItem?.y === "number" && glyphMetrics && svgGlyph) {
+      const renderedBaseline = Number(svgGlyph[1]);
+      const renderedInkCenter = renderedBaseline - (glyphMetrics.actualAscent - glyphMetrics.actualDescent) / 2;
+      expect(renderedInkCenter).toBeCloseTo(mathItem.y, 2);
     }
   });
 
