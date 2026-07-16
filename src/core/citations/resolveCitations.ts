@@ -99,9 +99,12 @@ function buildBibliographyNodes(keys: string[], entries: Map<string, BibEntry>):
       unnumbered: true
     },
     {
-      type: "list",
-      ordered: true,
-      items: keys.map((key) => parseInline(formatEntry(entries.get(key), key)))
+      type: "referenceList",
+      entries: keys.map((key, index) => ({
+        key,
+        number: index + 1,
+        children: parseInline(formatEntry(entries.get(key), key))
+      }))
     }
   ];
 }

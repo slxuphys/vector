@@ -1,7 +1,7 @@
 export type LineBreakingAlgorithm = "greedy" | "knuth-plass";
 export type TextAlign = "left" | "justify";
 export type HeadingStyle = "default" | "revtex";
-export type ParagraphSuppressAfter = "title" | "heading" | "paragraph" | "list" | "code" | "table" | "image" | "graphsx" | "math" | "rule" | "pageBreak";
+export type ParagraphSuppressAfter = "title" | "heading" | "paragraph" | "list" | "referenceList" | "code" | "table" | "image" | "graphsx" | "math" | "rule" | "pageBreak";
 
 export type LayoutConfig = {
   lineBreaking: {

@@ -68,6 +68,8 @@ export function collectMathMeasureRequests(
       block.runs.forEach((run) => addRun(run, theme.fontSize, theme.text));
     } else if (block.type === "list") {
       block.items.forEach((item) => item.forEach((run) => addRun(run, theme.fontSize, theme.text)));
+    } else if (block.type === "referenceList") {
+      block.entries.forEach((entry) => entry.runs.forEach((run) => addRun(run, theme.fontSize, theme.text)));
     } else if (block.type === "table") {
       const fontSize = theme.fontSize * 0.92;
       block.headers.forEach((cell) => cell.runs.forEach((run) => addRun(run, fontSize, theme.text)));

@@ -34,6 +34,16 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = f
           items: node.items.map((item) => flattenInline(item)),
           source: node.sourceSpan
         };
+      case "referenceList":
+        return {
+          type: "referenceList",
+          entries: node.entries.map((entry) => ({
+            key: entry.key,
+            number: entry.number,
+            runs: flattenInline(entry.children)
+          })),
+          source: node.sourceSpan
+        };
       case "codeBlock":
         return { type: "code", language: node.language, code: node.code, source: node.sourceSpan };
       case "table":

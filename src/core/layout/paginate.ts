@@ -25,6 +25,7 @@ import { getMeasuredMath, headingSize, type MathMeasurementMap } from "./mathMet
 import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 import type { SourceSpan } from "../source/sourceTypes";
 import { parseInline } from "../markdown/parseInline";
+import { defaultReferenceListStyle, referenceMarker, referenceMarkerWidth } from "./referenceListStyle";
 
 type Cursor = {
   page: DisplayPage;
@@ -191,19 +192,53 @@ export function paginate(
             ? `${index + 1}.`
             : "•";
         const markerWidth = 28;
-        const lines = breakRunsIntoLines(block.items[index], cursor.contentWidth - markerWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+        const itemWidth = cursor.contentWidth - markerWidth;
+        const lines = breakRunsIntoLines(block.items[index], itemWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
         ensure(lines.length * fontSize * theme.lineHeight + 4);
         cursor.page.objects.push(textObject(marker, cursor.x, cursor.y + fontSize, fontSize, theme, { color: theme.mutedText, source: block.source }));
-        drawLines(cursor, lines, fontSize, theme, {
-          color: theme.text,
-          lineHeight: theme.lineHeight,
-          xOffset: markerWidth,
-          source: block.source
-        }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+        lines.forEach((line, lineIndex) => {
+          drawLines(cursor, [line], fontSize, theme, {
+            color: theme.text,
+            lineHeight: theme.lineHeight,
+            xOffset: markerWidth,
+            maxWidth: itemWidth,
+            textAlign: lineIndex === lines.length - 1 ? "left" : layoutConfig.textAlign,
+            source: block.source
+          }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+        });
         cursor.y += 4;
       }
       cursor.y += 6;
       previousBlockKind = "list";
+      continue;
+    }
+
+    if (block.type === "referenceList") {
+      const fontSize = theme.fontSize;
+      for (const entry of block.entries) {
+        const marker = referenceMarker(entry.number);
+        const markerWidth = referenceMarkerWidth(marker, fontSize, theme);
+        const entryWidth = cursor.contentWidth - markerWidth;
+        const lines = breakRunsIntoLines(entry.runs, entryWidth, fontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig);
+        ensure(lines.length * fontSize * theme.lineHeight + defaultReferenceListStyle.entryGap);
+        cursor.page.objects.push(textObject(marker, cursor.x, cursor.y + fontSize, fontSize, theme, {
+          color: theme.text,
+          source: block.source
+        }));
+        lines.forEach((line, lineIndex) => {
+          drawLines(cursor, [line], fontSize, theme, {
+            color: theme.text,
+            lineHeight: theme.lineHeight,
+            xOffset: markerWidth,
+            maxWidth: entryWidth,
+            textAlign: lineIndex === lines.length - 1 ? "left" : layoutConfig.textAlign,
+            source: block.source
+          }, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile);
+        });
+        cursor.y += defaultReferenceListStyle.entryGap;
+      }
+      cursor.y += defaultReferenceListStyle.blockGap;
+      previousBlockKind = "referenceList";
       continue;
     }
 

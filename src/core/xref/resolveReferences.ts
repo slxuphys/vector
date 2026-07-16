@@ -139,6 +139,14 @@ function resolveNodeReferences(node: MarkdownNode, anchors: Map<string, CrossRef
       return { ...node, children: resolveInlineReferences(node.children, anchors, config) };
     case "list":
       return { ...node, items: node.items.map((item) => resolveInlineReferences(item, anchors, config)) };
+    case "referenceList":
+      return {
+        ...node,
+        entries: node.entries.map((entry) => ({
+          ...entry,
+          children: resolveInlineReferences(entry.children, anchors, config)
+        }))
+      };
     case "table":
       return {
         ...node,

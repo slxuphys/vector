@@ -12,7 +12,7 @@ export function renderSvgImage(object: ImageObject): string {
   const fallback = renderSvgImageFallback(object, fallbackId);
   if (!href) return fallback;
   const initialHref = isPdfSource(href) ? "" : href;
-  return `${fallback}<image href="${escapeXml(initialHref)}" x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" preserveAspectRatio="xMidYMid meet" data-fallback-id="${escapeXml(fallbackId)}" data-image-sources="${escapeXml(JSON.stringify(sources))}"><title>${escapeXml(object.alt)}</title></image>`;
+  return `${fallback}<image href="${escapeXml(initialHref)}" x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(object.alt)}" data-fallback-id="${escapeXml(fallbackId)}" data-image-sources="${escapeXml(JSON.stringify(sources))}"/>`;
 }
 
 function isPdfSource(source: string): boolean {

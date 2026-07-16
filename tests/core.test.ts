@@ -1144,6 +1144,46 @@ Text with citation\\cite{future}.
     }
   });
 
+  it("uses compact bracketed and justified bibliography entries", async () => {
+    const bibliography = [
+      "@article{layout2026,",
+      "  author = {Ada Vector and Emmy Layout},",
+      "  title = {A deliberately long reference title that wraps across multiple justified lines in the bibliography},",
+      "  journal = {Journal of Fast Typesetting Systems},",
+      "  year = {2026}",
+      "}"
+    ].join("\n");
+    const source = [
+      "\\documentclass{article}",
+      "\\begin{document}",
+      "See \\cite{layout2026}.",
+      "\\bibliography{references}",
+      "\\end{document}"
+    ].join("\n");
+    const engine = createDocumentEngine({
+      sourceFormat: "latex",
+      bibliographyFiles: { "references.bib": bibliography }
+    });
+    const prepared = prepareMarkdownLayout(source, {
+      sourceFormat: "latex",
+      bibliographyFiles: { "references.bib": bibliography }
+    });
+    expect(prepared.blocks.some((block) => block.type === "referenceList")).toBe(true);
+    expect(prepared.blocks.some((block) => block.type === "list")).toBe(false);
+    const { layout } = await engine.layout(source);
+    const textObjects = layout.pages.flatMap((page) => page.objects).filter((object) => object.type === "text");
+    const marker = textObjects.find((object) => object.text === "[1]" && object.color === layout.theme.text);
+
+    expect(marker?.type).toBe("text");
+    if (marker?.type !== "text") return;
+    const firstEntryLine = textObjects.find((object) => object.y === marker.y && object.x > marker.x);
+    expect(firstEntryLine?.type).toBe("text");
+    if (firstEntryLine?.type !== "text") return;
+    expect(firstEntryLine.x - marker.x).toBeLessThan(28);
+    expect(firstEntryLine.x - marker.x).toBeGreaterThan(4);
+    expect(firstEntryLine.x + (firstEntryLine.width ?? 0)).toBeCloseTo(layout.page.width - layout.page.margin.right, 1);
+  });
+
   it("keeps revtex figure captions inside the active column with normal text color", async () => {
     const engine = createDocumentEngine({ sourceFormat: "latex" });
     const source = `\\documentclass[twocolumn]{revtex4-2}
@@ -1974,6 +2014,8 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(caption?.type).toBe("text");
     expect(svg).toContain("<image");
     expect(svg).toContain("Figure 1. Plot");
+    expect(svg).toContain('role="img" aria-label="Plot"');
+    expect(svg).not.toContain("<title>Plot</title>");
     if (image?.type === "image") {
       expect(image.width).toBeGreaterThan(100);
       expect(image.width).toBeLessThan(400);
