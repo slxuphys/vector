@@ -1,4 +1,4 @@
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, VerbosityLevel } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { debugGroup } from "../core/utils/debugSettings";
 
 let pdfRuntimeReady: Promise<void> | undefined;
@@ -15,7 +15,10 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
   await getMainThreadPdfRuntime();
   const runtimeMs = performance.now() - runtimeStartedAt;
   const documentStartedAt = performance.now();
-  const document = await getDocument({ data: bytes }).promise;
+  const document = await getDocument({
+    data: bytes,
+    verbosity: VerbosityLevel.ERRORS
+  }).promise;
   const documentMs = performance.now() - documentStartedAt;
   let getPageMs = 0;
   let renderMs = 0;
