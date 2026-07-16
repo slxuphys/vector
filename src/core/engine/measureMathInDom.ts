@@ -1,6 +1,5 @@
 import type { MathMeasurement, MathMeasureRequest } from "../layout/mathMetrics";
 import type { MathRendererName } from "./engineTypes";
-import { renderMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { renderKatex } from "../renderers/math/renderKatex";
 import { katexCssWithInlineFonts } from "../renderers/math/katexFontCss";
 import {
@@ -121,13 +120,16 @@ function ensureOpenMathFontFace(profileName: "latin-modern" | "libertinus" | "ne
 
 async function measureMathJax(requests: MathMeasureRequest[]): Promise<Record<string, MathMeasurement>> {
   const measurements: Record<string, MathMeasurement> = {};
+  const { renderMathJaxSvgArtifact } = await import("../renderers/math/renderMathJax");
   for (const request of requests) {
     logBrowserMathMeasurement("mathjax-svg-artifact", request);
     const artifact = await renderMathJaxSvgArtifact(request.latex, request.displayMode, request.fontSize, request.color);
     measurements[request.key] = {
       width: artifact.width,
       height: artifact.height,
-      advance: artifact.width
+      advance: artifact.width,
+      baseline: artifact.baseline,
+      mathJaxArtifact: artifact
     };
   }
   return measurements;

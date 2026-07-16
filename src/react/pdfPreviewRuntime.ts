@@ -1,7 +1,8 @@
-import { getDocument, VerbosityLevel } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, GlobalWorkerOptions, VerbosityLevel } from "pdfjs-dist/build/pdf.mjs";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { debugGroup } from "../core/utils/debugSettings";
 
-let pdfRuntimeReady: Promise<void> | undefined;
+let pdfRuntimeConfigured = false;
 
 export async function renderPdfPageToDataUrl(source: string, targetWidth: number): Promise<string> {
   const totalStartedAt = performance.now();
@@ -11,8 +12,8 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
   const pdfBytes = bytes.byteLength;
   const pdfSignature = bytePrefix(bytes);
   const runtimeStartedAt = performance.now();
-  const coldStart = !pdfRuntimeReady;
-  await getMainThreadPdfRuntime();
+  const coldStart = !pdfRuntimeConfigured;
+  configurePdfRuntime();
   const runtimeMs = performance.now() - runtimeStartedAt;
   const documentStartedAt = performance.now();
   const document = await getDocument({
@@ -50,7 +51,7 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
     await page.render({ canvas, canvasContext: context, viewport }).promise;
     renderMs = performance.now() - renderStartedAt;
     const encodeStartedAt = performance.now();
-    const result = canvas.toDataURL("image/png");
+    const result = await canvasToDataUrl(canvas);
     encodeMs = performance.now() - encodeStartedAt;
     resultBytes = result.length;
     return result;
@@ -78,7 +79,7 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
         loadBytesMs: Math.round(loadBytesMs * 10) / 10,
         runtimeColdStart: coldStart,
         runtimeMs: Math.round(runtimeMs * 10) / 10,
-        workerMode: "main-thread",
+        workerMode: "worker",
         documentMs: Math.round(documentMs * 10) / 10,
         getPageMs: Math.round(getPageMs * 10) / 10,
         renderMs: Math.round(renderMs * 10) / 10,
@@ -90,11 +91,22 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
   }
 }
 
-async function getMainThreadPdfRuntime(): Promise<void> {
-  if (!pdfRuntimeReady) {
-    pdfRuntimeReady = import("pdfjs-dist/legacy/build/pdf.worker.mjs").then(() => undefined);
-  }
-  await pdfRuntimeReady;
+function configurePdfRuntime(): void {
+  if (pdfRuntimeConfigured) return;
+  GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  pdfRuntimeConfigured = true;
+}
+
+async function canvasToDataUrl(canvas: HTMLCanvasElement): Promise<string> {
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not encode PDF figure preview")), "image/png");
+  });
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read PDF figure preview"));
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read PDF figure preview"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function loadBytes(source: string): Promise<Uint8Array> {

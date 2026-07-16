@@ -1,8 +1,11 @@
 import { debugGroup } from "../core/utils/debugSettings";
+import { BoundedStringCache } from "./boundedStringCache";
 
 type SvgImageCleanup = () => void;
 const pdfPreviewCache = new Map<string, Promise<string>>();
-const completedPdfPreviewCache = new Map<string, string>();
+const maxCompletedPdfPreviews = 12;
+const maxCompletedPdfPreviewChars = 24 * 1024 * 1024;
+const completedPdfPreviewCache = new BoundedStringCache(maxCompletedPdfPreviews, maxCompletedPdfPreviewChars);
 
 export function hydrateSvgImages(container: Element): SvgImageCleanup {
   let disposed = false;
@@ -36,7 +39,7 @@ async function loadSvgImageCandidates(
     try {
       const targetWidth = Number(image.getAttribute("width")) || 300;
       const completedPdfPreview = isPdfSource(source)
-        ? completedPdfPreviewCache.get(getPdfPreviewCacheKey(source, targetWidth))
+        ? getCompletedPdfPreview(getPdfPreviewCacheKey(source, targetWidth))
         : undefined;
       if (completedPdfPreview) {
         image.setAttribute("href", completedPdfPreview);
@@ -111,7 +114,7 @@ function isPdfSource(source: string): boolean {
 
 async function renderPdfPreview(source: string, targetWidth: number): Promise<string> {
   const cacheKey = getPdfPreviewCacheKey(source, targetWidth);
-  const completed = completedPdfPreviewCache.get(cacheKey);
+  const completed = getCompletedPdfPreview(cacheKey);
   if (completed) return completed;
   const cached = pdfPreviewCache.get(cacheKey);
   if (cached) {
@@ -121,16 +124,32 @@ async function renderPdfPreview(source: string, targetWidth: number): Promise<st
   pdfPreviewCache.set(cacheKey, rendering);
   try {
     const result = await rendering;
-    completedPdfPreviewCache.set(cacheKey, result);
+    setCompletedPdfPreview(cacheKey, result);
     return result;
-  } catch (error) {
+  } finally {
     pdfPreviewCache.delete(cacheKey);
-    throw error;
   }
 }
 
 function getPdfPreviewCacheKey(source: string, targetWidth: number): string {
-  return `${targetWidth.toFixed(1)}:${source}`;
+  return `${targetWidth.toFixed(1)}:${source.length}:${hashString(source)}`;
+}
+
+function getCompletedPdfPreview(key: string): string | undefined {
+  return completedPdfPreviewCache.get(key);
+}
+
+function setCompletedPdfPreview(key: string, value: string): void {
+  completedPdfPreviewCache.set(key, value);
+}
+
+function hashString(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 async function renderPdfPreviewUncached(source: string, targetWidth: number): Promise<string> {

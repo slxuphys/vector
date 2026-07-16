@@ -10,7 +10,7 @@ import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactS
 import { drawPdfMathGlyphs } from "./pdfMathGlyph";
 import { drawPdfMathJaxVector } from "./pdfMathJax";
 import { drawPdfNativeMath } from "./pdfNativeMath";
-import { drawPdfImage, type PdfImageServices } from "./pdfImage";
+import { drawPdfImage, type PdfImageContext, type PdfImageServices } from "./pdfImage";
 import { drawPdfGraphSX } from "./pdfGraphSX";
 import { isNativeMathRenderer } from "../math/nativeMath";
 import { collectPdfLinkTargets } from "./pdfLinks";
@@ -110,6 +110,7 @@ async function renderToPdfAttempt(
     stats: mathStats,
     imageCache: new Map()
   };
+  const imageContext: PdfImageContext = { bytes: new Map(), assets: new Map() };
   const objectCounts = {
     text: 0,
     math: 0,
@@ -147,7 +148,7 @@ async function renderToPdfAttempt(
         }
       } else if (object.type === "image") {
         objectCounts.image += 1;
-        await drawPdfImage(pdf, page, object, fonts, displayPage.height, options.imageServices);
+        await drawPdfImage(pdf, page, object, fonts, displayPage.height, options.imageServices, imageContext);
       } else if (object.type === "graphsx") {
         objectCounts.graphsx += 1;
         drawPdfGraphSX(page, object, fonts, displayPage.height);

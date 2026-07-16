@@ -54,7 +54,7 @@ export function SvgPagedPreview({
       svgBytes: pages.reduce((sum, entry) => sum + (entry?.svg.length ?? 0), 0),
       pages
     };
-  }, [layout, numericZoom, start, end]);
+  }, [layout, start, end]);
   const loggedUpdateIdRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {

@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/engineTypes";
-import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
-import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
 import { debugError, isDebugLogEnabled } from "../core/utils/debugSettings";
 import { MarkdownEditor, type MarkdownEditorController } from "./editor/MarkdownEditor";
 import { PreviewPane } from "./preview/PreviewPane";
@@ -103,7 +101,11 @@ export function MarkdownEditorPreview({
     if (!previewAvailable || !layoutState.layout || !usingKatexRaster || experimentalVectorMath) return;
     let cancelled = false;
     const timeout = window.setTimeout(() => {
-      if (!cancelled && layoutState.layout) void warmPdfMathArtifactCache(layoutState.layout);
+      if (!cancelled && layoutState.layout) {
+        const layout = layoutState.layout;
+        void import("../core/renderers/pdf/pdfMathArtifact")
+          .then(({ warmPdfMathArtifactCache }) => warmPdfMathArtifactCache(layout));
+      }
     }, 250);
     return () => {
       cancelled = true;
@@ -133,7 +135,8 @@ export function MarkdownEditorPreview({
     setPdfPending(true);
     window.setTimeout(() => {
       const mathPdfMode = usingGlyphPdf ? "glyph" : usingMathJaxVector || experimentalVectorMath ? "vector" : "raster";
-      void downloadPdf(layout, "document.pdf", { mathPdfMode, subsetFonts: true, debugLabel: "playground" })
+      void import("../core/renderers/pdf/renderToPdf")
+        .then(({ downloadPdf }) => downloadPdf(layout, "document.pdf", { mathPdfMode, subsetFonts: true, debugLabel: "playground" }))
         .catch((error) => {
           debugError("pdf", "[PDF export] failed", error);
         })

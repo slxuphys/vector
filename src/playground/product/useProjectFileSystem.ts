@@ -3,6 +3,7 @@ import { strToU8, zip } from "fflate";
 import { openLocalFolderProject } from "./localFolderProjectFileSystem";
 import { createOpfsProject, listOpfsProjects } from "./opfsProjectFileSystem";
 import {
+  isFigureAssetPath,
   languageForProjectPath,
   normalizeProjectPath,
   revokeProjectObjectUrls,
@@ -22,8 +23,14 @@ export function useProjectFileSystem() {
   const [storageError, setStorageError] = useState<string | undefined>();
   const backends = useRef(new Map<string, ProjectFileSystemBackend>());
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const saveChains = useRef(new Map<string, Promise<void>>());
+  const pendingEdits = useRef(new Map<string, { projectId: string; path: string; content: string }>());
   const projectsRef = useRef(projects);
+  const projectIdRef = useRef(projectId);
+  const activePathRef = useRef(activePath);
   projectsRef.current = projects;
+  projectIdRef.current = projectId;
+  activePathRef.current = activePath;
 
   const project = projects.find((candidate) => candidate.id === projectId) ?? projects[0];
   const activeFile = project.files.find((file) => file.path === activePath)
@@ -48,41 +55,59 @@ export function useProjectFileSystem() {
 
   useEffect(() => () => {
     for (const timer of saveTimers.current.values()) clearTimeout(timer);
+    for (const edit of pendingEdits.current.values()) {
+      const backend = backends.current.get(edit.projectId);
+      if (backend) void backend.writeTextFile(edit.path, edit.content);
+    }
     for (const current of projectsRef.current) revokeProjectObjectUrls(current);
   }, []);
 
+  const commitPendingEdit = useCallback((currentProjectId: string, currentPath: string) => {
+    const edit = pendingEdits.current.get(editKey(currentProjectId, currentPath));
+    if (!edit) return;
+    const key = editKey(currentProjectId, currentPath);
+    const timer = saveTimers.current.get(key);
+    if (timer) clearTimeout(timer);
+    saveTimers.current.delete(key);
+    pendingEdits.current.delete(key);
+    setProjects((current) => applyTextEdit(current, edit));
+    void persistTextEdit(edit).catch(() => undefined);
+  }, []);
+
   const selectProject = useCallback((nextId: string) => {
+    commitPendingEdit(projectIdRef.current, activePathRef.current);
     const nextProject = projects.find((candidate) => candidate.id === nextId);
     if (!nextProject) return;
     setProjectId(nextId);
     setActivePath(nextProject.entryFile);
     setStorageError(undefined);
     setStorageStatus("idle");
-  }, [projects]);
+  }, [commitPendingEdit, projects]);
+
+  const selectFile = useCallback((nextPath: string) => {
+    commitPendingEdit(projectIdRef.current, activePathRef.current);
+    setActivePath(nextPath);
+  }, [commitPendingEdit]);
 
   const updateActiveFile = useCallback((content: string) => {
     if (!activeFile || !isProjectTextFile(activeFile)) return;
     const currentProjectId = project.id;
     const currentPath = activeFile.path;
-    setProjects((current) => current.map((candidate) => candidate.id !== currentProjectId
-      ? candidate
-      : {
-          ...candidate,
-          files: candidate.files.map((file) => file.path === currentPath && isProjectTextFile(file) ? { ...file, content } : file)
-        }));
-
+    const saveKey = editKey(currentProjectId, currentPath);
+    pendingEdits.current.set(saveKey, { projectId: currentProjectId, path: currentPath, content });
     const backend = backends.current.get(currentProjectId);
-    if (!backend) return;
-    const saveKey = `${currentProjectId}:${currentPath}`;
     const existing = saveTimers.current.get(saveKey);
     if (existing) clearTimeout(existing);
-    setStorageStatus("saving");
-    setStorageError(undefined);
+    if (backend) {
+      setStorageStatus("saving");
+      setStorageError(undefined);
+    }
     saveTimers.current.set(saveKey, setTimeout(() => {
       saveTimers.current.delete(saveKey);
-      void backend.writeTextFile(currentPath, content)
-        .then(() => setStorageStatus("saved"))
-        .catch((error) => setOperationError(error, `Could not save ${currentPath}.`));
+      const edit = pendingEdits.current.get(saveKey);
+      if (edit?.content === content) pendingEdits.current.delete(saveKey);
+      setProjects((current) => applyTextEdit(current, { projectId: currentProjectId, path: currentPath, content }));
+      if (backend) void persistTextEdit({ projectId: currentProjectId, path: currentPath, content }).catch(() => undefined);
     }, 300));
   }, [activeFile, project.id]);
 
@@ -93,6 +118,7 @@ export function useProjectFileSystem() {
     if (hasEntry(project, path)) return "An entry with this name already exists.";
     const backend = backends.current.get(project.id);
     try {
+      await flushPendingEntries(project.id, activePath);
       if (backend) await backend.createTextFile(path);
       const file: ProjectFile = { kind: "text", path, content: "", language: languageForPath(path) };
       setProjects((current) => current.map((candidate) => candidate.id === project.id
@@ -104,7 +130,7 @@ export function useProjectFileSystem() {
     } catch (error) {
       return setOperationError(error, `Could not create ${path}.`);
     }
-  }, [project]);
+  }, [activePath, project]);
 
   const addFolder = useCallback(async (requestedPath: string): Promise<string | undefined> => {
     const path = normalizeProjectPath(requestedPath);
@@ -133,18 +159,18 @@ export function useProjectFileSystem() {
     setStorageError(undefined);
     const backend = backends.current.get(project.id);
     try {
+      await flushPendingEntries(project.id);
       for (const file of files) {
         const relative = preserveFolders && file.webkitRelativePath ? file.webkitRelativePath : file.name;
         const path = normalizeProjectPath([targetDirectory, relative].filter(Boolean).join("/"));
         if (backend) await backend.writeFile(path, file);
       }
-      if (backend) await reloadProject(project.id, activePath);
-      else await addMemoryFiles(files, targetDirectory, preserveFolders);
+      await addUploadedFiles(files, targetDirectory, preserveFolders);
       setStorageStatus(backend ? "saved" : "idle");
     } catch (error) {
       setOperationError(error, "Could not upload the selected files.");
     }
-  }, [project.id]);
+  }, [activePath, project.id]);
 
   const renameEntry = useCallback(async (path: string, nextPathInput: string): Promise<string | undefined> => {
     const nextPath = normalizeProjectPath(nextPathInput);
@@ -154,15 +180,14 @@ export function useProjectFileSystem() {
     if (path !== nextPath && hasEntry(project, nextPath)) return "An entry with this name already exists.";
     const backend = backends.current.get(project.id);
     try {
+      await flushPendingEntries(project.id, path);
       if (backend) {
         await backend.renameEntry(path, nextPath);
-        await reloadProject(project.id, remapPath(activePath, path, nextPath));
-      } else {
-        setProjects((current) => current.map((candidate) => candidate.id === project.id
-          ? renameMemoryEntry(candidate, path, nextPath)
-          : candidate));
-        setActivePath((current) => remapPath(current, path, nextPath));
       }
+      setProjects((current) => current.map((candidate) => candidate.id === project.id
+        ? renameMemoryEntry(candidate, path, nextPath)
+        : candidate));
+      setActivePath((current) => remapPath(current, path, nextPath));
       setStorageStatus(backend ? "saved" : "idle");
       return undefined;
     } catch (error) {
@@ -173,16 +198,15 @@ export function useProjectFileSystem() {
   const deleteEntry = useCallback(async (path: string) => {
     const backend = backends.current.get(project.id);
     try {
+      await discardPendingEntries(project.id, path);
       if (backend) {
         await backend.deleteEntry(path);
-        const nextActivePath = activePath === path || activePath.startsWith(`${path}/`) ? undefined : activePath;
-        await reloadProject(project.id, nextActivePath);
-      } else {
-        setProjects((current) => current.map((candidate) => candidate.id === project.id
-          ? deleteMemoryEntry(candidate, path)
-          : candidate));
       }
-      if (!backend && (activePath === path || activePath.startsWith(`${path}/`))) {
+      revokeEntryObjectUrls(project, path);
+      setProjects((current) => current.map((candidate) => candidate.id === project.id
+        ? deleteMemoryEntry(candidate, path)
+        : candidate));
+      if (activePath === path || activePath.startsWith(`${path}/`)) {
         const remaining = project.files.find((file) => file.path !== path && !file.path.startsWith(`${path}/`));
         if (remaining) setActivePath(remaining.path);
       }
@@ -223,6 +247,7 @@ export function useProjectFileSystem() {
     setStorageStatus("loading");
     setStorageError(undefined);
     try {
+      await flushPendingEntries(projectIdRef.current, activePathRef.current);
       const loaded = await createOpfsProject(name);
       backends.current.set(loaded.project.id, loaded.backend);
       setProjects((current) => [...current, loaded.project]);
@@ -238,6 +263,7 @@ export function useProjectFileSystem() {
     setStorageStatus("loading");
     setStorageError(undefined);
     try {
+      await flushPendingEntries(projectIdRef.current, activePathRef.current);
       const loaded = await openLocalFolderProject();
       backends.current.set(loaded.project.id, loaded.backend);
       setProjects((current) => [...current, loaded.project]);
@@ -253,32 +279,80 @@ export function useProjectFileSystem() {
     }
   }, []);
 
-  async function reloadProject(id: string, preferredPath?: string) {
-    const backend = backends.current.get(id);
-    if (!backend) return;
-    const next = await backend.loadProject();
-    setProjects((current) => current.map((candidate) => {
-      if (candidate.id !== id) return candidate;
-      revokeProjectObjectUrls(candidate);
-      return next;
-    }));
-    setActivePath(preferredPath && next.files.some((file) => file.path === preferredPath) ? preferredPath : next.entryFile);
+  async function flushPendingEntries(id: string, path?: string): Promise<void> {
+    const edits = matchingPendingEdits(pendingEdits.current, id, path);
+    const inFlightWrites = matchingSaveChains(saveChains.current, id, path);
+    for (const edit of edits) {
+      const key = editKey(edit.projectId, edit.path);
+      const timer = saveTimers.current.get(key);
+      if (timer) clearTimeout(timer);
+      saveTimers.current.delete(key);
+      pendingEdits.current.delete(key);
+    }
+    if (edits.length > 0) setProjects((current) => edits.reduce(applyTextEdit, current));
+    await Promise.all([
+      ...inFlightWrites.map((write) => write.catch(() => undefined)),
+      ...edits.map(persistTextEdit)
+    ]);
   }
 
-  async function addMemoryFiles(files: File[], targetDirectory: string, preserveFolders: boolean) {
+  async function discardPendingEntries(id: string, path: string): Promise<void> {
+    const edits = matchingPendingEdits(pendingEdits.current, id, path);
+    for (const edit of edits) {
+      const key = editKey(edit.projectId, edit.path);
+      const timer = saveTimers.current.get(key);
+      if (timer) clearTimeout(timer);
+      saveTimers.current.delete(key);
+      pendingEdits.current.delete(key);
+    }
+    const matchingWrites = [...saveChains.current.entries()]
+      .filter(([key]) => keyMatchesEntry(key, id, path))
+      .map(([, write]) => write.catch(() => undefined));
+    await Promise.all(matchingWrites);
+  }
+
+  async function persistTextEdit(edit: { projectId: string; path: string; content: string }): Promise<void> {
+    const backend = backends.current.get(edit.projectId);
+    if (!backend) return;
+    const key = editKey(edit.projectId, edit.path);
+    const previous = saveChains.current.get(key) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(() => backend.writeTextFile(edit.path, edit.content));
+    saveChains.current.set(key, write);
+    try {
+      await write;
+      if (saveChains.current.get(key) === write) {
+        saveChains.current.delete(key);
+        setStorageStatus("saved");
+      }
+    } catch (error) {
+      if (saveChains.current.get(key) === write) saveChains.current.delete(key);
+      setOperationError(error, `Could not save ${edit.path}.`);
+      throw error;
+    }
+  }
+
+  async function addUploadedFiles(files: File[], targetDirectory: string, preserveFolders: boolean) {
     const additions: ProjectFile[] = [];
-    const directories = new Set(project.directories);
     for (const file of files) {
       const relative = preserveFolders && file.webkitRelativePath ? file.webkitRelativePath : file.name;
       const path = normalizeProjectPath([targetDirectory, relative].filter(Boolean).join("/"));
-      addParentDirectories(path, directories);
       additions.push(isEditablePath(path)
         ? { kind: "text", path, content: await file.text(), language: languageForPath(path) }
-        : { kind: /^(image\/|application\/pdf)/.test(file.type) ? "asset" : "binary", path, mimeType: file.type, size: file.size, url: URL.createObjectURL(file) });
+        : {
+            kind: isFigureAssetPath(path) ? "asset" : "binary",
+            path,
+            mimeType: file.type || (/\.pdf$/i.test(path) ? "application/pdf" : "application/octet-stream"),
+            size: file.size,
+            url: URL.createObjectURL(file)
+          });
     }
-    setProjects((current) => current.map((candidate) => candidate.id === project.id
-      ? { ...candidate, files: mergeFiles(candidate.files, additions), directories: [...directories].sort() }
-      : candidate));
+    setProjects((current) => current.map((candidate) => {
+      if (candidate.id !== project.id) return candidate;
+      const directories = new Set(candidate.directories);
+      for (const addition of additions) addParentDirectories(addition.path, directories);
+      revokeReplacedObjectUrls(candidate.files, additions);
+      return { ...candidate, files: mergeFiles(candidate.files, additions), directories: [...directories].sort() };
+    }));
   }
 
   async function blobForProjectFile(id: string, file: ProjectFile): Promise<Blob> {
@@ -297,9 +371,55 @@ export function useProjectFileSystem() {
 
   return {
     projects, project, activeFile, activePath, projectId, storageStatus, storageError,
-    selectProject, selectFile: setActivePath, updateActiveFile, addFile, addFolder,
+    selectProject, selectFile, updateActiveFile, addFile, addFolder,
     uploadFiles, renameEntry, deleteEntry, downloadEntry, createBrowserProject, openLocalFolder
   };
+}
+
+function editKey(projectId: string, path: string): string {
+  return `${projectId}:${path}`;
+}
+
+function matchingPendingEdits(
+  pending: Map<string, { projectId: string; path: string; content: string }>,
+  projectId: string,
+  path?: string
+): Array<{ projectId: string; path: string; content: string }> {
+  return [...pending.values()].filter((edit) => edit.projectId === projectId && (!path || entryContains(path, edit.path)));
+}
+
+function keyMatchesEntry(key: string, projectId: string, path: string): boolean {
+  const prefix = `${projectId}:`;
+  return key.startsWith(prefix) && entryContains(path, key.slice(prefix.length));
+}
+
+function matchingSaveChains(
+  chains: Map<string, Promise<void>>,
+  projectId: string,
+  path?: string
+): Promise<void>[] {
+  const prefix = `${projectId}:`;
+  return [...chains.entries()]
+    .filter(([key]) => key.startsWith(prefix) && (!path || entryContains(path, key.slice(prefix.length))))
+    .map(([, write]) => write);
+}
+
+function entryContains(entryPath: string, candidate: string): boolean {
+  return candidate === entryPath || candidate.startsWith(`${entryPath}/`);
+}
+
+function applyTextEdit(
+  projects: PlaygroundProject[],
+  edit: { projectId: string; path: string; content: string }
+): PlaygroundProject[] {
+  return projects.map((candidate) => candidate.id !== edit.projectId
+    ? candidate
+    : {
+        ...candidate,
+        files: candidate.files.map((file) => file.path === edit.path && isProjectTextFile(file)
+          ? { ...file, content: edit.content }
+          : file)
+      });
 }
 
 export function languageForPath(path: string): ProjectFileLanguage {
@@ -334,6 +454,23 @@ function remapPath(candidate: string, path: string, nextPath: string): string {
 function mergeFiles(current: ProjectFile[], additions: ProjectFile[]): ProjectFile[] {
   const paths = new Set(additions.map((file) => file.path.toLowerCase()));
   return [...current.filter((file) => !paths.has(file.path.toLowerCase())), ...additions].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function revokeReplacedObjectUrls(current: ProjectFile[], additions: ProjectFile[]): void {
+  const replaced = new Set(additions.map((file) => file.path.toLowerCase()));
+  for (const file of current) {
+    if (replaced.has(file.path.toLowerCase()) && !isProjectTextFile(file) && file.url.startsWith("blob:")) {
+      URL.revokeObjectURL(file.url);
+    }
+  }
+}
+
+function revokeEntryObjectUrls(project: PlaygroundProject, path: string): void {
+  for (const file of project.files) {
+    if (entryContains(path, file.path) && !isProjectTextFile(file) && file.url.startsWith("blob:")) {
+      URL.revokeObjectURL(file.url);
+    }
+  }
 }
 
 function addParentDirectories(path: string, directories: Set<string>) {

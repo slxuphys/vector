@@ -165,6 +165,7 @@ export function App() {
           <label>
             Math
             <select
+              aria-label="Math"
               value={mathRenderer}
               onChange={(event) => setMathRenderer(event.target.value as MathRendererName)}
             >
@@ -176,6 +177,7 @@ export function App() {
           <label>
             Font
             <select
+              aria-label="Font"
               value={effectiveFont}
               onChange={(event) => {
                 const value = event.target.value as FontSelectValue;

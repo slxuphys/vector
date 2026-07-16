@@ -3,6 +3,7 @@ import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/engineTypes";
 import { isNativeMathRenderer, type NativeMathLayout, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
+import type { MathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 import { parseInline } from "../markdown/parseInline";
 
@@ -22,6 +23,7 @@ export type MathMeasurement = {
   advance: number;
   baseline?: number;
   nativeLayout?: NativeMathLayout;
+  mathJaxArtifact?: MathJaxSvgArtifact;
 };
 
 export type MathMeasurementMap = Record<string, MathMeasurement>;

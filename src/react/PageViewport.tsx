@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 import type { DisplayPage } from "../core/display-list/displayTypes";
 import { hydrateSvgImages } from "./hydrateSvgImages";
 
@@ -10,7 +10,7 @@ export type PageViewportProps = {
   sourceHighlight?: { start: number; end: number; id: number };
 };
 
-export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }: PageViewportProps) {
+export const PageViewport = memo(function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }: PageViewportProps) {
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const warnings = page.objects
     .filter((object) => object.type === "graphsx" && object.warnings?.length)
@@ -22,7 +22,7 @@ export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }
     const container = svgContainerRef.current;
     if (!container) return undefined;
     return hydrateSvgImages(container);
-  });
+  }, [svg]);
 
   useEffect(() => {
     const container = svgContainerRef.current;
@@ -91,4 +91,4 @@ export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }
       </div>
     </div>
   );
-}
+});

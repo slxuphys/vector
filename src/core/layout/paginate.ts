@@ -10,7 +10,7 @@ import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
 import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
 import { renderGraphSX } from "../renderers/graphsx/renderGraphSX";
-import { getCachedMathJaxSvgArtifact } from "../renderers/math/renderMathJax";
+import type { MathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import {
   defaultNativeMathMetrics,
   getDefaultOpenMathMetrics,
@@ -396,6 +396,7 @@ export function paginate(
         nativeMathMetrics,
         nativeMathProfile,
         nativeLayout: measured?.nativeLayout,
+        mathJaxArtifact: measured?.mathJaxArtifact,
         anchorId: block.label,
         source: block.source
       });
@@ -931,6 +932,7 @@ function drawLines(
           nativeMathMetrics,
           nativeMathProfile,
           nativeLayout: measured?.nativeLayout,
+          mathJaxArtifact: measured?.mathJaxArtifact,
           source: options.source
         }));
         x += advance;
@@ -1068,11 +1070,13 @@ function createMathObject(options: {
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
   nativeLayout?: ReturnType<typeof layoutNativeMath>;
+  mathJaxArtifact?: MathJaxSvgArtifact;
   anchorId?: string;
   source?: SourceSpan;
 }): Extract<DisplayObject, { type: "math" }> {
   if (isMathJaxRenderer(options.mathRenderer)) {
-    const artifact = getCachedMathJaxSvgArtifact(options.latex, options.displayMode, options.fontSize, options.color);
+    const artifact = options.mathJaxArtifact;
+    if (!artifact) throw new Error(`Missing measured MathJax artifact for: ${options.latex}`);
     const y = options.displayMode ? options.y : options.y + options.fontSize - artifact.baseline;
     return {
       type: "math",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FlaskConical } from "lucide-react";
 import { MarkdownEditorPreview, type WorkspaceLayoutMode } from "../../react/MarkdownEditorPreview";
 import {
@@ -11,7 +11,7 @@ import { ProjectActions } from "./ProjectActions";
 import { ProjectSelector } from "./ProjectSelector";
 import { useProjectFileSystem } from "./useProjectFileSystem";
 import { WorkspaceRibbon } from "./WorkspaceRibbon";
-import { isProjectTextFile, type ProjectAssetFile } from "./projectTypes";
+import { isProjectTextFile, type PlaygroundProject, type ProjectAssetFile, type ProjectTextFile } from "./projectTypes";
 
 export function ProductApp() {
   const fileSystem = useProjectFileSystem();
@@ -30,23 +30,7 @@ export function ProductApp() {
   const activeTextFile = activeFile && isProjectTextFile(activeFile) ? activeFile : undefined;
   const previewAvailable = activeTextFile?.language === "markdown" || activeTextFile?.language === "latex";
   const sourceFormat = activeTextFile?.language === "latex" ? "latex" : "markdown";
-  const bibliographyEntries = project.files
-    .filter(isProjectTextFile)
-    .filter((file) => file.language === "bibtex")
-    .map((file) => [file.path, file.content] as const);
-  const bibliographyKey = JSON.stringify(bibliographyEntries);
-  const bibliographyFiles = useMemo(
-    () => Object.fromEntries(bibliographyEntries),
-    [bibliographyKey]
-  );
-  const assetEntries = project.files
-    .filter((file): file is ProjectAssetFile => file.kind === "asset")
-    .map((file) => [file.path, /\.pdf$/i.test(file.path) ? `${file.url}#asset.pdf` : file.url] as const);
-  const assetKey = JSON.stringify(assetEntries);
-  const assetUrls = useMemo(
-    () => Object.fromEntries(assetEntries),
-    [assetKey]
-  );
+  const { bibliographyFiles, assetUrls } = useProjectResources(project.files);
   const options = useMemo<EngineOptions>(() => ({
     pageSize: "letter",
     sourceFormat,
@@ -124,4 +108,34 @@ export function ProductApp() {
       />
     </main>
   );
+}
+
+function useProjectResources(files: PlaygroundProject["files"]): {
+  bibliographyFiles: Record<string, string>;
+  assetUrls: Record<string, string>;
+} {
+  const bibliography = files.filter((file): file is ProjectTextFile => isProjectTextFile(file) && file.language === "bibtex");
+  const assets = files.filter((file): file is ProjectAssetFile => file.kind === "asset");
+  const cache = useRef<{
+    bibliography: typeof bibliography;
+    assets: typeof assets;
+    bibliographyFiles: Record<string, string>;
+    assetUrls: Record<string, string>;
+  } | undefined>(undefined);
+  const current = cache.current;
+  if (current && sameFileReferences(current.bibliography, bibliography) && sameFileReferences(current.assets, assets)) {
+    return current;
+  }
+  const next = {
+    bibliography,
+    assets,
+    bibliographyFiles: Object.fromEntries(bibliography.map((file) => [file.path, file.content])),
+    assetUrls: Object.fromEntries(assets.map((file) => [file.path, /\.pdf$/i.test(file.path) ? `${file.url}#asset.pdf` : file.url]))
+  };
+  cache.current = next;
+  return next;
+}
+
+function sameFileReferences(left: PlaygroundProject["files"], right: PlaygroundProject["files"]): boolean {
+  return left.length === right.length && left.every((file, index) => file === right[index]);
 }

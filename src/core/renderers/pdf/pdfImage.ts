@@ -1,4 +1,4 @@
-import type { PDFDocument, PDFPage } from "pdf-lib";
+import type { PDFDocument, PDFEmbeddedPage, PDFImage, PDFPage } from "pdf-lib";
 import { rgb } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { sanitizeImageUrl } from "../../utils/sanitize";
@@ -14,13 +14,23 @@ export type PdfImageServices = {
   rasterizeSvg?: (svg: Uint8Array, width: number, height: number) => Promise<Uint8Array | undefined>;
 };
 
+export type PdfImageContext = {
+  bytes: Map<string, Promise<Uint8Array>>;
+  assets: Map<string, Promise<EmbeddedImageAsset>>;
+};
+
+type EmbeddedImageAsset =
+  | { type: "pdf"; value: PDFEmbeddedPage }
+  | { type: "image"; value: PDFImage };
+
 export async function drawPdfImage(
   pdf: PDFDocument,
   page: PDFPage,
   object: ImageObject,
   fonts: PdfFontSet,
   pageHeight: number,
-  services: PdfImageServices = {}
+  services: PdfImageServices = {},
+  context: PdfImageContext = { bytes: new Map(), assets: new Map() }
 ): Promise<boolean> {
   const sources = (object.sources?.length ? object.sources : [object.src])
     .map(sanitizeImageUrl)
@@ -32,12 +42,10 @@ export async function drawPdfImage(
 
   for (const src of sources) {
     try {
-      const bytes = await services.load?.(src) ?? await loadImageBytes(src);
-      if (isPdf(bytes, src)) {
-        const [pdfPage] = await pdf.embedPdf(bytes, [0]);
-        if (!pdfPage) throw new Error("PDF figure has no pages");
-        const fitted = fitContain(pdfPage.width, pdfPage.height, object.width, object.height);
-        page.drawPage(pdfPage, {
+      const asset = await loadEmbeddedAsset(pdf, src, object, services, context);
+      if (asset.type === "pdf") {
+        const fitted = fitContain(asset.value.width, asset.value.height, object.width, object.height);
+        page.drawPage(asset.value, {
           x: object.x + fitted.x,
           y: pageHeight - object.y - fitted.y - fitted.height,
           width: fitted.width,
@@ -45,21 +53,8 @@ export async function drawPdfImage(
         });
         return true;
       }
-      const imageBytes = isSvg(bytes, src)
-        ? await services.rasterizeSvg?.(bytes, object.width, object.height)
-          ?? await rasterizeSvgBytes(bytes, object.width, object.height)
-        : bytes;
-      if (isSvg(imageBytes, src)) throw new Error("SVG rasterization is unavailable in this runtime");
-      const image = isJpeg(imageBytes, src)
-        ? await pdf.embedJpg(imageBytes)
-        : isPng(imageBytes, src) || isSvg(bytes, src)
-          ? await pdf.embedPng(imageBytes)
-          : undefined;
-      if (!image) {
-        throw new Error(`Unsupported image format: ${src}`);
-      }
-      const fitted = fitContain(image.width, image.height, object.width, object.height);
-      page.drawImage(image, {
+      const fitted = fitContain(asset.value.width, asset.value.height, object.width, object.height);
+      page.drawImage(asset.value, {
         x: object.x + fitted.x,
         y: pageHeight - object.y - fitted.y - fitted.height,
         width: fitted.width,
@@ -72,6 +67,63 @@ export async function drawPdfImage(
   }
   drawImagePlaceholder(page, object, fonts, pageHeight);
   return false;
+}
+
+async function loadEmbeddedAsset(
+  pdf: PDFDocument,
+  src: string,
+  object: ImageObject,
+  services: PdfImageServices,
+  context: PdfImageContext
+): Promise<EmbeddedImageAsset> {
+  const bytes = await loadImageBytesCached(src, services, context);
+  const svg = isSvg(bytes, src);
+  const cacheKey = svg ? `svg:${object.width}x${object.height}:${src}` : src;
+  const cached = context.assets.get(cacheKey);
+  if (cached) return cached;
+  const loading = (async (): Promise<EmbeddedImageAsset> => {
+    if (isPdf(bytes, src)) {
+      const [pdfPage] = await pdf.embedPdf(bytes, [0]);
+      if (!pdfPage) throw new Error("PDF figure has no pages");
+      return { type: "pdf", value: pdfPage };
+    }
+    const imageBytes = svg
+      ? await services.rasterizeSvg?.(bytes, object.width, object.height)
+        ?? await rasterizeSvgBytes(bytes, object.width, object.height)
+      : bytes;
+    if (isSvg(imageBytes, src)) throw new Error("SVG rasterization is unavailable in this runtime");
+    const image = isJpeg(imageBytes, src)
+      ? await pdf.embedJpg(imageBytes)
+      : isPng(imageBytes, src) || svg
+        ? await pdf.embedPng(imageBytes)
+        : undefined;
+    if (!image) throw new Error(`Unsupported image format: ${src}`);
+    return { type: "image", value: image };
+  })();
+  context.assets.set(cacheKey, loading);
+  try {
+    return await loading;
+  } catch (error) {
+    context.assets.delete(cacheKey);
+    throw error;
+  }
+}
+
+async function loadImageBytesCached(
+  src: string,
+  services: PdfImageServices,
+  context: PdfImageContext
+): Promise<Uint8Array> {
+  const cached = context.bytes.get(src);
+  if (cached) return cached;
+  const loading = Promise.resolve(services.load?.(src)).then((loaded) => loaded ?? loadImageBytes(src));
+  context.bytes.set(src, loading);
+  try {
+    return await loading;
+  } catch (error) {
+    context.bytes.delete(src);
+    throw error;
+  }
 }
 
 async function loadImageBytes(src: string): Promise<Uint8Array> {
