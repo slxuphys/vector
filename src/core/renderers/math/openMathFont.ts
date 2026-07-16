@@ -1,15 +1,14 @@
 import latinModernMathUrl from "../../../assets/fonts/latinmodern-math.otf?url";
 import libertinusMathUrl from "../../../assets/fonts/libertinus-math.otf?url";
-import newComputerModernMathUrl from "../../../assets/fonts/newcm-math.otf?url";
 
-export type OpenMathFontProfileName = "latin-modern" | "libertinus" | "new-computer-modern";
+export type OpenMathFontProfileName = "latin-modern" | "libertinus";
 
 export type OpenMathFontProfile = {
   name: OpenMathFontProfileName;
   family: string;
   stack: string;
   url: string;
-  role: "openMath" | "openMathLibertinus" | "openMathNewComputerModern";
+  role: "openMath" | "openMathLibertinus";
 };
 
 export const openMathFontProfiles: Record<OpenMathFontProfileName, OpenMathFontProfile> = {
@@ -26,13 +25,6 @@ export const openMathFontProfiles: Record<OpenMathFontProfileName, OpenMathFontP
     stack: "Libertinus Math, serif",
     url: libertinusMathUrl,
     role: "openMathLibertinus"
-  },
-  "new-computer-modern": {
-    name: "new-computer-modern",
-    family: "New Computer Modern Math",
-    stack: "New Computer Modern Math, serif",
-    url: newComputerModernMathUrl,
-    role: "openMathNewComputerModern"
   }
 };
 
@@ -45,7 +37,7 @@ export function getOpenMathFontProfile(name: OpenMathFontProfileName = "latin-mo
 }
 
 export function isOpenMathFontProfileName(value: string | undefined): value is OpenMathFontProfileName {
-  return value === "latin-modern" || value === "libertinus" || value === "new-computer-modern";
+  return value === "latin-modern" || value === "libertinus";
 }
 
 export function openMathFontFaceCss(name: OpenMathFontProfileName = "latin-modern"): string {

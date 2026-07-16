@@ -265,7 +265,7 @@ crossref:
 
 # Overview {#sec:native-math}
 
-This sample is meant to be used with the **Native engine** math mode. It does not hide unsupported TeX behind KaTeX, so red markers show where our own parser/layout still needs work.
+This sample exercises the native OpenType math engine directly, so red markers show where our own parser or layout still needs work.
 
 This note also tests YAML front matter. It asks for Libertinus OpenMath, custom cross-reference wording, and document-level page/theme settings. See @sec:native-math, @tbl:inline-math, @fig:phase, @fig:graphsx-routing, and @eq:energy.
 
@@ -858,59 +858,3 @@ Figure \\ref{fig:phase} is parsed as a normal engine figure. TikZ support is int
 
 \\end{document}
 `;
-
-export const playgroundSamples = {
-  short: sampleMarkdown,
-  long: longSampleMarkdown,
-  hundred: hundredPageSampleMarkdown,
-  mathHeavy: mathHeavySampleMarkdown,
-  graphsxDebug: graphsxDebugSampleMarkdown,
-  multiColumn: multiColumnSampleMarkdown,
-  transformerReplica: transformerReplicaSampleMarkdown,
-  latexPaper: latexPaperSample,
-  latexTwoColumn: latexTwoColumnSample,
-  latexRevtex: latexRevtexSample
-} as const;
-
-export const playgroundSamplesByFormat = {
-  markdown: {
-    short: sampleMarkdown,
-    long: longSampleMarkdown,
-    hundred: hundredPageSampleMarkdown,
-    mathHeavy: mathHeavySampleMarkdown,
-    graphsxDebug: graphsxDebugSampleMarkdown,
-    multiColumn: multiColumnSampleMarkdown,
-    transformerReplica: transformerReplicaSampleMarkdown
-  },
-  latex: {
-    latexPaper: latexPaperSample,
-    latexTwoColumn: latexTwoColumnSample,
-    latexRevtex: latexRevtexSample
-  }
-} as const;
-
-export const playgroundSampleLabels: Record<keyof typeof playgroundSamples, string> = {
-  short: "Short",
-  long: "Long",
-  hundred: "100 pages",
-  mathHeavy: "Math heavy",
-  graphsxDebug: "GraphSX debug",
-  multiColumn: "Multi-column",
-  transformerReplica: "Transformer paper replica",
-  latexPaper: "LaTeX paper",
-  latexTwoColumn: "LaTeX two-column",
-  latexRevtex: "REVTeX 4.2"
-};
-
-export const playgroundSampleFormats: Record<keyof typeof playgroundSamples, "markdown" | "latex"> = {
-  short: "markdown",
-  long: "markdown",
-  hundred: "markdown",
-  mathHeavy: "markdown",
-  graphsxDebug: "markdown",
-  multiColumn: "markdown",
-  transformerReplica: "markdown",
-  latexPaper: "latex",
-  latexTwoColumn: "latex",
-  latexRevtex: "latex"
-};

@@ -14,7 +14,7 @@ async function main(): Promise<void> {
     nativeMathProfile: "openmath"
   });
   const { layout } = await engine.layout(parityFixture);
-  const bytes = await renderToPdf(layout, { mathPdfMode: "vector", subsetFonts: true });
+  const bytes = await renderToPdf(layout, { subsetFonts: true });
   process.stdout.write(JSON.stringify(await summarizeParity(layout, bytes)));
 }
 

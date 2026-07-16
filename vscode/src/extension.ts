@@ -159,7 +159,6 @@ type VectorPreviewBundle = {
   };
   renderPageToSvg(page: DisplayPage, options?: { includeFontCss?: boolean }): string;
   renderToPdf(layout: PagedDisplayList, options?: {
-    mathPdfMode?: "vector";
     subsetFonts?: boolean;
     debugLabel?: string;
     imageServices?: {
@@ -237,7 +236,6 @@ async function exportPdf(panel?: VectorPreviewPanel): Promise<void> {
     }
     const bundle = loadPreviewBundle();
     const bytes = await bundle.renderToPdf(activePreview.layout, {
-      mathPdfMode: "vector",
       subsetFonts: true,
       debugLabel: "vscode",
       imageServices: createNodePdfImageServices(document)

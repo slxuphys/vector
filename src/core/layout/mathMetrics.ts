@@ -3,7 +3,6 @@ import type { DocumentTheme } from "../theme/themeTypes";
 import type { MathRendererName } from "../engine/engineTypes";
 import { isNativeMathRenderer, type NativeMathLayout, type NativeMathMetrics } from "../renderers/math/nativeMath";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
-import type { MathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 import { parseInline } from "../markdown/parseInline";
 
@@ -23,7 +22,6 @@ export type MathMeasurement = {
   advance: number;
   baseline?: number;
   nativeLayout?: NativeMathLayout;
-  mathJaxArtifact?: MathJaxSvgArtifact;
 };
 
 export type MathMeasurementMap = Record<string, MathMeasurement>;
@@ -32,7 +30,7 @@ export function mathMeasureKey(
   latex: string,
   displayMode: boolean,
   fontSize: number,
-  renderer: MathRendererName = "katex-raster",
+  renderer: MathRendererName = "native-openmath",
   nativeMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ): string {
@@ -48,7 +46,7 @@ export function normalizeMathLatex(latex: string): string {
 export function collectMathMeasureRequests(
   blocks: LayoutBlock[],
   theme: DocumentTheme,
-  renderer: MathRendererName = "katex-raster",
+  renderer: MathRendererName = "native-openmath",
   nativeMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName,
   titleMatter?: TitleMatter,
@@ -104,7 +102,7 @@ export function getMeasuredMath(
   latex: string,
   displayMode: boolean,
   fontSize: number,
-  renderer: MathRendererName = "katex-raster",
+  renderer: MathRendererName = "native-openmath",
   nativeMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ): MathMeasurement | undefined {

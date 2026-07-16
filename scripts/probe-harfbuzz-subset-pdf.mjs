@@ -9,9 +9,7 @@ mkdirSync(outDir, { recursive: true });
 
 const samples = [
   ["lmroman", "src/assets/fonts/lmroman10-regular.otf", "This is a test"],
-  ["cmu-serif", "src/assets/fonts/cmu-serif-regular.otf", "This is a test"],
   ["libertinus", "src/assets/fonts/libertinus-serif-regular.otf", "This is a test"],
-  ["cmu-ffi", "src/assets/fonts/cmu-serif-regular.otf", "office affine ffi"]
 ];
 
 for (const [name, fontPath, text] of samples) {

@@ -13,7 +13,7 @@ export function layoutTable(
   contentWidth: number,
   theme: DocumentTheme,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ): TableLayout {

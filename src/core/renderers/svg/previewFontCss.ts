@@ -1,17 +1,14 @@
 import { openMathFontFaceCss } from "../math/openMathFont";
 import {
   latinModernRomanFontFaceCss,
-  libertinusSerifFontFaceCss,
-  newComputerModernFontFaceCss
+  libertinusSerifFontFaceCss
 } from "../text/latinModernRomanFont";
 
 export function previewFontFaceCss(): string {
   return [
     latinModernRomanFontFaceCss(),
     libertinusSerifFontFaceCss(),
-    newComputerModernFontFaceCss(),
     openMathFontFaceCss("latin-modern"),
-    openMathFontFaceCss("libertinus"),
-    openMathFontFaceCss("new-computer-modern")
+    openMathFontFaceCss("libertinus")
   ].join("");
 }

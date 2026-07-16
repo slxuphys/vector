@@ -47,7 +47,6 @@ export function MarkdownEditorPreview({
   const [previewRequest, setPreviewRequest] = useState<PreviewRequest>({ markdown: initialMarkdown });
   const [zoom, setZoom] = useState(0.9);
   const [pdfPending, setPdfPending] = useState(false);
-  const [experimentalVectorMath, setExperimentalVectorMath] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [sourceNavigation, setSourceNavigation] = useState<{ offset: number; id: number } | undefined>(undefined);
   const sourceNavigationIdRef = useRef(0);
@@ -56,11 +55,6 @@ export function MarkdownEditorPreview({
   const startupLogRef = useRef({ editor: false, preview: false });
   const documentKeyRef = useRef(documentKey);
   const layoutState = useDocumentLayout(previewAvailable ? previewRequest.markdown : "", options, previewRequest.timing);
-  const usingKatexGlyph = options.mathRenderer === "katex-glyph";
-  const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
-  const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
-  const usingMathJaxGlyph = options.mathRenderer === "mathjax-glyph";
-  const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
 
   useLayoutEffect(() => {
     if (documentKeyRef.current === documentKey) return;
@@ -98,22 +92,6 @@ export function MarkdownEditorPreview({
   }, [layoutState.layout]);
 
   useEffect(() => {
-    if (!previewAvailable || !layoutState.layout || !usingKatexRaster || experimentalVectorMath) return;
-    let cancelled = false;
-    const timeout = window.setTimeout(() => {
-      if (!cancelled && layoutState.layout) {
-        const layout = layoutState.layout;
-        void import("../core/renderers/pdf/pdfMathArtifact")
-          .then(({ warmPdfMathArtifactCache }) => warmPdfMathArtifactCache(layout));
-      }
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [experimentalVectorMath, layoutState.layout, previewAvailable, usingKatexRaster]);
-
-  useEffect(() => {
     const printQuery = window.matchMedia("print");
     const handleBeforePrint = () => setPrinting(true);
     const handleAfterPrint = () => setPrinting(false);
@@ -134,9 +112,8 @@ export function MarkdownEditorPreview({
     if (!previewAvailable || !layout || pdfPending) return;
     setPdfPending(true);
     window.setTimeout(() => {
-      const mathPdfMode = usingGlyphPdf ? "glyph" : usingMathJaxVector || experimentalVectorMath ? "vector" : "raster";
       void import("../core/renderers/pdf/renderToPdf")
-        .then(({ downloadPdf }) => downloadPdf(layout, "document.pdf", { mathPdfMode, subsetFonts: true, debugLabel: "playground" }))
+        .then(({ downloadPdf }) => downloadPdf(layout, "document.pdf", { subsetFonts: true, debugLabel: "playground" }))
         .catch((error) => {
           debugError("pdf", "[PDF export] failed", error);
         })
@@ -151,9 +128,6 @@ export function MarkdownEditorPreview({
       onZoomChange={setZoom}
       pdfPending={pdfPending}
       onDownloadPdf={handleDownloadPdf}
-      mathRenderer={options.mathRenderer}
-      experimentalVectorMath={experimentalVectorMath}
-      onExperimentalVectorMathChange={setExperimentalVectorMath}
       variant={toolbarPlacement === "preview" ? "preview" : "lab"}
       previewAvailable={previewAvailable}
     />

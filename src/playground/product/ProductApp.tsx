@@ -53,7 +53,12 @@ export function ProductApp() {
           <h1>Vector</h1>
         </div>
         <div className="project-switcher">
-          <ProjectSelector projects={projects} projectId={projectId} onProjectSelect={fileSystem.selectProject} />
+          <ProjectSelector
+            projects={projects}
+            projectId={projectId}
+            onProjectSelect={fileSystem.selectProject}
+            onProjectRemove={fileSystem.removeProject}
+          />
           <ProjectActions
             storageStatus={fileSystem.storageStatus}
             storageError={fileSystem.storageError}

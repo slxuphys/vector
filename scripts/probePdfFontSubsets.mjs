@@ -10,10 +10,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fonts = [
   ["Latin Modern Math", "src/assets/fonts/latinmodern-math.otf"],
   ["Libertinus Math", "src/assets/fonts/libertinus-math.otf"],
-  ["New Computer Modern Math", "src/assets/fonts/newcm-math.otf"],
   ["Latin Modern Roman", "src/assets/fonts/lmroman10-regular.otf"],
   ["Libertinus Serif", "src/assets/fonts/libertinus-serif-regular.otf"],
-  ["New Computer Modern Roman", "src/assets/fonts/newcm10-regular.otf"]
 ];
 
 const samples = [

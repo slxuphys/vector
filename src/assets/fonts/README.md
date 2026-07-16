@@ -24,10 +24,4 @@ https://github.com/alerque/libertinus/releases/tag/v7.051
 
 They are used as a second OpenType MATH profile in the playground so the native math engine can be tested against a font that differs from Latin Modern. Libertinus is distributed under the SIL Open Font License.
 
-## New Computer Modern
-
-`newcm-math.otf`, `newcm10-regular.otf`, `newcm10-bold.otf`, `newcm10-italic.otf`, and `newcm10-bolditalic.otf` are from the CTAN `newcomputermodern` package:
-
-https://ctan.org/pkg/newcomputermodern
-
 They are used as a third OpenType MATH profile in the playground. The package is distributed under the SIL Open Font License.

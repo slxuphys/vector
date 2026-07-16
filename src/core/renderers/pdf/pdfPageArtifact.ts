@@ -1,7 +1,7 @@
 import type { PDFDocument } from "pdf-lib";
 import type { PagedDisplayList } from "../../display-list/displayTypes";
 import { renderPageToSvg } from "../svg/renderPageToSvg";
-import { svgToDataUrl } from "../math/renderKatex";
+import { svgToDataUrl } from "../../utils/svgDataUrl";
 
 export async function renderPreviewPagesToPdf(pdf: PDFDocument, layout: PagedDisplayList): Promise<boolean> {
   if (typeof document === "undefined" || typeof Image === "undefined") return false;

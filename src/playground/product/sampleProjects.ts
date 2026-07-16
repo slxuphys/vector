@@ -1,38 +1,25 @@
+import {
+  hundredPageSampleMarkdown,
+  mathHeavySampleMarkdown,
+  multiColumnSampleMarkdown
+} from "../sampleMarkdown";
 import { productExamples, sampleBibliography } from "./productExamples";
 import type { PlaygroundProject } from "./projectTypes";
 
 export const sampleProjects: PlaygroundProject[] = [
   {
-    id: "markdown-note",
-    name: "Markdown note",
+    id: "vector-examples",
+    name: "Vector examples",
     kind: "example",
-    entryFile: "note.md",
-    directories: [],
+    entryFile: "markdown/math-heavy.md",
+    directories: ["markdown", "latex", "stress-tests"],
     files: [
-      { kind: "text", path: "note.md", language: "markdown", content: productExamples.markdownNote },
-      { kind: "text", path: "references.bib", language: "bibtex", content: sampleBibliography }
-    ]
-  },
-  {
-    id: "latex-article",
-    name: "LaTeX article",
-    kind: "example",
-    entryFile: "article.tex",
-    directories: [],
-    files: [
-      { kind: "text", path: "article.tex", language: "latex", content: productExamples.latexArticle },
-      { kind: "text", path: "references.bib", language: "bibtex", content: sampleBibliography }
-    ]
-  },
-  {
-    id: "revtex-paper",
-    name: "REVTeX two-column",
-    kind: "example",
-    entryFile: "paper.tex",
-    directories: [],
-    files: [
-      { kind: "text", path: "paper.tex", language: "latex", content: productExamples.latexRevtex },
-      { kind: "text", path: "references.bib", language: "bibtex", content: sampleBibliography }
+      { kind: "text", path: "markdown/math-heavy.md", language: "markdown", content: mathHeavySampleMarkdown },
+      { kind: "text", path: "markdown/two-column.md", language: "markdown", content: multiColumnSampleMarkdown },
+      { kind: "text", path: "latex/article.tex", language: "latex", content: productExamples.latexArticle },
+      { kind: "text", path: "latex/revtex.tex", language: "latex", content: productExamples.latexRevtex },
+      { kind: "text", path: "stress-tests/hundred-pages.md", language: "markdown", content: hundredPageSampleMarkdown },
+      { kind: "text", path: "latex/references.bib", language: "bibtex", content: sampleBibliography }
     ]
   }
 ];

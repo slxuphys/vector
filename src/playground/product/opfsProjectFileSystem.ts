@@ -55,6 +55,14 @@ export async function createOpfsProject(name: string): Promise<LoadedProjectBack
   return { project: await backend.loadProject(), backend };
 }
 
+export async function deleteOpfsProject(projectId: string): Promise<void> {
+  if (!supportsOpfs()) throw new Error("Browser project storage is not available in this browser.");
+  const directoryName = projectId.replace(/^opfs:/, "");
+  if (!directoryName) throw new Error("Invalid browser project identifier.");
+  const projectsRoot = await getProjectsRoot();
+  await projectsRoot.removeEntry(directoryName, { recursive: true });
+}
+
 class OpfsProjectBackend implements ProjectFileSystemBackend {
   readonly kind = "opfs" as const;
 

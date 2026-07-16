@@ -1,7 +1,6 @@
 import type { DisplayObject, DisplayPage } from "../../display-list/displayTypes";
 import { escapeXml } from "../../utils/sanitize";
-import { renderKatexForeignObject } from "../math/renderKatex";
-import { isNativeMathRenderer, renderNativeMathSvg } from "../math/nativeMath";
+import { renderNativeMathSvg } from "../math/nativeMath";
 import { renderSvgImage } from "./svgImage";
 import { renderSvgGraphSX } from "./svgGraphSX";
 import { renderSvgShape } from "./svgShapes";
@@ -34,21 +33,7 @@ function renderObject(object: DisplayObject, options: SvgRenderOptions): string 
 
 function renderObjectBody(object: DisplayObject, options: SvgRenderOptions): string {
   if (object.type === "math") {
-    if (isNativeMathRenderer(object.renderer)) return renderNativeMathSvg(object, { includeFontCss: options.includeFontCss });
-    if (object.renderer === "mathjax-vector" || object.renderer === "mathjax-glyph") {
-      return `<svg x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" viewBox="${escapeXml(object.viewBox ?? `0 0 ${object.width} ${object.height}`)}" overflow="visible">${object.svgBody ?? ""}</svg>`;
-    }
-    return renderKatexForeignObject({
-      html: object.html,
-      displayMode: object.displayMode,
-      x: object.x,
-      y: object.y,
-      width: object.width,
-      height: object.height,
-      fontSize: object.fontSize,
-      color: object.color,
-      includeCss: options.includeFontCss ?? true
-    });
+    return renderNativeMathSvg(object, { includeFontCss: options.includeFontCss });
   }
   if (object.type === "image") return renderSvgImage(object);
   if (object.type === "graphsx") return renderSvgGraphSX(object);

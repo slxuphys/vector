@@ -5,27 +5,27 @@ test("renders editor and svg pages", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Vector Lab" })).toBeVisible();
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });
   await expect(page.locator("svg.svg-md-page-svg text").first()).toBeVisible();
-  await expect(page.getByLabel("Math", { exact: true })).toHaveValue("native-openmath");
-  await expect(page.getByLabel("Math", { exact: true }).locator("option")).toHaveCount(3);
 
   await expect.poll(async () => {
     return page.locator(".svg-md-preview-pane").evaluate((element) => getComputedStyle(element).overflowY);
   }).toBe("auto");
 });
 
-test("switches to the long example", async ({ page }) => {
-  await page.goto("/lab");
-  await page.getByLabel("Example").selectOption("long");
+test("opens the math-heavy example from the shared project", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByLabel("Choose project")).toContainText("Vector examples");
+  await page.getByTitle("markdown/math-heavy.md").click();
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });
   await expect.poll(async () => {
     return page.locator(".svg-md-preview").evaluate((element) => Number(element.getAttribute("data-page-count")));
-  }).toBeGreaterThanOrEqual(10);
+  }).toBeGreaterThanOrEqual(1);
   await expect.poll(async () => page.locator("svg.svg-md-page-svg").count()).toBeLessThan(10);
 });
 
-test("switches to the 100 page stress example", async ({ page }) => {
-  await page.goto("/lab");
-  await page.getByLabel("Example").selectOption("hundred");
+test("opens the 100 page sample from the shared project", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTitle("stress-tests").click();
+  await page.getByTitle("stress-tests/hundred-pages.md").click();
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 30000 });
   await expect.poll(async () => {
     return page.locator(".svg-md-preview").evaluate((element) => Number(element.getAttribute("data-page-count")));
@@ -33,46 +33,34 @@ test("switches to the 100 page stress example", async ({ page }) => {
   await expect.poll(async () => page.locator("svg.svg-md-page-svg").count()).toBeLessThan(10);
 });
 
-test("switches main text to TeX font", async ({ page }) => {
-  await page.goto("/lab");
-  await page.getByLabel("Example").selectOption("short");
-  await page.getByLabel("Math", { exact: true }).selectOption("native");
-  await page.getByLabel("Font", { exact: true }).selectOption("tex");
-  await expect(page.locator("svg.svg-md-page-svg text").first()).toHaveAttribute("font-family", /KaTeX_Main/);
+test("deletes a browser project without affecting examples", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New browser project" }).click();
+  await page.getByRole("textbox", { name: "New browser project" }).fill("Disposable project");
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page.getByLabel("Choose project")).toContainText("Disposable project");
+
+  await page.getByLabel("Choose project").click();
+  await page.getByRole("button", { name: "Delete project Disposable project" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Delete project" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+
+  await expect(page.getByLabel("Choose project")).toContainText("Vector examples");
+  await page.getByLabel("Choose project").click();
+  await expect(page.getByText("Disposable project", { exact: true })).toHaveCount(0);
 });
 
-test("switches math to KaTeX raster reference", async ({ page }) => {
+test("switches the OpenType font profile", async ({ page }) => {
   await page.goto("/lab");
-  await page.getByLabel("Example").selectOption("short");
-  await page.getByLabel("Math", { exact: true }).selectOption("katex-raster");
-  await expect(page.locator(".svg-md-katex").first()).toBeVisible({ timeout: 15000 });
-  await expect.poll(async () => {
-    return page.locator(".svg-md-katex").first().evaluate((element) => element.getBoundingClientRect().height);
-  }).toBeLessThan(80);
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download PDF" }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("document.pdf");
-});
-
-test("switches math to native KaTeX-font engine", async ({ page }) => {
-  await page.goto("/lab");
-  await page.getByLabel("Example").selectOption("short");
-  await page.getByLabel("Math", { exact: true }).selectOption("native");
+  await page.getByLabel("Font", { exact: true }).selectOption("libertinus");
   await expect(page.locator("svg.svg-md-page-svg text").first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByLabel("Native PDF")).toBeChecked();
-
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download PDF" }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("document.pdf");
+  await expect(page.locator("svg.svg-md-page-svg text").first()).toHaveAttribute("font-family", /Libertinus/);
 });
 
 test("downloads the current PDF", async ({ page }) => {
   await page.goto("/lab");
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });
 
-  await expect(page.getByLabel("Native PDF")).toBeChecked();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download PDF" }).click();
   await expect(page.getByRole("button", { name: "Generating PDF" })).toBeVisible();

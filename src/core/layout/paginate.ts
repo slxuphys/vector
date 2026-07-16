@@ -8,14 +8,10 @@ import type { LayoutLine } from "./lineBreaking";
 import { defaultLayoutConfig, type LayoutConfig, type ParagraphSuppressAfter } from "./layoutConfig";
 import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
-import { renderKatex, renderKatexSvg } from "../renderers/math/renderKatex";
 import { renderGraphSX } from "../renderers/graphsx/renderGraphSX";
-import type { MathJaxSvgArtifact } from "../renderers/math/renderMathJax";
 import {
-  defaultNativeMathMetrics,
   getDefaultOpenMathMetrics,
   getDefaultOpenMathMetricsForProfile,
-  isNativeMathRenderer,
   layoutNativeMath,
   nativeMathProfileForRenderer,
   type NativeMathMetrics
@@ -42,7 +38,7 @@ export function paginate(
   page: PageConfig,
   theme: DocumentTheme,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName,
   crossRef: CrossRefConfig = defaultCrossRefConfig,
@@ -396,7 +392,6 @@ export function paginate(
         nativeMathMetrics,
         nativeMathProfile,
         nativeLayout: measured?.nativeLayout,
-        mathJaxArtifact: measured?.mathJaxArtifact,
         anchorId: block.label,
         source: block.source
       });
@@ -880,7 +875,7 @@ function drawLines(
   theme: DocumentTheme,
   options: { color: string; bold?: boolean; lineHeight: number; xOffset?: number; align?: "left" | "center" | "right"; maxWidth?: number; textAlign?: "left" | "justify"; source?: SourceSpan },
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ) {
@@ -913,9 +908,7 @@ function drawLines(
         const width = measured?.width ?? measureInlineMathBoxWidth(latex, runFontSize, theme);
         const advance = measured?.advance ?? measureInlineMathAdvance(latex, runFontSize, theme);
         const height = measured?.height ?? runFontSize * options.lineHeight;
-        const y = isMathJaxRenderer(mathRenderer)
-          ? cursor.y
-          : measured?.baseline !== undefined
+        const y = measured?.baseline !== undefined
             ? baseline - measured.baseline
             : cursor.y + Math.max(0, (height - (measured?.height ?? height)) / 2) - runFontSize * 0.12;
         cursor.page.objects.push(createMathObject({
@@ -932,7 +925,6 @@ function drawLines(
           nativeMathMetrics,
           nativeMathProfile,
           nativeLayout: measured?.nativeLayout,
-          mathJaxArtifact: measured?.mathJaxArtifact,
           source: options.source
         }));
         x += advance;
@@ -1070,94 +1062,31 @@ function createMathObject(options: {
   nativeMathMetrics?: NativeMathMetrics;
   nativeMathProfile?: NativeMathFontProfileName;
   nativeLayout?: ReturnType<typeof layoutNativeMath>;
-  mathJaxArtifact?: MathJaxSvgArtifact;
   anchorId?: string;
   source?: SourceSpan;
 }): Extract<DisplayObject, { type: "math" }> {
-  if (isMathJaxRenderer(options.mathRenderer)) {
-    const artifact = options.mathJaxArtifact;
-    if (!artifact) throw new Error(`Missing measured MathJax artifact for: ${options.latex}`);
-    const y = options.displayMode ? options.y : options.y + options.fontSize - artifact.baseline;
-    return {
-      type: "math",
-      renderer: options.mathRenderer,
-      latex: options.latex,
-      html: "",
-      svg: artifact.svg,
-      svgBody: artifact.body,
-      viewBox: artifact.viewBox,
-      displayMode: options.displayMode,
-      x: options.x,
-      y,
-      width: artifact.width,
-      height: artifact.height,
-      advance: options.advance ?? artifact.width,
-      baseline: artifact.baseline,
-      fontSize: options.fontSize,
-      color: options.color,
-      anchorId: options.anchorId,
-      sourceSpan: options.source
-    };
-  }
-
-  if (isNativeMathRenderer(options.mathRenderer)) {
-    const profile = options.nativeMathProfile ?? nativeMathProfileForRenderer(options.mathRenderer);
-    const nativeMetrics = options.nativeMathMetrics ?? (options.mathRenderer === "native-openmath" ? getDefaultOpenMathMetricsForProfile(profile) : defaultNativeMathMetrics);
-    const layout = options.nativeLayout ?? layoutNativeMath(options.latex, options.displayMode, options.fontSize, nativeMetrics, profile);
-    const y = options.displayMode ? options.y : options.y;
-    return {
-      type: "math",
-      renderer: options.mathRenderer,
-      latex: options.latex,
-      html: "",
-      svg: "",
-      displayMode: options.displayMode,
-      x: options.x,
-      y,
-      width: layout.width,
-      height: layout.height,
-      advance: options.advance ?? layout.advance,
-      baseline: layout.baseline,
-      fontSize: options.fontSize,
-      color: options.color,
-      nativeMetrics,
-      nativeMathProfile: profile,
-      nativeLayout: layout,
-      anchorId: options.anchorId,
-      sourceSpan: options.source
-    };
-  }
-
-  const html = renderKatex(options.latex, options.displayMode);
+  const profile = options.nativeMathProfile ?? nativeMathProfileForRenderer(options.mathRenderer);
+  const nativeMetrics = options.nativeMathMetrics ?? getDefaultOpenMathMetricsForProfile(profile);
+  const layout = options.nativeLayout ?? layoutNativeMath(options.latex, options.displayMode, options.fontSize, nativeMetrics, profile);
   return {
     type: "math",
     renderer: options.mathRenderer,
     latex: options.latex,
-    html,
-    svg: renderKatexSvg({
-      latex: options.latex,
-      html,
-      displayMode: options.displayMode,
-      width: options.width,
-      height: options.height,
-      fontSize: options.fontSize,
-      color: options.color
-    }),
     displayMode: options.displayMode,
     x: options.x,
     y: options.y,
-    width: options.width,
-    height: options.height,
-    advance: options.advance,
+    width: layout.width,
+    height: layout.height,
+    advance: options.advance ?? layout.advance,
+    baseline: layout.baseline,
     fontSize: options.fontSize,
     color: options.color,
+    nativeMetrics,
+    nativeMathProfile: profile,
+    nativeLayout: layout,
     anchorId: options.anchorId,
     sourceSpan: options.source
   };
-}
-
-function isMathJaxRenderer(renderer: MathRendererName): boolean {
-  return renderer === "mathjax-vector" || renderer === "mathjax-glyph";
 }
 
 function readLatexScript(text: string, start: number): { value: string; end: number } {
@@ -1239,7 +1168,7 @@ function drawTable(
   ensure: (height: number) => Cursor,
   advanceFlow: (from: Cursor) => Cursor,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ): Cursor {

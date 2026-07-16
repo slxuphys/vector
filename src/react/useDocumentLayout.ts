@@ -13,8 +13,7 @@ import { clearTextMeasureCache } from "../core/layout/measureText";
 import { defaultTheme } from "../core/theme/defaultTheme";
 import {
   libertinusSerifFontFamily,
-  latinModernRomanFontFamily,
-  newComputerModernFontFamily
+  latinModernRomanFontFamily
 } from "../core/renderers/text/latinModernRomanFont";
 import { loadTextFontsForTheme } from "../core/renderers/text/textFontMetrics";
 
@@ -107,8 +106,6 @@ async function waitForTextFonts(prepared: PreparedLayout): Promise<void> {
   const installedFontFace = ensureDocumentFontFaceCss(prepared.theme.fontFaceCss);
   const openMathTextFamily = fontFamily?.includes(libertinusSerifFontFamily)
     ? libertinusSerifFontFamily
-    : fontFamily?.includes(newComputerModernFontFamily)
-      ? newComputerModernFontFamily
     : fontFamily?.includes(latinModernRomanFontFamily)
       ? latinModernRomanFontFamily
       : undefined;
@@ -125,15 +122,6 @@ async function waitForTextFonts(prepared: PreparedLayout): Promise<void> {
     if (installedFontFace) clearTextMeasureCache();
     return;
   }
-  if (!fontFamily?.includes("KaTeX_Main")) return;
-  await Promise.race([
-    Promise.allSettled([
-      document.fonts.load(`12px "KaTeX_Main"`),
-      document.fonts.load(`700 28px "KaTeX_Main"`),
-      document.fonts.load(`700 22px "KaTeX_Main"`)
-    ]),
-    new Promise((resolve) => window.setTimeout(resolve, 150))
-  ]);
 }
 
 function ensureDocumentFontFaceCss(fontFaceCss: string | undefined): boolean {

@@ -13,7 +13,6 @@ const samples = [
 
 const fonts = [
   ["Latin Modern Roman", "src/assets/fonts/lmroman10-regular.otf"],
-  ["CMU Serif", "src/assets/fonts/cmu-serif-regular.otf"],
   ["Libertinus Serif", "src/assets/fonts/libertinus-serif-regular.otf"]
 ];
 

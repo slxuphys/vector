@@ -6,9 +6,7 @@ import {
   latinModernRomanFontFamily,
   latinModernRomanFontUrls,
   libertinusSerifFontFamily,
-  libertinusSerifFontUrls,
-  newComputerModernFontFamily,
-  newComputerModernFontUrls
+  libertinusSerifFontUrls
 } from "./latinModernRomanFont";
 
 const harfbuzzWasmUrl = new URL("../../../../node_modules/harfbuzzjs/dist/harfbuzz.wasm", import.meta.url).href;
@@ -17,7 +15,7 @@ const createHarfBuzz = rawCreateHarfBuzz as unknown as (options?: {
   wasmBinary?: ArrayBuffer | Uint8Array;
 }) => Promise<unknown>;
 
-type TextFontFamily = "latin-modern" | "libertinus" | "new-computer-modern";
+type TextFontFamily = "latin-modern" | "libertinus";
 type TextFontStyle = "regular" | "bold" | "italic" | "boldItalic";
 type TextFontKey = `${TextFontFamily}:${TextFontStyle}`;
 
@@ -101,11 +99,7 @@ const textFontUrls: Record<TextFontKey, string> = {
   "libertinus:regular": libertinusSerifFontUrls.regular,
   "libertinus:bold": libertinusSerifFontUrls.bold,
   "libertinus:italic": libertinusSerifFontUrls.italic,
-  "libertinus:boldItalic": libertinusSerifFontUrls.boldItalic,
-  "new-computer-modern:regular": newComputerModernFontUrls.regular,
-  "new-computer-modern:bold": newComputerModernFontUrls.bold,
-  "new-computer-modern:italic": newComputerModernFontUrls.italic,
-  "new-computer-modern:boldItalic": newComputerModernFontUrls.boldItalic
+  "libertinus:boldItalic": libertinusSerifFontUrls.boldItalic
 };
 
 const fontCache = new Map<TextFontKey, FontkitFont>();
@@ -217,7 +211,6 @@ function textFontKeyForStyle(style: TextStyle): TextFontKey | undefined {
 }
 
 function textFontFamilyForCss(fontFamily: string): TextFontFamily | undefined {
-  if (fontFamily.includes(newComputerModernFontFamily)) return "new-computer-modern";
   if (fontFamily.includes(libertinusSerifFontFamily)) return "libertinus";
   if (fontFamily.includes(latinModernRomanFontFamily)) return "latin-modern";
   return undefined;

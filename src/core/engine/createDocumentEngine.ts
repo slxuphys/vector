@@ -15,7 +15,6 @@ import { resolveCitations } from "../citations/resolveCitations";
 import { resolveCrossReferences } from "../xref/resolveReferences";
 import { defaultTheme } from "../theme/defaultTheme";
 import {
-  defaultNativeMathMetrics,
   getDefaultOpenMathMetricsForProfile,
   isNativeMathRenderer,
   layoutNativeMath,
@@ -115,7 +114,8 @@ function prepareMarkdownLayoutFromDocument(
     : document.frontMatter?.bibliography ? [document.frontMatter.bibliography] : [];
   const citedAst = resolveCitations(sourceAst, {
     paths: bibliographyPaths,
-    files: resolvedOptions.bibliographyFiles
+    files: resolvedOptions.bibliographyFiles,
+    sourcePath: resolvedOptions.sourcePath
   });
   const ast = resolveCrossReferences(citedAst, crossRef, {
     titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
@@ -127,7 +127,7 @@ function prepareMarkdownLayoutFromDocument(
   const parseMs = now() - parseStart;
   const page = createPageConfig(resolvedOptions.pageSize ?? "letter", resolvedOptions.margin ?? 72);
   const theme: DocumentTheme = { ...defaultTheme, ...(resolvedOptions.theme ?? {}) };
-  const mathRenderer = resolvedOptions.mathRenderer ?? "katex-raster";
+  const mathRenderer = resolvedOptions.mathRenderer ?? "native-openmath";
   const nativeMathMetrics = resolvedOptions.nativeMathMetrics;
   const nativeMathProfile = resolvedOptions.nativeMathProfile;
   const layoutConfig = mergeLayoutConfig(resolvedOptions.layout, undefined);
@@ -230,7 +230,7 @@ function measureNativeMathRequests(prepared: PreparedLayout): MathMeasurementMap
     const profile = request.nativeMathProfile ?? prepared.nativeMathProfile ?? nativeMathProfileForRenderer(prepared.mathRenderer);
     const metrics = request.nativeMetrics
       ?? prepared.nativeMathMetrics
-      ?? (prepared.mathRenderer === "native-openmath" ? getDefaultOpenMathMetricsForProfile(profile) : defaultNativeMathMetrics);
+      ?? getDefaultOpenMathMetricsForProfile(profile);
     const layout = layoutNativeMath(request.latex, request.displayMode, request.fontSize, metrics, profile);
     measurements[request.key] = {
       width: layout.width,

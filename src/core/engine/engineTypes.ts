@@ -51,13 +51,7 @@ export const defaultDocumentOptions: DocumentOptions = {
   abstractTitle: "Abstract"
 };
 
-export type MathRendererName =
-  | "katex-raster"
-  | "katex-glyph"
-  | "mathjax-vector"
-  | "mathjax-glyph"
-  | "native"
-  | "native-openmath";
+export type MathRendererName = "native-openmath";
 
 export type LayoutResult = {
   layout: PagedDisplayList;

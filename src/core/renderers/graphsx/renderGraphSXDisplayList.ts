@@ -112,8 +112,6 @@ function renderMathItem(item: GraphSXDisplayItem, nativeMathProfile: NativeMathF
     type: "math",
     renderer: "native-openmath",
     latex: source,
-    html: "",
-    svg: "",
     displayMode: false,
     x,
     y,

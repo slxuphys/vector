@@ -80,7 +80,7 @@ export function drawPdfNativeMath(
       continue;
     }
 
-    const font = selectNativeGlyphFont(node, fonts, object.renderer !== "native-openmath");
+    const font = selectNativeGlyphFont(node, fonts);
     if (!font) {
       logMissingPdfGlyph("native-math-font", node.text, node.fontFamily);
       continue;
@@ -104,32 +104,11 @@ export function drawPdfNativeMath(
 
 function selectNativeGlyphFont(
   glyph: NativeGlyph,
-  fonts: PdfFontSet,
-  preferTexFonts: boolean
+  fonts: PdfFontSet
 ): PDFFont | undefined {
-  if (glyph.fontFamily?.includes(openMathFontProfiles["new-computer-modern"].family) && fonts.openMathNewComputerModern) return fonts.openMathNewComputerModern;
   if (glyph.fontFamily?.includes(openMathFontProfiles.libertinus.family) && fonts.openMathLibertinus) return fonts.openMathLibertinus;
   if (glyph.fontFamily?.includes(getOpenMathFontProfile("latin-modern").family) && fonts.openMath) return fonts.openMath;
-
-  const texFonts = fonts.tex;
-  if (glyph.fontFamily?.includes("KaTeX_Size4") && texFonts?.size4) return texFonts.size4;
-  if (glyph.fontFamily?.includes("KaTeX_Size3") && texFonts?.size3) return texFonts.size3;
-  if (glyph.fontFamily?.includes("KaTeX_Size2") && texFonts?.size2) return texFonts.size2;
-  if (glyph.fontFamily?.includes("KaTeX_Size1") && texFonts?.size1) return texFonts.size1;
-  if (preferTexFonts && texFonts) {
-    if (glyph.bold && glyph.italic) return texFonts.boldItalic;
-    if (glyph.bold) return texFonts.bold;
-    if (glyph.italic && texFonts.mathItalic) return texFonts.mathItalic;
-    if (glyph.italic) return texFonts.italic;
-    return texFonts.regular;
-  }
-
-  if (glyph.bold && glyph.italic) return fonts.boldItalic;
-  if (glyph.bold) return fonts.bold;
-  if (glyph.italic && texFonts?.mathItalic) return texFonts.mathItalic;
-  if (glyph.italic) return fonts.italic;
-  if (glyph.fontFamily?.includes("KaTeX") && texFonts) return texFonts.regular;
-  return preferTexFonts ? fonts.regular : undefined;
+  return undefined;
 }
 
 function flipSvgPathY(path: string): string {

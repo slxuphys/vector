@@ -29,12 +29,8 @@ export type DisplayObject =
   | ({ type: "text" } & DisplayTextRun)
   | ({
       type: "math";
-      renderer?: "katex-raster" | "katex-glyph" | "mathjax-vector" | "mathjax-glyph" | "native" | "native-openmath";
+      renderer: "native-openmath";
       latex: string;
-      html: string;
-      svg: string;
-      svgBody?: string;
-      viewBox?: string;
       displayMode: boolean;
       x: number;
       y: number;

@@ -6,6 +6,7 @@ import { parseBibtex } from "./parseBibtex";
 export type BibliographyInput = {
   paths: string[];
   files?: Record<string, string>;
+  sourcePath?: string;
 };
 
 export function resolveCitations(ast: MarkdownAst, input: BibliographyInput | undefined): MarkdownAst {
@@ -26,10 +27,32 @@ export function resolveCitations(ast: MarkdownAst, input: BibliographyInput | un
 function loadEntries(input: BibliographyInput | undefined): BibEntry[] {
   const files = input?.files;
   if (!input || !files) return [];
+  const sourceDirectory = dirname(normalizePath(input.sourcePath ?? ""));
   return input.paths.flatMap((path) => {
-    const content = files[path] ?? files[path + ".bib"] ?? files[path.replace(/^\.\//, "")];
+    const normalized = normalizePath(path);
+    const withExtension = normalized.endsWith(".bib") ? normalized : `${normalized}.bib`;
+    const relative = sourceDirectory ? normalizePath(`${sourceDirectory}/${normalized}`) : normalized;
+    const relativeWithExtension = sourceDirectory ? normalizePath(`${sourceDirectory}/${withExtension}`) : withExtension;
+    const content = files[relative]
+      ?? files[relativeWithExtension]
+      ?? files[normalized]
+      ?? files[withExtension];
     return content ? parseBibtex(content) : [];
   });
+}
+
+function normalizePath(path: string): string {
+  const result: string[] = [];
+  for (const segment of path.replaceAll("\\", "/").split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") result.pop(); else result.push(segment);
+  }
+  return result.join("/");
+}
+
+function dirname(path: string): string {
+  const index = path.lastIndexOf("/");
+  return index < 0 ? "" : path.slice(0, index);
 }
 
 function collectCitations(nodes: MarkdownNode[]): CitationNode[] {

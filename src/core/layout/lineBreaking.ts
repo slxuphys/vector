@@ -23,7 +23,7 @@ export function breakRunsIntoLines(
   fontSize: number,
   theme: DocumentTheme,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName,
   layoutConfig: LayoutConfig = defaultLayoutConfig
@@ -268,7 +268,7 @@ function measureMathChunk(
   text: string,
   fontSize: number,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ): number {
@@ -280,7 +280,7 @@ function measureMathHeight(
   fontSize: number,
   fallback: number,
   mathMeasurements?: MathMeasurementMap,
-  mathRenderer: MathRendererName = "katex-raster",
+  mathRenderer: MathRendererName = "native-openmath",
   nativeMathMetrics?: NativeMathMetrics,
   nativeMathProfile?: NativeMathFontProfileName
 ): number {

@@ -3,7 +3,7 @@ import { rgb } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { sanitizeImageUrl } from "../../utils/sanitize";
 import { isDebugLogEnabled } from "../../utils/debugSettings";
-import { svgToDataUrl } from "../math/renderKatex";
+import { svgToDataUrl } from "../../utils/svgDataUrl";
 import type { PdfFontSet } from "./pdfFonts";
 import { hexToRgb } from "./pdfText";
 

@@ -201,7 +201,6 @@ export function mergeCrossRefConfig(
 }
 
 export function nativeMathProfileForOpenMathFont(font: OpenMathFontProfileName): NativeMathFontProfileName {
-  if (font === "new-computer-modern") return "openmath-new-computer-modern";
   if (font === "libertinus") return "openmath-libertinus";
   return "openmath";
 }
@@ -296,7 +295,7 @@ function normalizeFrontMatter(raw: Record<string, YamlValue>, warnings: string[]
     config.typography = {};
     if (family) {
       if (isOpenMathFontProfileName(family)) config.typography.family = family;
-      else warnings.push(`Unsupported typography.family "${family}". Use "latin-modern", "libertinus", or "new-computer-modern".`);
+      else warnings.push(`Unsupported typography.family "${family}". Use "latin-modern" or "libertinus".`);
     }
     if (fontSize !== undefined) config.typography.fontSize = fontSize;
     if (lineHeight !== undefined) config.typography.lineHeight = lineHeight;

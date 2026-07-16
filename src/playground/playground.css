@@ -236,10 +236,12 @@ button:disabled {
   top: calc(100% + 6px);
   left: 50%;
   z-index: 40;
-  width: 270px;
-  padding: 6px;
+  width: 286px;
+  max-height: min(420px, calc(100vh - 90px));
+  padding: 5px;
   display: grid;
-  gap: 3px;
+  gap: 1px;
+  overflow-y: auto;
   transform: translateX(-50%);
   border: 1px solid #c5cfda;
   border-radius: 6px;
@@ -249,27 +251,107 @@ button:disabled {
 
 .project-menu-option {
   width: 100%;
+  height: 38px;
   min-width: 0;
-  padding: 8px;
+  padding: 0 8px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  border-color: transparent;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
+  color: inherit;
   text-align: left;
+}
+
+.project-menu-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 0;
+  border-radius: 4px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.project-menu-row:hover {
+  background: #f2f5f8;
+}
+
+.project-menu-row-active {
+  background: #eaf3fc;
+  color: #175a93;
+}
+
+.project-menu-remove {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #667085;
+  opacity: 0;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.project-menu-row:hover .project-menu-remove,
+.project-menu-row:focus-within .project-menu-remove {
+  opacity: 1;
+}
+
+.project-menu-remove:hover {
+  background: #dde5ed;
+  color: #1f2937;
+}
+
+.project-menu-confirm {
+  padding: 8px;
+  display: grid;
+  gap: 7px;
+  color: #344054;
+}
+
+.project-menu-confirm strong {
+  font-size: 13px;
+}
+
+.project-menu-confirm > span {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.project-menu-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.project-menu-confirm button {
+  min-width: 62px;
+  padding: 6px 9px;
+}
+
+.project-menu-confirm .project-menu-danger {
+  border-color: #b42318;
+  background: #b42318;
+  color: #ffffff;
 }
 
 .project-menu-option small {
   color: #667085;
-  font-size: 10px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.project-menu-option:hover,
-.project-menu-option-active {
-  background: #edf4fb;
-  color: #174f86;
+.project-menu-row-active .project-menu-option small {
+  color: #3975a8;
 }
 
 .project-actions {
@@ -739,10 +821,33 @@ button:disabled {
   color: #93a1b1;
 }
 
-.app-theme-dark .project-menu-option:hover,
-.app-theme-dark .project-menu-option-active {
-  background: #263544;
+.app-theme-dark .project-menu-option,
+.app-theme-dark .project-menu-remove {
+  border-color: transparent;
+  background: transparent;
+}
+
+.app-theme-dark .project-menu-row:hover {
+  background: #2b3541;
+}
+
+.app-theme-dark .project-menu-row-active {
+  background: #263b4d;
   color: #8fc7ff;
+}
+
+.app-theme-dark .project-menu-remove,
+.app-theme-dark .project-menu-confirm {
+  color: #d7dee7;
+}
+
+.app-theme-dark .project-menu-remove:hover {
+  background: #3b4856;
+  color: #ffffff;
+}
+
+.app-theme-dark .project-menu-confirm > span {
+  color: #a9b5c3;
 }
 
 .app-theme-dark .project-action-button,
@@ -1294,17 +1399,6 @@ button:disabled {
 .svg-md-page-svg {
   display: block;
   user-select: text;
-}
-
-.svg-md-katex {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  overflow: hidden;
-}
-
-.svg-md-katex .katex-display {
-  margin: 0;
 }
 
 .svg-md-error {

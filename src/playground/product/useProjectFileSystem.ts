@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { strToU8, zip } from "fflate";
 import { openLocalFolderProject } from "./localFolderProjectFileSystem";
-import { createOpfsProject, listOpfsProjects } from "./opfsProjectFileSystem";
+import { createOpfsProject, deleteOpfsProject, listOpfsProjects } from "./opfsProjectFileSystem";
 import {
   isFigureAssetPath,
   languageForProjectPath,
@@ -17,8 +17,8 @@ export type ProjectStorageStatus = "idle" | "loading" | "saving" | "saved" | "er
 
 export function useProjectFileSystem() {
   const [projects, setProjects] = useState<PlaygroundProject[]>(() => structuredClone(sampleProjects));
-  const [projectId, setProjectId] = useState(sampleProjects[1].id);
-  const [activePath, setActivePath] = useState(sampleProjects[1].entryFile);
+  const [projectId, setProjectId] = useState(sampleProjects[0].id);
+  const [activePath, setActivePath] = useState(sampleProjects[0].entryFile);
   const [storageStatus, setStorageStatus] = useState<ProjectStorageStatus>("loading");
   const [storageError, setStorageError] = useState<string | undefined>();
   const backends = useRef(new Map<string, ProjectFileSystemBackend>());
@@ -279,6 +279,29 @@ export function useProjectFileSystem() {
     }
   }, []);
 
+  const removeProject = useCallback(async (id: string) => {
+    const target = projectsRef.current.find((candidate) => candidate.id === id);
+    if (!target || target.kind === "example") return;
+    setStorageStatus(target.kind === "browser" ? "loading" : "idle");
+    setStorageError(undefined);
+    try {
+      await flushPendingEntries(id);
+      if (target.kind === "browser") await deleteOpfsProject(id);
+      backends.current.delete(id);
+      revokeProjectObjectUrls(target);
+      setProjects((current) => current.filter((candidate) => candidate.id !== id));
+      if (projectIdRef.current === id) {
+        const fallback = sampleProjects[0];
+        setProjectId(fallback.id);
+        setActivePath(fallback.entryFile);
+      }
+      setStorageStatus(target.kind === "browser" ? "saved" : "idle");
+    } catch (error) {
+      setOperationError(error, target.kind === "browser" ? "Could not delete the browser project." : "Could not close the local folder.");
+      throw error;
+    }
+  }, []);
+
   async function flushPendingEntries(id: string, path?: string): Promise<void> {
     const edits = matchingPendingEdits(pendingEdits.current, id, path);
     const inFlightWrites = matchingSaveChains(saveChains.current, id, path);
@@ -372,7 +395,7 @@ export function useProjectFileSystem() {
   return {
     projects, project, activeFile, activePath, projectId, storageStatus, storageError,
     selectProject, selectFile, updateActiveFile, addFile, addFolder,
-    uploadFiles, renameEntry, deleteEntry, downloadEntry, createBrowserProject, openLocalFolder
+    uploadFiles, renameEntry, deleteEntry, downloadEntry, createBrowserProject, openLocalFolder, removeProject
   };
 }
 

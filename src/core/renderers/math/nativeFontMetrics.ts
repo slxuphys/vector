@@ -1,29 +1,7 @@
 import fontkit from "@pdf-lib/fontkit";
-import katexMainBoldUrl from "katex/dist/fonts/KaTeX_Main-Bold.ttf?url";
-import katexMainBoldItalicUrl from "katex/dist/fonts/KaTeX_Main-BoldItalic.ttf?url";
-import katexMainItalicUrl from "katex/dist/fonts/KaTeX_Main-Italic.ttf?url";
-import katexMainRegularUrl from "katex/dist/fonts/KaTeX_Main-Regular.ttf?url";
-import katexMathItalicUrl from "katex/dist/fonts/KaTeX_Math-Italic.ttf?url";
-import katexSize1RegularUrl from "katex/dist/fonts/KaTeX_Size1-Regular.ttf?url";
-import katexSize2RegularUrl from "katex/dist/fonts/KaTeX_Size2-Regular.ttf?url";
-import katexSize3RegularUrl from "katex/dist/fonts/KaTeX_Size3-Regular.ttf?url";
-import katexSize4RegularUrl from "katex/dist/fonts/KaTeX_Size4-Regular.ttf?url";
-import fontMetricsData from "katex/src/fontMetricsData.js";
 import { openMathFontProfiles, type OpenMathFontProfileName } from "./openMathFont";
 
-export type NativeFontRole =
-  | "mainRegular"
-  | "mainBold"
-  | "mainItalic"
-  | "mainBoldItalic"
-  | "mathItalic"
-  | "openMath"
-  | "openMathLibertinus"
-  | "openMathNewComputerModern"
-  | "size1"
-  | "size2"
-  | "size3"
-  | "size4";
+export type NativeFontRole = "openMath" | "openMathLibertinus";
 
 export type NativeGlyphMetrics = {
   advanceWidth: number;
@@ -34,12 +12,6 @@ export type NativeGlyphMetrics = {
   actualTopOffset: number;
   actualBottomOffset: number;
   actualWidth: number;
-};
-
-export type NativeGlyphTexMetrics = {
-  advanceWidth: number;
-  actualAscent: number;
-  actualDescent: number;
 };
 
 export type OpenTypeMathConstants = {
@@ -105,17 +77,6 @@ export type NativeGlyphOutline = {
   unitsPerEm: number;
 };
 
-type KatexMetricFontName =
-  | "Main-Regular"
-  | "Main-Bold"
-  | "Main-Italic"
-  | "Main-BoldItalic"
-  | "Math-Italic"
-  | "Size1-Regular"
-  | "Size2-Regular"
-  | "Size3-Regular"
-  | "Size4-Regular";
-
 type FontkitGlyph = {
   id: number;
   advanceWidth: number;
@@ -141,30 +102,8 @@ const fontkitApi = fontkit as unknown as {
 };
 
 const fontUrls: Record<NativeFontRole, string> = {
-  mainRegular: katexMainRegularUrl,
-  mainBold: katexMainBoldUrl,
-  mainItalic: katexMainItalicUrl,
-  mainBoldItalic: katexMainBoldItalicUrl,
-  mathItalic: katexMathItalicUrl,
   openMath: openMathFontProfiles["latin-modern"].url,
-  openMathLibertinus: openMathFontProfiles.libertinus.url,
-  openMathNewComputerModern: openMathFontProfiles["new-computer-modern"].url,
-  size1: katexSize1RegularUrl,
-  size2: katexSize2RegularUrl,
-  size3: katexSize3RegularUrl,
-  size4: katexSize4RegularUrl
-};
-
-const katexMetricFonts: Partial<Record<NativeFontRole, KatexMetricFontName>> = {
-  mainRegular: "Main-Regular",
-  mainBold: "Main-Bold",
-  mainItalic: "Main-Italic",
-  mainBoldItalic: "Main-BoldItalic",
-  mathItalic: "Math-Italic",
-  size1: "Size1-Regular",
-  size2: "Size2-Regular",
-  size3: "Size3-Regular",
-  size4: "Size4-Regular"
+  openMathLibertinus: openMathFontProfiles.libertinus.url
 };
 
 const fontCache = new Map<NativeFontRole, FontkitFont>();
@@ -186,7 +125,6 @@ const openTypeMathVariantsByRole = new Map<NativeFontRole, OpenMathParsedVariant
 let activeOpenMathRole: NativeFontRole = "openMath";
 
 export function openMathFontRoleForProfile(name: OpenMathFontProfileName | undefined): NativeFontRole {
-  if (name === "new-computer-modern") return "openMathNewComputerModern";
   return name === "libertinus" ? "openMathLibertinus" : "openMath";
 }
 
@@ -205,7 +143,7 @@ export async function loadNativeMathFonts(): Promise<void> {
 export function loadNativeFontFromBytes(role: NativeFontRole, bytes: Uint8Array): void {
   fontCache.set(role, fontkitApi.create(bytes));
   glyphMetricsCache.clear();
-  if (role === "openMath" || role === "openMathLibertinus" || role === "openMathNewComputerModern") {
+  if (role === "openMath" || role === "openMathLibertinus") {
     const constants = parseOpenTypeMathConstants(bytes);
     const glyphInfo = parseOpenTypeMathGlyphInfo(bytes);
     const variants = parseOpenTypeMathVariants(bytes);
@@ -369,50 +307,6 @@ export function getNativeGlyphOutline(role: NativeFontRole, glyphId: number): Na
     advanceWidth: glyph.advanceWidth,
     bbox: glyph.bbox,
     unitsPerEm: font.unitsPerEm
-  };
-}
-
-export function getNativeGlyphSkew(role: NativeFontRole, text: string, fontSize: number): number {
-  const chars = Array.from(text);
-  if (chars.length !== 1) return 0;
-
-  const fontName = katexMetricFonts[role];
-  if (!fontName) return 0;
-  const codePoint = chars[0].codePointAt(0);
-  if (codePoint === undefined) return 0;
-
-  const metric = fontMetricsData[fontName]?.[codePoint];
-  return (metric?.[3] ?? 0) * fontSize;
-}
-
-export function getNativeGlyphTexMetrics(
-  role: NativeFontRole,
-  text: string,
-  fontSize: number
-): NativeGlyphTexMetrics | undefined {
-  const fontName = katexMetricFonts[role];
-  if (!fontName) return undefined;
-  const chars = Array.from(text);
-  if (chars.length === 0) return undefined;
-
-  let width = 0;
-  let ascent = 0;
-  let descent = 0;
-  for (const char of chars) {
-    const codePoint = char.codePointAt(0);
-    if (codePoint === undefined) return undefined;
-
-    const metric = fontMetricsData[fontName]?.[codePoint];
-    if (!metric) return undefined;
-    descent = Math.max(descent, metric[0] * fontSize);
-    ascent = Math.max(ascent, metric[1] * fontSize);
-    width += metric[4] * fontSize;
-  }
-
-  return {
-    advanceWidth: width,
-    actualAscent: ascent,
-    actualDescent: descent
   };
 }
 

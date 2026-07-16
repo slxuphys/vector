@@ -18,7 +18,7 @@ async function runVectorParity() {
     nativeMathProfile: "openmath"
   });
   const { layout } = await engine.layout(parityFixture);
-  const bytes = await renderToPdf(layout, { mathPdfMode: "vector", subsetFonts: true });
+  const bytes = await renderToPdf(layout, { subsetFonts: true });
   return summarizeParity(layout, bytes);
 }
 

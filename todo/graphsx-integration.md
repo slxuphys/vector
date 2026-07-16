@@ -110,7 +110,7 @@ Then replace the bridge with the display-list adapter.
 
 GraphSX labels should become renderer-agnostic:
 
-- Standalone GraphSX playground can keep using KaTeX or HTML/SVG label rendering.
+- Standalone GraphSX playground can use its own label renderer.
 - This Markdown engine should provide a native text/math label renderer.
 
 That lets labels in diagrams match surrounding document text, native math fonts, baselines, and PDF output.

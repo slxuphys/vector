@@ -5,19 +5,12 @@ import { now } from "../../utils/timing";
 import { loadPdfFonts, selectPdfTextFontFallbacks } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
 import { drawPdfText } from "./pdfText";
-import { drawPdfKatexDomGlyphs } from "./pdfKatexDom";
-import { drawPdfMathArtifact, type PdfMathArtifactContext, type PdfMathArtifactStats } from "./pdfMathArtifact";
-import { drawPdfMathGlyphs } from "./pdfMathGlyph";
-import { drawPdfMathJaxVector } from "./pdfMathJax";
 import { drawPdfNativeMath } from "./pdfNativeMath";
 import { drawPdfImage, type PdfImageContext, type PdfImageServices } from "./pdfImage";
 import { drawPdfGraphSX } from "./pdfGraphSX";
-import { isNativeMathRenderer } from "../math/nativeMath";
 import { collectPdfLinkTargets } from "./pdfLinks";
 
 export type PdfRenderOptions = {
-  rasterizeMath?: boolean;
-  mathPdfMode?: "raster" | "vector" | "glyph";
   subsetFonts?: boolean;
   debugLabel?: string;
   imageServices?: PdfImageServices;
@@ -88,28 +81,12 @@ async function renderToPdfAttempt(
   fontSubsetFallback?: "subset-fallback"
 ): Promise<Uint8Array> {
   const start = now();
-  const mathPdfMode = options.mathPdfMode ?? (options.rasterizeMath ?? true ? "raster" : "vector");
   const fontStart = now();
   const pdf = await PDFDocument.create();
 
-  const fonts = await loadPdfFonts(pdf, layout, mathPdfMode, subsetFonts);
+  const fonts = await loadPdfFonts(pdf, layout, subsetFonts);
   const fontMs = now() - fontStart;
   const drawStart = now();
-  const mathStats: PdfMathArtifactStats = {
-    attempted: 0,
-    drawn: 0,
-    failed: 0,
-    imageCacheHits: 0,
-    imageCacheMisses: 0,
-    rasterCacheHits: 0,
-    rasterCacheMisses: 0,
-    rasterMs: 0,
-    embedMs: 0
-  };
-  const mathContext: PdfMathArtifactContext = {
-    stats: mathStats,
-    imageCache: new Map()
-  };
   const imageContext: PdfImageContext = { bytes: new Map(), assets: new Map() };
   const objectCounts = {
     text: 0,
@@ -131,18 +108,7 @@ async function renderToPdfAttempt(
         drawPdfText(page, object, selectPdfTextFontFallbacks(object, fonts), displayPage.height, linkTargets);
       } else if (object.type === "math") {
         objectCounts.math += 1;
-        let drewArtifact = false;
-        if (isNativeMathRenderer(object.renderer)) {
-          drewArtifact = drawPdfNativeMath(page, object, fonts, displayPage.height);
-        } else if (mathPdfMode === "raster") {
-          drewArtifact = await drawPdfMathArtifact(pdf, page, object, displayPage.height, mathContext);
-        } else if (mathPdfMode === "glyph" && object.renderer === "katex-glyph") {
-          drewArtifact = await drawPdfKatexDomGlyphs(page, object, fonts, displayPage.height);
-        } else if (mathPdfMode === "glyph" && object.renderer === "mathjax-glyph") {
-          drewArtifact = drawPdfMathGlyphs(page, object, fonts, displayPage.height);
-        } else if (object.renderer === "mathjax-vector" || object.renderer === "mathjax-glyph") {
-          drewArtifact = drawPdfMathJaxVector(page, object, displayPage.height);
-        }
+        const drewArtifact = drawPdfNativeMath(page, object, fonts, displayPage.height);
         if (!drewArtifact) {
           logUndrawnMath(object.renderer, object.latex);
         }
@@ -171,20 +137,9 @@ async function renderToPdfAttempt(
     saveMs: round(saveMs),
     pages: layout.pages.length,
     bytes: bytes.byteLength,
-    mathMode: mathPdfMode === "raster" ? "rasterized-artifact" : mathPdfMode === "glyph" ? "pdf-glyph" : "pdf-vector",
+    mathMode: "native-vector",
     fontSubset: fontSubsetFallback ?? (subsetFonts ? "subset" : "full"),
-    objects: objectCounts,
-    mathArtifacts: {
-      attempted: mathStats.attempted,
-      drawn: mathStats.drawn,
-      failed: mathStats.failed,
-      imageCacheHits: mathStats.imageCacheHits,
-      imageCacheMisses: mathStats.imageCacheMisses,
-      rasterCacheHits: mathStats.rasterCacheHits,
-      rasterCacheMisses: mathStats.rasterCacheMisses,
-      rasterMs: round(mathStats.rasterMs),
-      embedMs: round(mathStats.embedMs)
-    }
+    objects: objectCounts
   });
   Object.defineProperty(bytes, "__pdfMs", { value: totalMs, enumerable: false });
   return bytes;

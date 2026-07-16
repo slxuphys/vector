@@ -8,8 +8,6 @@ import {
   getNativeGlyphMetrics,
   getNativeGlyphId,
   getNativeGlyphOutline,
-  getNativeGlyphSkew,
-  getNativeGlyphTexMetrics,
   getOpenTypeMathConstants,
   getOpenTypeMathHorizontalGlyphVariant,
   getOpenTypeMathGlyphVariant,
@@ -289,15 +287,13 @@ export function openMathMetricsFromConstants(constants: NonNullable<ReturnType<t
   };
 }
 
-export function isNativeMathRenderer(renderer: string | undefined): renderer is "native" | "native-openmath" {
-  return renderer === "native" || renderer === "native-openmath";
+export function isNativeMathRenderer(renderer: string | undefined): renderer is "native-openmath" {
+  return renderer === "native-openmath";
 }
 
-export function nativeMathProfileForRenderer(renderer: string | undefined): NativeMathFontProfile {
-  return renderer === "native-openmath" ? "openmath" : "katex";
+export function nativeMathProfileForRenderer(_renderer: string | undefined): NativeMathFontProfile {
+  return "openmath";
 }
-
-const largeOperatorFontFamily = "KaTeX_Size2, KaTeX_Size1, KaTeX_Main, Times New Roman, serif";
 
 const glyphWidthCache = new Map<string, number>();
 let nativeMathLayoutCallCount = 0;
@@ -526,8 +522,8 @@ export function layoutNativeMath(
   latex: string,
   displayMode: boolean,
   fontSize: number,
-  metrics: NativeMathMetrics = defaultNativeMathMetrics,
-  profileName: NativeMathFontProfile = "katex"
+  metrics: NativeMathMetrics = defaultOpenMathMetrics,
+  profileName: NativeMathFontProfile = "openmath"
 ): NativeMathLayout {
   const profile = getNativeMathProfile(profileName);
   if (profile.isOpenMath) setActiveOpenMathFontProfile(profile.openMathProfileName);
@@ -1580,10 +1576,9 @@ function layoutAccent(
   const bodyInkHeight = Math.max(fontSize * 0.5, body.inkBottom - body.inkTop);
   const width = Math.max(body.width, fontSize * 0.42);
   const bodyX = (width - body.width) / 2;
-  const accentSkew = getAccentSkew(bodyLatex, fontSize, profile);
   const topAccentAttachment = getTopAccentAttachment(bodyLatex, fontSize, profile);
   const centerX = topAccentAttachment === undefined
-    ? width / 2 + accentSkew
+    ? width / 2
     : bodyX + topAccentAttachment;
   const nodes: NativeNode[] = [];
 
@@ -1691,15 +1686,6 @@ function openMathStretchyAccentGlyph(command: string): string | undefined {
   return undefined;
 }
 
-function getAccentSkew(bodyLatex: string, fontSize: number, profile: NativeMathProfile): number {
-  if (profile.isOpenMath) return 0;
-  const glyphText = getSingleAccentBaseGlyph(bodyLatex);
-  if (!glyphText) return 0;
-
-  const style = { italic: shouldItalicizeMathText(glyphText) };
-  return getNativeGlyphSkew(selectNativeFontRole(style), glyphText, fontSize);
-}
-
 function getTopAccentAttachment(
   bodyLatex: string,
   fontSize: number,
@@ -1711,7 +1697,7 @@ function getTopAccentAttachment(
   return getOpenTypeMathGlyphInfo(glyphText, fontSize)?.topAccentAttachment;
 }
 
-function getSingleAccentBaseGlyph(bodyLatex: string, profile: NativeMathProfile = getNativeMathProfile("katex")): string | undefined {
+function getSingleAccentBaseGlyph(bodyLatex: string, profile: NativeMathProfile = getNativeMathProfile("openmath")): string | undefined {
   const trimmed = bodyLatex.trim();
   if (!trimmed) return undefined;
   if (Array.from(trimmed).length === 1) return profile.mapGlyph(normalizeMathGlyph(trimmed));
@@ -2654,7 +2640,7 @@ function logNativeMathParse(
             node.text,
             node.fontSize,
             style,
-            node.fontFamily === largeOperatorFontFamily && (node.text === "∑" || node.text === "∏")
+            node.text === "∑" || node.text === "∏"
           )),
           actualLeft: fontMetrics ? roundNumber(fontMetrics.actualLeft) : undefined,
           actualRight: fontMetrics ? roundNumber(fontMetrics.actualRight) : undefined,
@@ -2772,12 +2758,6 @@ function measureGlyphWidth(text: string, fontSize: number, style: NativeGlyphSty
     return fontMetrics.advanceWidth;
   }
 
-  const texMetrics = getNativeGlyphTexMetrics(selectNativeFontRole(style), text, fontSize);
-  if (texMetrics) {
-    glyphWidthCache.set(cacheKey, texMetrics.advanceWidth);
-    return texMetrics.advanceWidth;
-  }
-
   return estimateWidth(text, fontSize);
 }
 
@@ -2812,20 +2792,6 @@ function measureGlyphVerticalMetrics(
     };
   }
 
-  const texMetrics = getNativeGlyphTexMetrics(selectNativeFontRole(style), text, fontSize);
-  if (texMetrics) {
-    const accentBottomLift = accentGlyphBottomLift(text, fontSize);
-    return {
-      ascent: texMetrics.actualAscent,
-      descent: texMetrics.actualDescent,
-      inkTopOffset: -texMetrics.actualAscent,
-      inkBottomOffset: accentBottomLift ?? texMetrics.actualDescent
-    };
-  }
-
-  if (style.fontFamily?.includes("KaTeX_Size2")) {
-    return { ascent: fontSize, descent: fontSize * 0.5, inkTopOffset: -fontSize, inkBottomOffset: fontSize * 0.5 };
-  }
   return { ascent: fontSize * 0.9, descent: fontSize * 0.3, inkTopOffset: -fontSize * 0.9, inkBottomOffset: fontSize * 0.3 };
 }
 

@@ -1,5 +1,3 @@
-import type { MathRendererName } from "../../core/engine/engineTypes";
-import { isNativeMathRenderer } from "../../core/renderers/math/nativeMath";
 import type { DocumentLayoutState } from "../useDocumentLayout";
 import { Download, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
 
@@ -9,9 +7,6 @@ export type PreviewToolbarProps = {
   onZoomChange: (zoom: number) => void;
   pdfPending: boolean;
   onDownloadPdf: () => void;
-  mathRenderer?: MathRendererName;
-  experimentalVectorMath: boolean;
-  onExperimentalVectorMathChange: (value: boolean) => void;
   variant?: "lab" | "preview";
   previewAvailable?: boolean;
 };
@@ -22,19 +17,9 @@ export function PreviewToolbar({
   onZoomChange,
   pdfPending,
   onDownloadPdf,
-  mathRenderer,
-  experimentalVectorMath,
-  onExperimentalVectorMathChange,
   variant = "lab",
   previewAvailable = true
 }: PreviewToolbarProps) {
-  const usingKatexGlyph = mathRenderer === "katex-glyph";
-  const usingNativeMath = isNativeMathRenderer(mathRenderer);
-  const usingMathJaxVector = mathRenderer === "mathjax-vector";
-  const usingMathJaxGlyph = mathRenderer === "mathjax-glyph";
-  const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
-  const lockedPdfMode = usingNativeMath || usingGlyphPdf || usingMathJaxVector;
-
   if (variant === "preview") {
     return (
       <div className="svg-md-toolbar svg-md-toolbar-preview">
@@ -72,15 +57,6 @@ export function PreviewToolbar({
         {pdfPending ? <LoaderCircle className="svg-md-spinner-icon" size={16} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
         <span>{pdfPending ? "Generating PDF" : "Download PDF"}</span>
       </button>
-      <label className="toggle">
-        <input
-          type="checkbox"
-          disabled={usingMathJaxVector || usingMathJaxGlyph || usingKatexGlyph || usingNativeMath}
-          checked={lockedPdfMode || experimentalVectorMath}
-          onChange={(event) => onExperimentalVectorMathChange(event.target.checked)}
-        />
-        {usingKatexGlyph ? "KaTeX glyph PDF" : usingMathJaxGlyph ? "MathJax glyph PDF" : usingMathJaxVector ? "MathJax vector PDF" : usingNativeMath ? "Native PDF" : "Experimental vector math"}
-      </label>
       <span>{layoutState.stats ? `${layoutState.stats.pageCount} pages` : "Laying out..."}</span>
     </div>
   );
