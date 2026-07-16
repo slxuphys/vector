@@ -77,7 +77,7 @@ export function collectMathMeasureRequests(
       const latex = block.text.replace(/\s+/g, " ").trim();
       const key = mathMeasureKey(latex, true, fontSize, renderer, nativeMetrics, nativeMathProfile);
       requests.set(key, { key, latex, displayMode: true, fontSize, color: theme.text, nativeMetrics, nativeMathProfile });
-    } else if ((block.type === "image" || block.type === "graphsx") && block.caption) {
+    } else if ((block.type === "image" || block.type === "figure" || block.type === "graphsx") && block.caption) {
       const fontSize = theme.fontSize * 0.86;
       flattenInline(parseInline(block.caption)).forEach((run) => addRun(run, fontSize, theme.text));
     }

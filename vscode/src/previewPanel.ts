@@ -145,7 +145,7 @@ function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string 
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: ${webview.cspSource} https:; font-src data: ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: ${webview.cspSource} https:; font-src data: ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource}; worker-src ${webview.cspSource} blob:;" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vector Preview</title>
     <link rel="stylesheet" href="${styleUri}" />

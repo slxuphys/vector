@@ -887,6 +887,104 @@ Prior work\\cite{einstein1905} is pending bibliography support.
     }
   });
 
+  it("collects multiple includegraphics commands into one figure group", () => {
+    const ast = parseLatex(`\\begin{document}
+\\begin{figure}
+\\centering
+\\includegraphics[width=\\columnwidth]{sv_ran.pdf}
+\\includegraphics[width=0.48\\columnwidth]{fid_vs_k_ran.pdf}
+\\caption{Two related panels.}
+\\label{fig:panels}
+\\end{figure}
+\\end{document}`);
+    const figure = ast.children.find((node) => node.type === "figure");
+
+    expect(figure).toMatchObject({
+      type: "figure",
+      caption: "Two related panels.",
+      label: "fig:panels",
+      align: "center"
+    });
+    if (figure?.type === "figure") {
+      expect(figure.images).toHaveLength(2);
+      expect(figure.images[0]).toMatchObject({
+        src: "sv_ran.pdf",
+        width: { value: 100, unit: "percent" }
+      });
+      expect(figure.images[1]).toMatchObject({
+        src: "fid_vs_k_ran.pdf",
+        width: { value: 48, unit: "percent" }
+      });
+    }
+  });
+
+  it("stacks full-width figure images and packs narrower images into rows", async () => {
+    const engine = createDocumentEngine({ sourceFormat: "latex", mathRenderer: "native-openmath" });
+    const stacked = await engine.layout(`\\begin{document}
+\\begin{figure}
+\\includegraphics[width=\\columnwidth]{first.pdf}
+\\includegraphics[width=\\columnwidth]{second.pdf}
+\\caption{Stacked panels.}
+\\label{fig:stacked}
+\\end{figure}
+\\end{document}`);
+    const stackedImages = stacked.layout.pages.flatMap((page) => page.objects).filter((object) => object.type === "image");
+
+    expect(stackedImages).toHaveLength(2);
+    expect(stackedImages[1].y).toBeGreaterThan(stackedImages[0].y + stackedImages[0].height);
+    expect(stackedImages[0].anchorId).toBe("fig:stacked");
+    expect(stackedImages[1].anchorId).toBeUndefined();
+
+    const sideBySide = await engine.layout(`\\begin{document}
+\\begin{figure}
+\\includegraphics[width=0.48\\columnwidth]{left.pdf}
+\\includegraphics[width=0.48\\columnwidth]{right.pdf}
+\\caption{Side-by-side panels.}
+\\end{figure}
+\\end{document}`);
+    const rowImages = sideBySide.layout.pages.flatMap((page) => page.objects).filter((object) => object.type === "image");
+
+    expect(rowImages).toHaveLength(2);
+    expect(rowImages[1].y).toBeCloseTo(rowImages[0].y, 5);
+    expect(rowImages[1].x).toBeGreaterThan(rowImages[0].x + rowImages[0].width);
+  });
+
+  it("resolves graphicspath folders and omitted figure extensions", () => {
+    const ast = parseLatex(`\\documentclass{article}
+\\graphicspath{{figure/}{assets/plots/}}
+\\begin{document}
+\\begin{figure}
+\\includegraphics[width=0.5\\textwidth]{phase-space}
+\\caption{Phase space}
+\\end{figure}
+\\end{document}`);
+    const image = ast.children.find((node) => node.type === "image");
+
+    expect(image).toMatchObject({
+      type: "image",
+      src: "figure/phase-space.pdf"
+    });
+    if (image?.type === "image") {
+      expect(image.sources).toEqual([
+        "figure/phase-space.pdf",
+        "figure/phase-space.png",
+        "figure/phase-space.jpg",
+        "figure/phase-space.jpeg",
+        "figure/phase-space.svg",
+        "assets/plots/phase-space.pdf",
+        "assets/plots/phase-space.png",
+        "assets/plots/phase-space.jpg",
+        "assets/plots/phase-space.jpeg",
+        "assets/plots/phase-space.svg",
+        "phase-space.pdf",
+        "phase-space.png",
+        "phase-space.jpg",
+        "phase-space.jpeg",
+        "phase-space.svg"
+      ]);
+    }
+  });
+
   it("renders inline math inside LaTeX figure captions", async () => {
     const engine = createDocumentEngine({ sourceFormat: "latex", mathRenderer: "native-openmath" });
     const { layout } = await engine.layout(`\\begin{document}
@@ -1268,6 +1366,20 @@ describe("document engine", () => {
 
     expect(svg).toContain("Fail to load");
     expect(svg).toContain("svg-md-image-fallback");
+  });
+
+  it("embeds PDF figures as vector form objects", async () => {
+    const figure = await PDFDocument.create();
+    const figurePage = figure.addPage([200, 100]);
+    figurePage.drawRectangle({ x: 20, y: 20, width: 160, height: 60 });
+    const figureBytes = await figure.save();
+    const engine = createDocumentEngine();
+    const { layout } = await engine.layout("![PDF figure](figure.pdf){width=240px}");
+    const output = await renderToPdf(layout, {
+      imageServices: { load: async () => figureBytes }
+    });
+
+    expect(new TextDecoder().decode(output)).toContain("/Subtype /Form");
   });
 
   it("renders cross references as SVG links and PDF link annotations", async () => {

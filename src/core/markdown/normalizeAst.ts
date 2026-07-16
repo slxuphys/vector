@@ -58,10 +58,21 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = f
         return {
           type: "image",
           src: node.src,
+          sources: node.sources,
           alt: node.alt,
           caption: node.caption,
           width: node.width,
           height: node.height,
+          align: node.align,
+          label: node.label,
+          labelNumber: node.labelNumber,
+          source: node.sourceSpan
+        };
+      case "figure":
+        return {
+          type: "figure",
+          images: node.images.map((image) => ({ ...image })),
+          caption: node.caption,
           align: node.align,
           label: node.label,
           labelNumber: node.labelNumber,

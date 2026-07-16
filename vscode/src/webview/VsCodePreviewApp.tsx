@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Download, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
+import { hydrateSvgImages } from "../../../src/react/hydrateSvgImages";
 import { PreviewSurface } from "../../../src/react/preview/PreviewSurface";
 import { vscode } from "./vscodeBridge";
 
@@ -74,6 +75,12 @@ export function VsCodePreviewApp() {
       window.removeEventListener("resize", schedule);
     };
   }, [preview, requestVisiblePages, zoom]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || !preview) return undefined;
+    return hydrateSvgImages(container);
+  }, [preview, zoom]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

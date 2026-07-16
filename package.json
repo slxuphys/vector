@@ -31,6 +31,7 @@
     "lucide-react": "^1.24.0",
     "mathjax-full": "^3.2.1",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.4.624",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "subset-font": "^2.5.0"

@@ -62,6 +62,7 @@ export type DisplayObject =
   | ({
       type: "image";
       src: string;
+      sources?: string[];
       alt: string;
       x: number;
       y: number;

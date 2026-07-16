@@ -16,6 +16,12 @@ import {
 } from "../plugins/pluginDocumentContext";
 
 const nonBreakingSpaceMarker = "\uE110";
+const latexGraphicsStateKey = "latex-graphics";
+const latexGraphicsExtensions = [".pdf", ".png", ".jpg", ".jpeg", ".svg"];
+
+type LatexGraphicsState = {
+  paths: string[];
+};
 
 export type LatexAuthor = {
   name: string;
@@ -66,6 +72,9 @@ export function parseLatex(
   const expanded = expandLatexMacros(normalized);
   const documentStart = /\\begin\{document}/.exec(expanded);
   const document = createVectorPluginDocumentContext();
+  document.getState<LatexGraphicsState>(latexGraphicsStateKey, () => ({
+    paths: readLatexGraphicsPaths(expanded)
+  }));
   if (documentStart?.index !== undefined) {
     parseLatexBlocks(
       stripLatexComments(expanded.slice(0, documentStart.index)),
@@ -164,6 +173,16 @@ export function readLatexBibliographyPaths(source: string): string[] {
   return readCommandArguments(source, "bibliography")
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+export function readLatexGraphicsPaths(source: string): string[] {
+  return readCommandArguments(stripLatexComments(source), "graphicspath")
+    .flatMap((value) => {
+      const paths = [...value.matchAll(/\{([^{}]*)}/g)].map((match) => match[1]);
+      return paths.length > 0 ? paths : [value];
+    })
+    .map((value) => value.trim().replaceAll("\\", "/"))
     .filter(Boolean);
 }
 
@@ -452,6 +471,7 @@ function stripPreamble(source: string): string {
   return source
     .replace(/\\documentclass(?:\[[^\]]*])?\{[^}]*}/g, "")
     .replace(/\\usepackage(?:\[[^\]]*])?\{[^}]*}/g, "")
+    .replace(/\\graphicspath\s*\{(?:[^{}]|\{[^{}]*})*}/g, "")
     .replace(/\\title\s*\{(?:[^{}]|\{[^{}]*})*}/g, "")
     .replace(/\\author\s*\{(?:[^{}]|\{[^{}]*})*}/g, "")
     .replace(/\\affiliation\s*\{(?:[^{}]|\{[^{}]*})*}/g, "")
@@ -581,22 +601,64 @@ function resolveFigure(
         align: "center"
       }];
   }
-  const include = body.match(/\\includegraphics(?:\[([^\]]*)])?\{([^}]+)}/);
-  if (!include) {
+  const includes = [...body.matchAll(/\\includegraphics(?:\[([^\]]*)])?\{([^}]+)}/g)];
+  if (includes.length === 0) {
     return parseLatexParagraphs(body, index + match[0].indexOf(body), false, plugins, document);
   }
 
   const caption = optionalLatexInline(readCommandArgument(body, "caption"));
   const label = readCommandArgument(body, "label");
-  return [{
-      type: "image",
-      src: include[2].trim(),
-      alt: caption ?? include[2].trim(),
+  const graphicsPaths = document.peekState<LatexGraphicsState>(latexGraphicsStateKey)?.paths ?? [];
+  const images = includes.map((include) => {
+    const requestedSource = include[2].trim();
+    const sources = resolveLatexFigureSources(requestedSource, graphicsPaths);
+    return {
+      src: sources[0] ?? requestedSource,
+      sources,
+      alt: caption ?? requestedSource,
+      width: parseLatexGraphicsWidth(include[1] ?? "")
+    };
+  });
+
+  if (images.length > 1) {
+    return [{
+      type: "figure",
+      images,
       caption,
       label,
-      width: parseLatexGraphicsWidth(include[1] ?? ""),
       align: "center"
     }];
+  }
+
+  return [{
+      type: "image",
+      ...images[0],
+      caption,
+      label,
+      align: "center"
+    }];
+}
+
+function resolveLatexFigureSources(source: string, graphicsPaths: string[]): string[] {
+  if (/^(?:https?:|data:|\/)/i.test(source)) return [source];
+  const normalizedSource = source.replaceAll("\\", "/").replace(/^\.\//, "");
+  const roots = graphicsPaths.length > 0 ? graphicsPaths : [""];
+  const stems = roots.map((root) => joinLatexGraphicsPath(root, normalizedSource));
+  if (graphicsPaths.length > 0) stems.push(joinLatexGraphicsPath("", normalizedSource));
+  const hasExtension = /\.[a-z0-9]+$/i.test(normalizedSource);
+  const candidates = hasExtension
+    ? stems
+    : stems.flatMap((stem) => latexGraphicsExtensions.map((extension) => `${stem}${extension}`));
+  return [...new Set(candidates.map(normalizeRelativeFigureSource))];
+}
+
+function joinLatexGraphicsPath(root: string, source: string): string {
+  const normalizedRoot = root.trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  return normalizedRoot ? `${normalizedRoot}/${source}` : source;
+}
+
+function normalizeRelativeFigureSource(source: string): string {
+  return source;
 }
 
 function matchRegisteredCommand(
@@ -870,10 +932,13 @@ function replaceInlineCommands(source: string): string {
 function parseLatexGraphicsWidth(options: string): ImageLength | undefined {
   const width = options.match(/width\s*=\s*([^,\]]+)/)?.[1]?.trim();
   if (!width) return undefined;
-  const percent = width.match(/^([0-9.]+)\\(?:textwidth|linewidth)$/);
+  const percent = width.match(/^([0-9.]*)\\(?:columnwidth|textwidth|linewidth)$/);
   const plainPercent = width.match(/^([0-9.]+)%$/);
   const px = width.match(/^([0-9.]+)(?:pt|px)?$/);
-  if (percent) return { value: Math.round(Number(percent[1]) * 1000) / 10, unit: "percent" };
+  if (percent) {
+    const factor = percent[1] ? Number(percent[1]) : 1;
+    return { value: Math.round(factor * 1000) / 10, unit: "percent" };
+  }
   if (plainPercent) return { value: Number(plainPercent[1]), unit: "percent" };
   if (px) return { value: Number(px[1]), unit: "px" };
   return undefined;

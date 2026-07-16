@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-playground/
+tmp/
 vscode/webview-dist/
 coverage/
 test-results/

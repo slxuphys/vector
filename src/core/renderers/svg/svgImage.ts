@@ -4,11 +4,19 @@ import { escapeXml, sanitizeImageUrl } from "../../utils/sanitize";
 type ImageObject = Extract<DisplayObject, { type: "image" }>;
 
 export function renderSvgImage(object: ImageObject): string {
-  const href = sanitizeImageUrl(object.src);
+  const sources = (object.sources?.length ? object.sources : [object.src])
+    .map(sanitizeImageUrl)
+    .filter((source): source is string => source !== undefined);
+  const href = sources[0];
   const fallbackId = imageFallbackId(object);
   const fallback = renderSvgImageFallback(object, fallbackId);
   if (!href) return fallback;
-  return `${fallback}<image href="${escapeXml(href)}" x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" preserveAspectRatio="xMidYMid meet" data-fallback-id="${escapeXml(fallbackId)}"><title>${escapeXml(object.alt)}</title></image>`;
+  const initialHref = isPdfSource(href) ? "" : href;
+  return `${fallback}<image href="${escapeXml(initialHref)}" x="${round(object.x)}" y="${round(object.y)}" width="${round(object.width)}" height="${round(object.height)}" preserveAspectRatio="xMidYMid meet" data-fallback-id="${escapeXml(fallbackId)}" data-image-sources="${escapeXml(JSON.stringify(sources))}"><title>${escapeXml(object.alt)}</title></image>`;
+}
+
+function isPdfSource(source: string): boolean {
+  return /^data:application\/pdf[;,]/i.test(source) || /\.pdf(?:[?#]|$)/i.test(source);
 }
 
 function renderSvgImageFallback(object: ImageObject, id: string): string {

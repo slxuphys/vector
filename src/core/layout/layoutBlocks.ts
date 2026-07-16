@@ -27,6 +27,14 @@ export type TableCellBlock = {
   rowSpan: number;
 };
 
+export type FigureImageBlock = {
+  src: string;
+  sources?: string[];
+  alt: string;
+  width?: ImageLength;
+  height?: ImageLength;
+};
+
 export type TitleMatter = {
   title?: InlineRun[];
   titleFontSize?: number;
@@ -44,7 +52,8 @@ export type LayoutBlock =
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined>; source?: SourceSpan }
   | { type: "code"; language?: string; code: string; source?: SourceSpan }
   | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string; source?: SourceSpan }
-  | { type: "image"; src: string; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
+  | { type: "image"; src: string; sources?: string[]; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
+  | { type: "figure"; images: FigureImageBlock[]; caption?: string; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "graphsx"; syntax?: "graphsx" | "tikz"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; sourceSpan?: SourceSpan }
   | { type: "math"; text: string; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "rule"; source?: SourceSpan }

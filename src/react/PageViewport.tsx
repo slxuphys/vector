@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MouseEvent } from "react";
 import type { DisplayPage } from "../core/display-list/displayTypes";
+import { hydrateSvgImages } from "./hydrateSvgImages";
 
 export type PageViewportProps = {
   page: DisplayPage;
@@ -20,26 +21,7 @@ export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }
   useEffect(() => {
     const container = svgContainerRef.current;
     if (!container) return undefined;
-    const images = Array.from(container.querySelectorAll<SVGImageElement>("image[data-fallback-id]"));
-    const cleanups = images.map((image) => {
-      const fallbackId = image.dataset.fallbackId;
-      const fallback = fallbackId ? container.querySelector<SVGGElement>(`#${CSS.escape(fallbackId)}`) : undefined;
-      const hideFallback = () => {
-        if (fallback) fallback.style.display = "none";
-      };
-      const showFallback = () => {
-        if (fallback) fallback.style.display = "";
-      };
-      image.addEventListener("load", hideFallback);
-      image.addEventListener("error", showFallback);
-      return () => {
-        image.removeEventListener("load", hideFallback);
-        image.removeEventListener("error", showFallback);
-      };
-    });
-    return () => {
-      cleanups.forEach((cleanup) => cleanup());
-    };
+    return hydrateSvgImages(container);
   }, [svg]);
 
   useEffect(() => {

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { PageRequestMessage, VectorPreviewPanel } from "./previewPanel";
 import { createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg, renderToPdf } from "./previewBundle";
 import type { PagedDisplayList } from "../../src/core/display-list/displayTypes";
-import { createNodePdfImageServices } from "./nodePdfImage";
+import { createNodePdfImageServices, prepareNodePreviewPage } from "./nodePdfImage";
 
 const previewDebounceMs = 150;
 const pendingUpdates = new Map<number, PreviewTiming>();
@@ -334,7 +334,13 @@ async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message
       pageSvgBytes.push({ page: index, bytes: cached.length });
       continue;
     }
-    const rawSvg = renderPageToSvg(activePreview.pages[index], { includeFontCss: false });
+    const previewDocument = vscode.workspace.textDocuments.find(
+      (document) => document.uri.toString() === activePreview?.documentUri
+    );
+    const page = previewDocument
+      ? await prepareNodePreviewPage(previewDocument, activePreview.pages[index])
+      : activePreview.pages[index];
+    const rawSvg = renderPageToSvg(page, { includeFontCss: false });
     rawSvgBytes += rawSvg.length;
     const svg = rawSvg;
     sentSvgBytes += svg.length;

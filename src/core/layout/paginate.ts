@@ -262,6 +262,7 @@ export function paginate(
       cursor.page.objects.push({
         type: "image",
         src: block.src,
+        sources: block.sources,
         alt: block.alt,
         x,
         y: cursor.y,
@@ -275,6 +276,32 @@ export function paginate(
         drawCaption(cursor, caption, cursor.x, cursor.y + image.height + 6, cursor.contentWidth, image.captionFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig, block.source);
       }
       cursor.y += image.totalHeight + 12;
+      previousBlockKind = "image";
+      continue;
+    }
+
+    if (block.type === "figure") {
+      const figure = layoutFigureBlock(block, cursor.contentWidth, theme);
+      ensure(figure.totalHeight + 12);
+      figure.images.forEach((image, index) => {
+        cursor.page.objects.push({
+          type: "image",
+          src: image.src,
+          sources: image.sources,
+          alt: image.alt,
+          x: cursor.x + image.x,
+          y: cursor.y + image.y,
+          width: image.width,
+          height: image.height,
+          anchorId: index === 0 ? block.label : undefined,
+          sourceSpan: block.source
+        });
+      });
+      if (block.caption) {
+        const caption = block.labelNumber ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}` : block.caption;
+        drawCaption(cursor, caption, cursor.x, cursor.y + figure.imagesHeight + 6, cursor.contentWidth, figure.captionFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig, block.source);
+      }
+      cursor.y += figure.totalHeight + 12;
       previousBlockKind = "image";
       continue;
     }
@@ -659,6 +686,94 @@ function layoutImageBlock(
 function resolveImageLength(length: { value: number; unit: "px" | "percent" } | undefined, contentWidth: number): number | undefined {
   if (!length) return undefined;
   return length.unit === "percent" ? contentWidth * length.value / 100 : length.value;
+}
+
+function layoutFigureBlock(
+  block: Extract<LayoutBlock, { type: "figure" }>,
+  contentWidth: number,
+  theme: DocumentTheme
+): {
+  images: Array<{
+    src: string;
+    sources?: string[];
+    alt: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
+  imagesHeight: number;
+  totalHeight: number;
+  captionFontSize: number;
+} {
+  const horizontalGap = theme.fontSize * 0.5;
+  const verticalGap = theme.fontSize * 0.75;
+  const rows: Array<{
+    images: Array<{
+      src: string;
+      sources?: string[];
+      alt: string;
+      width: number;
+      height: number;
+    }>;
+    width: number;
+    height: number;
+  }> = [];
+
+  for (const item of block.images) {
+    const layout = layoutImageBlock({ type: "image", ...item, align: "left" }, contentWidth, theme);
+    const image = {
+      src: item.src,
+      sources: item.sources,
+      alt: item.alt,
+      width: layout.width,
+      height: layout.height
+    };
+    let row = rows.at(-1);
+    const nextWidth = row ? row.width + horizontalGap + image.width : image.width;
+    if (!row || nextWidth > contentWidth + 0.01) {
+      row = { images: [], width: 0, height: 0 };
+      rows.push(row);
+    }
+    if (row.images.length > 0) row.width += horizontalGap;
+    row.images.push(image);
+    row.width += image.width;
+    row.height = Math.max(row.height, image.height);
+  }
+
+  const images: Array<{
+    src: string;
+    sources?: string[];
+    alt: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> = [];
+  let rowY = 0;
+  for (const [rowIndex, row] of rows.entries()) {
+    const align = block.align ?? "center";
+    let itemX = align === "right" ? contentWidth - row.width : align === "center" ? (contentWidth - row.width) / 2 : 0;
+    for (const item of row.images) {
+      images.push({
+        ...item,
+        x: itemX,
+        y: rowY + row.height - item.height
+      });
+      itemX += item.width + horizontalGap;
+    }
+    rowY += row.height;
+    if (rowIndex < rows.length - 1) rowY += verticalGap;
+  }
+
+  const captionFontSize = theme.fontSize * 0.86;
+  const totalHeight = rowY + estimateCaptionHeight(block.caption, contentWidth, captionFontSize, theme);
+  return {
+    images,
+    imagesHeight: rowY,
+    totalHeight,
+    captionFontSize
+  };
 }
 
 function layoutGraphSXBlock(

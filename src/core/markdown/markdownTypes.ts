@@ -37,6 +37,7 @@ export type MarkdownNode =
   | ({ type: "codeBlock"; language?: string; code: string } & SourceMapped)
   | (({ type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] } & LabeledNode) & SourceMapped)
   | (ImageNode & SourceMapped)
+  | (FigureNode & SourceMapped)
   | (GraphSXNode & SourceMapped)
   | (({ type: "mathBlock"; text: string } & LabeledNode) & SourceMapped)
   | ({ type: "bibliography" } & SourceMapped)
@@ -46,10 +47,26 @@ export type MarkdownNode =
 export type ImageNode = {
   type: "image";
   src: string;
+  sources?: string[];
   alt: string;
   caption?: string;
   width?: ImageLength;
   height?: ImageLength;
+  align?: ImageAlign;
+} & LabeledNode;
+
+export type FigureImageNode = {
+  src: string;
+  sources?: string[];
+  alt: string;
+  width?: ImageLength;
+  height?: ImageLength;
+};
+
+export type FigureNode = {
+  type: "figure";
+  images: FigureImageNode[];
+  caption?: string;
   align?: ImageAlign;
 } & LabeledNode;
 

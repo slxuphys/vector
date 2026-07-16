@@ -22,41 +22,56 @@ export async function drawPdfImage(
   pageHeight: number,
   services: PdfImageServices = {}
 ): Promise<boolean> {
-  const src = sanitizeImageUrl(object.src);
-  if (!src) {
+  const sources = (object.sources?.length ? object.sources : [object.src])
+    .map(sanitizeImageUrl)
+    .filter((source): source is string => source !== undefined);
+  if (sources.length === 0) {
     drawImagePlaceholder(page, object, fonts, pageHeight);
     return false;
   }
 
-  try {
-    const bytes = await services.load?.(src) ?? await loadImageBytes(src);
-    const imageBytes = isSvg(bytes, src)
-      ? await services.rasterizeSvg?.(bytes, object.width, object.height)
-        ?? await rasterizeSvgBytes(bytes, object.width, object.height)
-      : bytes;
-    if (isSvg(imageBytes, src)) throw new Error("SVG rasterization is unavailable in this runtime");
-    const image = isJpeg(imageBytes, src)
-      ? await pdf.embedJpg(imageBytes)
-      : isPng(imageBytes, src) || isSvg(bytes, src)
-        ? await pdf.embedPng(imageBytes)
-        : undefined;
-    if (!image) {
-      drawImagePlaceholder(page, object, fonts, pageHeight);
-      return false;
+  for (const src of sources) {
+    try {
+      const bytes = await services.load?.(src) ?? await loadImageBytes(src);
+      if (isPdf(bytes, src)) {
+        const [pdfPage] = await pdf.embedPdf(bytes, [0]);
+        if (!pdfPage) throw new Error("PDF figure has no pages");
+        const fitted = fitContain(pdfPage.width, pdfPage.height, object.width, object.height);
+        page.drawPage(pdfPage, {
+          x: object.x + fitted.x,
+          y: pageHeight - object.y - fitted.y - fitted.height,
+          width: fitted.width,
+          height: fitted.height
+        });
+        return true;
+      }
+      const imageBytes = isSvg(bytes, src)
+        ? await services.rasterizeSvg?.(bytes, object.width, object.height)
+          ?? await rasterizeSvgBytes(bytes, object.width, object.height)
+        : bytes;
+      if (isSvg(imageBytes, src)) throw new Error("SVG rasterization is unavailable in this runtime");
+      const image = isJpeg(imageBytes, src)
+        ? await pdf.embedJpg(imageBytes)
+        : isPng(imageBytes, src) || isSvg(bytes, src)
+          ? await pdf.embedPng(imageBytes)
+          : undefined;
+      if (!image) {
+        throw new Error(`Unsupported image format: ${src}`);
+      }
+      const fitted = fitContain(image.width, image.height, object.width, object.height);
+      page.drawImage(image, {
+        x: object.x + fitted.x,
+        y: pageHeight - object.y - fitted.y - fitted.height,
+        width: fitted.width,
+        height: fitted.height
+      });
+      return true;
+    } catch (error) {
+      if (isDebugLogEnabled("pdf")) console.warn("[pdf-image-candidate-failed]", { src, error });
     }
-    const fitted = fitContain(image.width, image.height, object.width, object.height);
-    page.drawImage(image, {
-      x: object.x + fitted.x,
-      y: pageHeight - object.y - fitted.y - fitted.height,
-      width: fitted.width,
-      height: fitted.height
-    });
-    return true;
-  } catch (error) {
-    if (isDebugLogEnabled("pdf")) console.warn("[pdf-image-fallback]", { src, error });
-    drawImagePlaceholder(page, object, fonts, pageHeight);
-    return false;
   }
+  drawImagePlaceholder(page, object, fonts, pageHeight);
+  return false;
 }
 
 async function loadImageBytes(src: string): Promise<Uint8Array> {
@@ -69,6 +84,16 @@ function isSvg(bytes: Uint8Array, src: string): boolean {
   if (/^data:image\/svg\+xml[;,]/i.test(src) || /\.svg(?:[?#]|$)/i.test(src)) return true;
   const head = new TextDecoder().decode(bytes.slice(0, Math.min(bytes.length, 256))).trimStart();
   return head.startsWith("<svg") || head.startsWith("<?xml");
+}
+
+function isPdf(bytes: Uint8Array, src: string): boolean {
+  return /^data:application\/pdf[;,]/i.test(src) || /\.pdf(?:[?#]|$)/i.test(src) || (
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46 &&
+    bytes[4] === 0x2d
+  );
 }
 
 async function rasterizeSvgBytes(bytes: Uint8Array, width: number, height: number): Promise<Uint8Array> {
