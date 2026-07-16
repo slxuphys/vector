@@ -33,6 +33,7 @@ import { flattenInline, type TitleMatter } from "../layout/layoutBlocks";
 import { parseInline } from "../markdown/parseInline";
 import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
 import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
+import { resolveDocumentAssetSources } from "./resolveDocumentAssetSources";
 
 export type DocumentEngine = {
   layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
@@ -102,12 +103,12 @@ function prepareMarkdownLayoutFromDocument(
     ...(resolvedOptions.document ?? {})
   };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const sourceAst = parseSourceAst(
+  const sourceAst = resolveDocumentAssetSources(parseSourceAst(
     document.markdown,
     resolvedOptions.sourceFormat,
     document.sourceOffset,
     resolvedOptions.plugins
-  );
+  ), resolvedOptions.assetUrls, resolvedOptions.sourcePath);
   const bibliographyPaths = resolvedOptions.sourceFormat === "latex"
     ? readLatexBibliographyPaths(document.markdown)
     : document.frontMatter?.bibliography ? [document.frontMatter.bibliography] : [];

@@ -7,9 +7,10 @@ export const sampleProjects: PlaygroundProject[] = [
     name: "Markdown note",
     kind: "example",
     entryFile: "note.md",
+    directories: [],
     files: [
-      { path: "note.md", language: "markdown", content: productExamples.markdownNote },
-      { path: "references.bib", language: "bibtex", content: sampleBibliography }
+      { kind: "text", path: "note.md", language: "markdown", content: productExamples.markdownNote },
+      { kind: "text", path: "references.bib", language: "bibtex", content: sampleBibliography }
     ]
   },
   {
@@ -17,9 +18,10 @@ export const sampleProjects: PlaygroundProject[] = [
     name: "LaTeX article",
     kind: "example",
     entryFile: "article.tex",
+    directories: [],
     files: [
-      { path: "article.tex", language: "latex", content: productExamples.latexArticle },
-      { path: "references.bib", language: "bibtex", content: sampleBibliography }
+      { kind: "text", path: "article.tex", language: "latex", content: productExamples.latexArticle },
+      { kind: "text", path: "references.bib", language: "bibtex", content: sampleBibliography }
     ]
   },
   {
@@ -27,9 +29,10 @@ export const sampleProjects: PlaygroundProject[] = [
     name: "REVTeX two-column",
     kind: "example",
     entryFile: "paper.tex",
+    directories: [],
     files: [
-      { path: "paper.tex", language: "latex", content: productExamples.latexRevtex },
-      { path: "references.bib", language: "bibtex", content: sampleBibliography }
+      { kind: "text", path: "paper.tex", language: "latex", content: productExamples.latexRevtex },
+      { kind: "text", path: "references.bib", language: "bibtex", content: sampleBibliography }
     ]
   }
 ];

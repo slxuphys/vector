@@ -67,7 +67,7 @@ export function useDocumentLayout(
     return () => {
       cancelled = true;
     };
-  }, [markdown, timing, options.sourceFormat, options.pageSize, options.margin, options.theme, options.mathRenderer, options.nativeMathMetrics, options.nativeMathProfile]);
+  }, [markdown, timing, options]);
 
   return state;
 }

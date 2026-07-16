@@ -18,6 +18,8 @@ export type EngineOptions = {
   crossRef?: Partial<CrossRefConfig>;
   layout?: Partial<LayoutConfig>;
   bibliographyFiles?: Record<string, string>;
+  assetUrls?: Record<string, string>;
+  sourcePath?: string;
   document?: Partial<DocumentOptions>;
   plugins?: VectorPluginRegistry;
 };

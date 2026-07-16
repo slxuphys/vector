@@ -612,6 +612,12 @@ function resolveFigure(
   const images = includes.map((include) => {
     const requestedSource = include[2].trim();
     const sources = resolveLatexFigureSources(requestedSource, graphicsPaths);
+    console.log("[latex-figure-parse] includegraphics", {
+      requestedSource,
+      graphicsPaths,
+      candidates: sources,
+      options: include[1] ?? ""
+    });
     return {
       src: sources[0] ?? requestedSource,
       sources,

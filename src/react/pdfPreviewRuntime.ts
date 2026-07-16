@@ -1,20 +1,35 @@
-import { getDocument, PDFWorker } from "pdfjs-dist/legacy/build/pdf.mjs";
-import PdfJsWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?worker&inline";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
-let sharedWorker: PDFWorker | undefined;
-let sharedWorkerReady: Promise<void> | undefined;
+let pdfRuntimeReady: Promise<void> | undefined;
 
 export async function renderPdfPageToDataUrl(source: string, targetWidth: number): Promise<string> {
   const totalStartedAt = performance.now();
+  console.log("[pdf-figure-preview] start", {
+    source: describeSource(source),
+    targetWidth
+  });
   const bytesStartedAt = performance.now();
   const bytes = await loadBytes(source);
   const loadBytesMs = performance.now() - bytesStartedAt;
   const pdfBytes = bytes.byteLength;
-  const workerStartedAt = performance.now();
-  const { worker, coldStart } = await getSharedWorker();
-  const workerMs = performance.now() - workerStartedAt;
+  const runtimeStartedAt = performance.now();
+  const coldStart = !pdfRuntimeReady;
+  await getMainThreadPdfRuntime();
+  const runtimeMs = performance.now() - runtimeStartedAt;
   const documentStartedAt = performance.now();
-  const document = await getDocument({ data: bytes, worker }).promise;
+  let document;
+  try {
+    document = await getDocument({ data: bytes }).promise;
+  } catch (error) {
+    console.error("[pdf-figure-preview] document load failed", {
+      source: describeSource(source),
+      bytes: bytes.byteLength,
+      signature: bytePrefix(bytes),
+      error: describeError(error),
+      totalMs: Math.round((performance.now() - totalStartedAt) * 10) / 10
+    });
+    throw error;
+  }
   const documentMs = performance.now() - documentStartedAt;
   let getPageMs = 0;
   let renderMs = 0;
@@ -65,9 +80,9 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
       canvasHeight,
       pngKB: Math.round(resultBytes / 10.24) / 100,
       loadBytesMs: Math.round(loadBytesMs * 10) / 10,
-      workerColdStart: coldStart,
-      workerMs: Math.round(workerMs * 10) / 10,
-      workerMode: "inline-blob",
+      runtimeColdStart: coldStart,
+      runtimeMs: Math.round(runtimeMs * 10) / 10,
+      workerMode: "main-thread",
       documentMs: Math.round(documentMs * 10) / 10,
       getPageMs: Math.round(getPageMs * 10) / 10,
       renderMs: Math.round(renderMs * 10) / 10,
@@ -78,29 +93,78 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
   }
 }
 
-async function getSharedWorker(): Promise<{ worker: PDFWorker; coldStart: boolean }> {
-  const coldStart = !sharedWorker;
-  if (!sharedWorker) {
+async function getMainThreadPdfRuntime(): Promise<void> {
+  if (!pdfRuntimeReady) {
     const startedAt = performance.now();
-    const port = new PdfJsWorker();
-    sharedWorker = PDFWorker.create({ port });
-    sharedWorkerReady = sharedWorker.promise.then(() => {
-      console.log("[pdf-figure-preview] worker ready", {
-        workerMode: "inline-blob",
-        startupMs: Math.round((performance.now() - startedAt) * 10) / 10,
-        port: sharedWorker?.port?.constructor?.name ?? "unknown"
+    console.log("[pdf-figure-preview] loading PDF.js runtime");
+    pdfRuntimeReady = import("pdfjs-dist/legacy/build/pdf.worker.mjs").then(() => {
+      console.log("[pdf-figure-preview] PDF.js runtime ready", {
+        loadMs: Math.round((performance.now() - startedAt) * 10) / 10
       });
     });
   }
-  await sharedWorkerReady;
-  return { worker: sharedWorker, coldStart };
+  await pdfRuntimeReady;
 }
 
 async function loadBytes(source: string): Promise<Uint8Array> {
-  if (/^data:application\/pdf[;,]/i.test(source)) return decodeDataUrl(source);
+  console.log("[pdf-figure-preview] loading bytes", {
+    source: describeSource(source),
+    transport: source.startsWith("data:") ? "data-url" : source.startsWith("blob:") ? "blob-url" : "fetch"
+  });
+  const bytes = /^data:application\/pdf[;,]/i.test(source)
+    ? decodeDataUrl(source)
+    : await fetchBytes(source);
+  const validSignature = hasPdfSignature(bytes);
+  console.log("[pdf-figure-preview] bytes loaded", {
+    source: describeSource(source),
+    bytes: bytes.byteLength,
+    signature: bytePrefix(bytes),
+    validSignature
+  });
+  if (!validSignature) throw new Error(`Figure source is not a PDF: ${describeSource(source)}`);
+  return bytes;
+}
+
+async function fetchBytes(source: string): Promise<Uint8Array> {
+  const startedAt = performance.now();
   const response = await fetch(source);
+  console.log("[pdf-figure-preview] fetch response", {
+    source: describeSource(source),
+    finalUrl: describeSource(response.url),
+    status: response.status,
+    ok: response.ok,
+    contentType: response.headers.get("content-type"),
+    contentLength: response.headers.get("content-length"),
+    fetchMs: Math.round((performance.now() - startedAt) * 10) / 10
+  });
   if (!response.ok) throw new Error(`Could not load PDF figure: ${source}`);
   return new Uint8Array(await response.arrayBuffer());
+}
+
+function bytePrefix(bytes: Uint8Array): string {
+  return Array.from(bytes.slice(0, 12))
+    .map((value) => value >= 0x20 && value <= 0x7e ? String.fromCharCode(value) : `\\x${value.toString(16).padStart(2, "0")}`)
+    .join("");
+}
+
+function describeSource(source: string): string {
+  if (source.startsWith("blob:")) return `${source.slice(0, 64)}${source.length > 64 ? "..." : ""}`;
+  if (source.startsWith("data:")) return `${source.slice(0, 48)}... (${source.length} chars)`;
+  return source;
+}
+
+function describeError(error: unknown): { name: string; message: string; stack?: string } {
+  if (error instanceof Error) return { name: error.name, message: error.message, stack: error.stack };
+  return { name: typeof error, message: String(error) };
+}
+
+function hasPdfSignature(bytes: Uint8Array): boolean {
+  return bytes.length >= 5
+    && bytes[0] === 0x25
+    && bytes[1] === 0x50
+    && bytes[2] === 0x44
+    && bytes[3] === 0x46
+    && bytes[4] === 0x2d;
 }
 
 function decodeDataUrl(source: string): Uint8Array {

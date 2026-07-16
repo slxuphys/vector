@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, type MouseEvent } from "react";
 import type { DisplayPage } from "../core/display-list/displayTypes";
 import { hydrateSvgImages } from "./hydrateSvgImages";
 
@@ -18,11 +18,11 @@ export function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }
       ? object.warnings?.map((message) => ({ message, x: object.x, y: object.y + object.height })) ?? []
     : []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = svgContainerRef.current;
     if (!container) return undefined;
     return hydrateSvgImages(container);
-  }, [svg]);
+  });
 
   useEffect(() => {
     const container = svgContainerRef.current;

@@ -1,4 +1,4 @@
-import { ChevronDown, Folder, Sparkles } from "lucide-react";
+import { ChevronDown, Folder, HardDrive, Sparkles } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { PlaygroundProject } from "./projectTypes";
 
@@ -11,7 +11,7 @@ export type ProjectSelectorProps = {
 export function ProjectSelector({ projects, projectId, onProjectSelect }: ProjectSelectorProps) {
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const selected = projects.find((project) => project.id === projectId) ?? projects[0];
-  const SelectedIcon = selected.kind === "example" ? Sparkles : Folder;
+  const SelectedIcon = projectIcon(selected);
 
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
@@ -30,7 +30,7 @@ export function ProjectSelector({ projects, projectId, onProjectSelect }: Projec
       </summary>
       <div className="project-menu-popover">
         {projects.map((project) => {
-          const Icon = project.kind === "example" ? Sparkles : Folder;
+          const Icon = projectIcon(project);
           return (
             <button
               type="button"
@@ -43,11 +43,23 @@ export function ProjectSelector({ projects, projectId, onProjectSelect }: Projec
             >
               <Icon size={15} aria-hidden="true" />
               <span>{project.name}</span>
-              {project.kind === "example" ? <small>Example</small> : null}
+              <small>{projectLabel(project)}</small>
             </button>
           );
         })}
       </div>
     </details>
   );
+}
+
+function projectIcon(project: PlaygroundProject) {
+  if (project.kind === "example") return Sparkles;
+  if (project.kind === "browser") return HardDrive;
+  return Folder;
+}
+
+function projectLabel(project: PlaygroundProject): string {
+  if (project.kind === "example") return "Example";
+  if (project.kind === "browser") return "Browser";
+  return "Local";
 }

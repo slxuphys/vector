@@ -26,6 +26,7 @@
     "@resvg/resvg-wasm": "^2.6.2",
     "@slxu/graphsx": "^0.1.14",
     "codemirror-lang-latex": "^0.4.1",
+    "fflate": "^0.8.3",
     "harfbuzzjs": "^1.4.0",
     "katex": "^0.16.22",
     "lucide-react": "^1.24.0",
