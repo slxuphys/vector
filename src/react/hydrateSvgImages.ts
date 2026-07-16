@@ -1,3 +1,5 @@
+import { debugGroup } from "../core/utils/debugSettings";
+
 type SvgImageCleanup = () => void;
 const pdfPreviewCache = new Map<string, Promise<string>>();
 const completedPdfPreviewCache = new Map<string, string>();
@@ -5,10 +7,6 @@ const completedPdfPreviewCache = new Map<string, string>();
 export function hydrateSvgImages(container: Element): SvgImageCleanup {
   let disposed = false;
   const images = Array.from(container.querySelectorAll<SVGImageElement>("image[data-fallback-id]"));
-
-  console.log("[figure-preview] hydrate", {
-    figures: images.length
-  });
 
   for (const image of images) {
     void loadSvgImageCandidates(container, image, () => disposed);
@@ -30,12 +28,7 @@ async function loadSvgImageCandidates(
     ? container.querySelector<SVGGElement>(`#${CSS.escape(fallbackId)}`)
     : undefined;
   const sources = parseSources(image.dataset.imageSources);
-  console.log("[figure-preview] candidates", {
-    fallbackId,
-    width: image.getAttribute("width"),
-    height: image.getAttribute("height"),
-    sources: sources.map(describeSource)
-  });
+  const failures: Array<{ source: string; error: ReturnType<typeof describeError> }> = [];
 
   for (const [sourceIndex, source] of sources.entries()) {
     if (disposed()) return;
@@ -48,11 +41,6 @@ async function loadSvgImageCandidates(
       if (completedPdfPreview) {
         image.setAttribute("href", completedPdfPreview);
         if (fallback) fallback.style.display = "none";
-        console.log("[figure-preview] restored cached PDF", {
-          fallbackId,
-          targetWidth,
-          candidate: sourceIndex + 1
-        });
         return;
       }
       const renderStartedAt = performance.now();
@@ -64,40 +52,36 @@ async function loadSvgImageCandidates(
       await setImageHref(image, href, disposed);
       const imageLoadMs = performance.now() - insertStartedAt;
       if (!disposed() && fallback) fallback.style.display = "none";
-      console.log("[figure-preview] loaded", {
-        fallbackId,
-        kind: isPdfSource(source) ? "pdf" : "image",
-        candidate: sourceIndex + 1,
-        candidates: sources.length,
-        sourceKB: Math.round(source.length / 10.24) / 100,
-        renderedKB: Math.round(href.length / 10.24) / 100,
-        renderMs: Math.round(renderMs * 10) / 10,
-        imageLoadMs: Math.round(imageLoadMs * 10) / 10,
-        candidateMs: Math.round((performance.now() - candidateStartedAt) * 10) / 10,
-        totalMs: Math.round((performance.now() - startedAt) * 10) / 10
-      });
+      debugGroup("assets", `[figure] loaded ${isPdfSource(source) ? "PDF" : "image"}`, () => [
+        ["source", describeSource(source)],
+        ["selection", { candidate: sourceIndex + 1, candidates: sources.length, failures }],
+        ["size", {
+          sourceKB: Math.round(source.length / 10.24) / 100,
+          renderedKB: Math.round(href.length / 10.24) / 100,
+          width: image.getAttribute("width"),
+          height: image.getAttribute("height")
+        }],
+        ["timing", {
+          renderMs: Math.round(renderMs * 10) / 10,
+          imageLoadMs: Math.round(imageLoadMs * 10) / 10,
+          candidateMs: Math.round((performance.now() - candidateStartedAt) * 10) / 10,
+          totalMs: Math.round((performance.now() - startedAt) * 10) / 10
+        }]
+      ]);
       return;
     } catch (error) {
-      console.warn("[figure-preview] candidate failed", {
-        fallbackId,
-        kind: isPdfSource(source) ? "pdf" : "image",
-        candidate: sourceIndex + 1,
-        candidates: sources.length,
-        sourceKB: Math.round(source.length / 10.24) / 100,
-        candidateMs: Math.round((performance.now() - candidateStartedAt) * 10) / 10,
-        source: describeSource(source),
-        error: describeError(error)
-      });
+      failures.push({ source: describeSource(source), error: describeError(error) });
       // Continue through LaTeX's graphicspath/extension candidates.
     }
   }
 
   if (!disposed() && fallback) fallback.style.display = "";
-  console.warn("[figure-preview] all candidates failed", {
-    fallbackId,
-    candidates: sources.length,
-    totalMs: Math.round((performance.now() - startedAt) * 10) / 10
-  });
+  debugGroup("assets", "[figure] failed to load", () => [
+    ["figure", { fallbackId, width: image.getAttribute("width"), height: image.getAttribute("height") }],
+    ["candidates", sources.map(describeSource)],
+    ["failures", failures],
+    ["timing", { totalMs: Math.round((performance.now() - startedAt) * 10) / 10 }]
+  ], "warn");
 }
 
 function describeSource(source: string): string {
@@ -131,13 +115,7 @@ async function renderPdfPreview(source: string, targetWidth: number): Promise<st
   if (completed) return completed;
   const cached = pdfPreviewCache.get(cacheKey);
   if (cached) {
-    const startedAt = performance.now();
-    const result = await cached;
-    console.log("[pdf-figure-preview] cache hit", {
-      targetWidth,
-      waitMs: Math.round((performance.now() - startedAt) * 10) / 10
-    });
-    return result;
+    return cached;
   }
   const rendering = renderPdfPreviewUncached(source, targetWidth);
   pdfPreviewCache.set(cacheKey, rendering);
@@ -156,14 +134,7 @@ function getPdfPreviewCacheKey(source: string, targetWidth: number): string {
 }
 
 async function renderPdfPreviewUncached(source: string, targetWidth: number): Promise<string> {
-  console.log("[pdf-figure-preview] importing runtime", {
-    source: describeSource(source),
-    targetWidth
-  });
   const { renderPdfPageToDataUrl } = await import("./pdfPreviewRuntime");
-  console.log("[pdf-figure-preview] runtime imported", {
-    source: describeSource(source)
-  });
   return renderPdfPageToDataUrl(source, targetWidth);
 }
 

@@ -12,6 +12,7 @@ import {
   writeProjectFile,
   writeTextFile
 } from "./projectFileSystem";
+import { debugWarn } from "../../core/utils/debugSettings";
 
 const projectsDirectoryName = "vector-projects";
 const manifestName = ".vector-project.json";
@@ -36,7 +37,7 @@ export async function listOpfsProjects(): Promise<LoadedProjectBackend[]> {
       const backend = new OpfsProjectBackend(handle as FileSystemDirectoryHandle, directoryName);
       projects.push({ project: await backend.loadProject(), backend });
     } catch (error) {
-      console.warn("[opfs-project] skipped unreadable project", { directoryName, error });
+      debugWarn("assets", "[browser project] skipped unreadable project", { directoryName, error });
     }
   }
   return projects.sort((left, right) => left.project.name.localeCompare(right.project.name));

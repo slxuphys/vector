@@ -24,7 +24,7 @@ type ContextState = { x: number; y: number; node: ProjectTreeNode };
 
 export function ProjectSidebar(props: ProjectSidebarProps) {
   const tree = useMemo(() => buildProjectTree(props.files, props.directories), [props.files, props.directories]);
-  const [expanded, setExpanded] = useState(() => new Set(props.directories));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(ancestorDirectories(props.activePath)));
   const [dialog, setDialog] = useState<DialogState | undefined>();
   const [draftPath, setDraftPath] = useState("");
   const [error, setError] = useState<string | undefined>();
@@ -201,6 +201,7 @@ function TreeEntry(props: TreeEntryProps) {
         <button
           type="button"
           className="project-file project-directory"
+          title={node.path}
           style={{ paddingLeft: 8 + depth * 14 }}
           onClick={() => {
             const next = new Set(props.expanded);
@@ -224,6 +225,7 @@ function TreeEntry(props: TreeEntryProps) {
     <button
       type="button"
       className={node.path === props.activePath ? "project-file project-file-active" : "project-file"}
+      title={node.path}
       style={{ paddingLeft: 23 + depth * 14 }}
       onClick={() => props.onFileSelect(node.path)}
       onContextMenu={(event) => props.onContextMenu(event, node)}
@@ -246,4 +248,14 @@ function fileIcon(file: ProjectFile | undefined) {
 function parentOf(path: string): string {
   const index = path.lastIndexOf("/");
   return index < 0 ? "" : path.slice(0, index);
+}
+
+function ancestorDirectories(path: string): string[] {
+  const ancestors: string[] = [];
+  let parent = parentOf(path);
+  while (parent) {
+    ancestors.unshift(parent);
+    parent = parentOf(parent);
+  }
+  return ancestors;
 }

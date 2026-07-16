@@ -256,7 +256,9 @@ const debugLogOptions: Array<{ key: DebugLogKey; label: string }> = [
   { key: "graph", label: "GraphSX" },
   { key: "preview", label: "Preview timing" },
   { key: "pdf", label: "PDF export" },
-  { key: "text", label: "Text fallback" }
+  { key: "text", label: "Text fallback" },
+  { key: "parser", label: "Parser" },
+  { key: "assets", label: "Figures & assets" }
 ];
 
 function DebugLogDropdown({

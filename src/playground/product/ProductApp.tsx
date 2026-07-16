@@ -83,7 +83,7 @@ export function ProductApp() {
         </a>
       </header>
       <MarkdownEditorPreview
-        key={`${project.id}:${activeFile?.path ?? "empty"}`}
+        documentKey={`${project.id}:${activeFile?.path ?? "empty"}`}
         initialMarkdown={activeTextFile?.content ?? ""}
         options={options}
         toolbarPlacement="preview"
@@ -106,6 +106,7 @@ export function ProductApp() {
             />
             {filesVisible ? (
               <ProjectSidebar
+                key={project.id}
                 files={project.files}
                 directories={project.directories}
                 activePath={activeFile?.path ?? activePath}

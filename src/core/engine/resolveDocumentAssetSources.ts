@@ -1,4 +1,10 @@
 import type { FigureImageNode, ImageNode, MarkdownAst } from "../markdown/markdownTypes";
+import { debugGroup, debugLog } from "../utils/debugSettings";
+
+type AssetResolutionTrace = {
+  matched: Array<{ source: string; candidates: string[]; resolved: string }>;
+  unresolved: Array<{ source: string; candidates: string[] }>;
+};
 
 export function resolveDocumentAssetSources(
   ast: MarkdownAst,
@@ -8,7 +14,7 @@ export function resolveDocumentAssetSources(
   if (!assetUrls || Object.keys(assetUrls).length === 0) {
     const unresolvedFigures = ast.children.filter((node) => node.type === "image" || node.type === "figure").length;
     if (unresolvedFigures > 0) {
-      console.log("[asset-resolve] skipped", {
+      debugLog("assets", "[assets] resolution skipped", {
         sourcePath,
         figures: unresolvedFigures,
         reason: "no project assets"
@@ -17,35 +23,40 @@ export function resolveDocumentAssetSources(
     return ast;
   }
   const sourceDirectory = dirname(normalizePath(sourcePath ?? ""));
-  console.log("[asset-resolve] start", {
-    sourcePath,
-    sourceDirectory,
-    available: Object.keys(assetUrls)
-  });
-  return {
+  const trace: AssetResolutionTrace = { matched: [], unresolved: [] };
+  const result = {
     ...ast,
     children: ast.children.map((node) => {
-      if (node.type === "image") return resolveImage(node, assetUrls, sourceDirectory);
+      if (node.type === "image") return resolveImage(node, assetUrls, sourceDirectory, trace);
       if (node.type === "figure") return {
         ...node,
-        images: node.images.map((image) => resolveFigureImage(image, assetUrls, sourceDirectory))
+        images: node.images.map((image) => resolveFigureImage(image, assetUrls, sourceDirectory, trace))
       };
       return node;
     })
   };
+  if (trace.matched.length > 0 || trace.unresolved.length > 0) {
+    debugGroup("assets", `[assets] resolved ${trace.matched.length}, unresolved ${trace.unresolved.length}`, () => [
+      ["document", { sourcePath, sourceDirectory }],
+      ["matched", trace.matched],
+      ["unresolved", trace.unresolved],
+      ["available paths", Object.keys(assetUrls)]
+    ], trace.unresolved.length > 0 ? "warn" : "log");
+  }
+  return result;
 }
 
-function resolveImage(image: ImageNode, assets: Record<string, string>, sourceDirectory: string): ImageNode {
-  const sources = resolveSources(image.sources ?? [image.src], assets, sourceDirectory);
+function resolveImage(image: ImageNode, assets: Record<string, string>, sourceDirectory: string, trace: AssetResolutionTrace): ImageNode {
+  const sources = resolveSources(image.sources ?? [image.src], assets, sourceDirectory, trace);
   return { ...image, src: sources[0] ?? image.src, sources };
 }
 
-function resolveFigureImage(image: FigureImageNode, assets: Record<string, string>, sourceDirectory: string): FigureImageNode {
-  const sources = resolveSources(image.sources ?? [image.src], assets, sourceDirectory);
+function resolveFigureImage(image: FigureImageNode, assets: Record<string, string>, sourceDirectory: string, trace: AssetResolutionTrace): FigureImageNode {
+  const sources = resolveSources(image.sources ?? [image.src], assets, sourceDirectory, trace);
   return { ...image, src: sources[0] ?? image.src, sources };
 }
 
-function resolveSources(sources: string[], assets: Record<string, string>, sourceDirectory: string): string[] {
+function resolveSources(sources: string[], assets: Record<string, string>, sourceDirectory: string, trace: AssetResolutionTrace): string[] {
   const resolved: string[] = [];
   for (const source of sources) {
     if (isExternalSource(source)) {
@@ -56,7 +67,7 @@ function resolveSources(sources: string[], assets: Record<string, string>, sourc
     const relative = sourceDirectory ? normalizePath(`${sourceDirectory}/${normalized}`) : normalized;
     const match = findAsset(assets, relative, normalized);
     if (match) {
-      console.log("[asset-resolve] matched", {
+      trace.matched.push({
         source,
         candidates: [relative, normalized],
         resolved: summarizeResolvedSource(match)
@@ -64,11 +75,9 @@ function resolveSources(sources: string[], assets: Record<string, string>, sourc
       resolved.push(match);
     }
     else {
-      console.warn("[asset-resolve] unresolved project asset", {
+      trace.unresolved.push({
         source,
-        sourceDirectory,
-        candidates: [relative, normalized],
-        available: Object.keys(assets)
+        candidates: [relative, normalized]
       });
       resolved.push(source);
     }

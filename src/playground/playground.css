@@ -699,9 +699,26 @@ button:disabled {
 .app-theme-dark .project-file-active,
 .app-theme-dark .layout-menu-option:hover,
 .app-theme-dark .layout-menu-option-active {
-  border-color: #4b6075;
   background: #263544;
   color: #8fc7ff;
+}
+
+.app-theme-dark .project-file {
+  border: 0;
+  background: transparent;
+}
+
+.app-theme-dark .project-file > svg {
+  color: #93a1b1;
+}
+
+.app-theme-dark .project-file-active {
+  background: #263544;
+  box-shadow: inset 2px 0 #62a9e8;
+}
+
+.app-theme-dark .project-file-active > svg {
+  color: currentColor;
 }
 
 .app-theme-dark .layout-menu-popover {
@@ -834,7 +851,7 @@ button:disabled {
 }
 
 .project-file-list {
-  padding: 7px;
+  padding: 5px 6px 10px;
   overflow: auto;
 }
 
@@ -869,14 +886,15 @@ button:disabled {
 }
 
 .project-file {
-  min-height: 30px;
-  padding-top: 4px;
+  min-height: 28px;
+  padding-top: 3px;
   padding-right: 7px;
-  padding-bottom: 4px;
+  padding-bottom: 3px;
   width: 100%;
   min-width: 0;
   justify-content: flex-start;
-  border: 1px solid transparent;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
   color: #344054;
   text-align: left;
@@ -896,14 +914,28 @@ button:disabled {
   white-space: nowrap;
 }
 
+.project-file > svg {
+  flex: 0 0 auto;
+  color: #667587;
+}
+
+.project-file:focus-visible {
+  outline: 2px solid #5b9bd5;
+  outline-offset: -2px;
+}
+
 .project-file:hover {
   background: #edf2f7;
 }
 
 .project-file-active {
-  border-color: #c6d7ea;
   background: #e8f1fb;
   color: #174f86;
+  box-shadow: inset 2px 0 #2f78b7;
+}
+
+.project-file-active > svg {
+  color: currentColor;
 }
 
 .project-context-menu {

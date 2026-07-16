@@ -7,6 +7,9 @@ import type { InlineRun } from "./layoutBlocks";
 import { defaultLayoutConfig, type LayoutConfig } from "./layoutConfig";
 import { getMeasuredMath, type MathMeasurementMap } from "./mathMetrics";
 import { measureText } from "./measureText";
+import { debugWarn } from "../utils/debugSettings";
+
+let warnedAboutKnuthPlass = false;
 
 export type LayoutLine = {
   runs: InlineRun[];
@@ -49,8 +52,9 @@ export function breakRunsIntoLines(
   };
 
   const algorithm = layoutConfig.lineBreaking.algorithm;
-  if (algorithm === "knuth-plass" && typeof console !== "undefined") {
-    console.warn("[line-breaking]", "knuth-plass is not implemented yet; using greedy line breaking.");
+  if (algorithm === "knuth-plass" && !warnedAboutKnuthPlass) {
+    warnedAboutKnuthPlass = true;
+    debugWarn("text", "[line breaking] using greedy fallback", "Knuth-Plass is not implemented yet.");
   }
 
   for (const run of runs) {

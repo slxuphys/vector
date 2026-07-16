@@ -8,6 +8,7 @@ import {
 import { drawPdfNativeMath } from "./pdfNativeMath";
 import { selectPdfTextFontFallbacks, type PdfFontSet } from "./pdfFonts";
 import { drawPdfText, hexToRgb, measurePdfTextWidth } from "./pdfText";
+import { debugWarn } from "../../utils/debugSettings";
 
 type GraphSXObject = Extract<DisplayObject, { type: "graphsx" }>;
 type ClipRect = { x: number; y: number; width: number; height: number };
@@ -19,7 +20,7 @@ export function drawPdfGraphSX(
   pageHeight: number
 ): boolean {
   if (!object.displayList) {
-    console.warn("[graphsx-pdf] missing neutral display list; graph was not exported", {
+    debugWarn("graph", "[GraphSX PDF] missing neutral display list", {
       summary: object.summary
     });
     return false;

@@ -14,6 +14,7 @@ import {
   createVectorPluginDocumentContext,
   type VectorPluginDocumentContext
 } from "../plugins/pluginDocumentContext";
+import { debugGroup, debugWarn } from "../utils/debugSettings";
 
 const nonBreakingSpaceMarker = "\uE110";
 const latexGraphicsStateKey = "latex-graphics";
@@ -464,7 +465,7 @@ function isEscaped(source: string, index: number): boolean {
 function warnMacro(state: MacroExpansionState, message: string): void {
   if (state.warned.has(message)) return;
   state.warned.add(message);
-  console.warn(`[latex-macros] ${message}`);
+  debugWarn("parser", "[LaTeX macro] expansion warning", message);
 }
 
 function stripPreamble(source: string): string {
@@ -609,12 +610,12 @@ function resolveFigure(
   const caption = optionalLatexInline(readCommandArgument(body, "caption"));
   const label = readCommandArgument(body, "label");
   const graphicsPaths = document.peekState<LatexGraphicsState>(latexGraphicsStateKey)?.paths ?? [];
+  const imageDetails: Array<{ requestedSource: string; candidates: string[]; options: string }> = [];
   const images = includes.map((include) => {
     const requestedSource = include[2].trim();
     const sources = resolveLatexFigureSources(requestedSource, graphicsPaths);
-    console.log("[latex-figure-parse] includegraphics", {
+    imageDetails.push({
       requestedSource,
-      graphicsPaths,
       candidates: sources,
       options: include[1] ?? ""
     });
@@ -625,6 +626,11 @@ function resolveFigure(
       width: parseLatexGraphicsWidth(include[1] ?? "")
     };
   });
+  debugGroup("parser", `[LaTeX figure] parsed ${images.length} image${images.length === 1 ? "" : "s"}`, () => [
+    ["graphics paths", graphicsPaths],
+    ["images", imageDetails],
+    ["figure", { caption, label }]
+  ]);
 
   if (images.length > 1) {
     return [{

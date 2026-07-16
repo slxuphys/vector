@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/engineTypes";
 import { warmPdfMathArtifactCache } from "../core/renderers/pdf/pdfMathArtifact";
 import { downloadPdf } from "../core/renderers/pdf/renderToPdf";
-import { isDebugLogEnabled } from "../core/utils/debugSettings";
+import { debugError, isDebugLogEnabled } from "../core/utils/debugSettings";
 import { MarkdownEditor, type MarkdownEditorController } from "./editor/MarkdownEditor";
 import { PreviewPane } from "./preview/PreviewPane";
 import { PreviewToolbar } from "./preview/PreviewToolbar";
@@ -21,6 +21,7 @@ export type MarkdownEditorPreviewProps = {
   editorSourceFormat?: "markdown" | "latex" | "text";
   previewAvailable?: boolean;
   previewUnavailableMessage?: string;
+  documentKey?: string;
 };
 
 export type WorkspaceLayoutMode = "split" | "editor" | "preview";
@@ -42,7 +43,8 @@ export function MarkdownEditorPreview({
   editorTheme = "light",
   editorSourceFormat,
   previewAvailable = true,
-  previewUnavailableMessage
+  previewUnavailableMessage,
+  documentKey
 }: MarkdownEditorPreviewProps) {
   const [previewRequest, setPreviewRequest] = useState<PreviewRequest>({ markdown: initialMarkdown });
   const [zoom, setZoom] = useState(0.9);
@@ -54,12 +56,21 @@ export function MarkdownEditorPreview({
   const editorControllerRef = useRef<MarkdownEditorController | undefined>(undefined);
   const previewUpdateIdRef = useRef(0);
   const startupLogRef = useRef({ editor: false, preview: false });
+  const documentKeyRef = useRef(documentKey);
   const layoutState = useDocumentLayout(previewAvailable ? previewRequest.markdown : "", options, previewRequest.timing);
   const usingKatexGlyph = options.mathRenderer === "katex-glyph";
   const usingKatexRaster = options.mathRenderer === "katex-raster" || options.mathRenderer === undefined;
   const usingMathJaxVector = options.mathRenderer === "mathjax-vector";
   const usingMathJaxGlyph = options.mathRenderer === "mathjax-glyph";
   const usingGlyphPdf = usingKatexGlyph || usingMathJaxGlyph;
+
+  useLayoutEffect(() => {
+    if (documentKeyRef.current === documentKey) return;
+    documentKeyRef.current = documentKey;
+    setPreviewRequest({ markdown: initialMarkdown });
+    setSourceNavigation(undefined);
+    startupLogRef.current = { editor: false, preview: false };
+  }, [documentKey, initialMarkdown]);
 
   const handleEditorReady = useCallback(() => {
     logStartupMilestone("editor", startupLogRef);
@@ -124,7 +135,7 @@ export function MarkdownEditorPreview({
       const mathPdfMode = usingGlyphPdf ? "glyph" : usingMathJaxVector || experimentalVectorMath ? "vector" : "raster";
       void downloadPdf(layout, "document.pdf", { mathPdfMode, subsetFonts: true, debugLabel: "playground" })
         .catch((error) => {
-          console.error("[pdf-export] failed", error);
+          debugError("pdf", "[PDF export] failed", error);
         })
         .finally(() => setPdfPending(false));
     }, 150);
@@ -158,6 +169,7 @@ export function MarkdownEditorPreview({
       <div className={workspaceClasses}>
         {leftPanel ? <aside className="svg-md-file-panel">{leftPanel}</aside> : null}
         <MarkdownEditor
+          key={documentKey}
           initialMarkdown={initialMarkdown}
           sourceFormat={editorSourceFormat ?? (options.sourceFormat === "latex" ? "latex" : "markdown")}
           theme={editorTheme}

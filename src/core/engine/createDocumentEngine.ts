@@ -27,6 +27,7 @@ import { loadTextFontsForTheme } from "../renderers/text/textFontMetrics";
 import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProfiles";
 import type { DocumentTheme } from "../theme/themeTypes";
 import { now } from "../utils/timing";
+import { debugWarn } from "../utils/debugSettings";
 import { defaultDocumentOptions, type EngineOptions, type MathRendererName } from "./engineTypes";
 import type { CrossRefConfig } from "../xref/xrefTypes";
 import { flattenInline, type TitleMatter } from "../layout/layoutBlocks";
@@ -243,6 +244,5 @@ function measureNativeMathRequests(prepared: PreparedLayout): MathMeasurementMap
 }
 
 function warnFrontMatter(warnings: string[]): void {
-  if (typeof console === "undefined") return;
-  for (const warning of warnings) console.warn("[front-matter]", warning);
+  for (const warning of warnings) debugWarn("parser", "[front matter] warning", warning);
 }

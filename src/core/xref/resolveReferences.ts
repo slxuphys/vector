@@ -1,5 +1,6 @@
 import type { InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
 import { applyCrossRefFormat, defaultCrossRefConfig, type CrossRefAnchor, type CrossRefConfig, type CrossRefKind } from "./xrefTypes";
+import { debugWarn } from "../utils/debugSettings";
 
 const refPattern = /@(!)?((?:eq|fig|tbl|sec)(?::|-)[A-Za-z][\w:'-]*(?:\.[A-Za-z0-9_'-]+)*)/g;
 
@@ -221,7 +222,7 @@ function formatReference(id: string, anchor: CrossRefAnchor, config: CrossRefCon
 }
 
 function formatMissingReference(id: string, rawNumberOnly: boolean, config: CrossRefConfig): string {
-  if (typeof console !== "undefined") console.warn("[xref-missing]", { id });
+  debugWarn("parser", "[cross-reference] missing target", { id });
   if (rawNumberOnly) return "??";
   const kind = kindForPrefix(id.split(":", 1)[0]);
   if (!kind) return "??";
