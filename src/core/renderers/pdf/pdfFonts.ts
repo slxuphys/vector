@@ -1,7 +1,7 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFFont, StandardFonts } from "pdf-lib";
 import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugLog, debugWarn, isDebugLogEnabled } from "../../utils/debugSettings";
 import { openMathFontProfiles, openMathFontUrl } from "../math/openMathFont";
 import {
   getDefaultOpenMathMetricsForProfile,
@@ -75,7 +75,7 @@ export async function loadPdfFonts(
     usage.libertinusSerif ? loadLibertinusSerifFonts(pdf, getSubsetText, isVariantUsed) : undefined
   ]);
   if (isDebugLogEnabled("pdf")) {
-    console.log("[pdf-fonts]", {
+    debugLog("pdf", "[pdf-fonts]", {
       usage: {
         openMath: usage.openMath,
         openMathLibertinus: usage.openMathLibertinus,
@@ -184,7 +184,7 @@ async function embedCustomFont(pdf: PDFDocument, url: string, getSubsetText: Fon
       const subsetBytes = await createSubsetFont(bytes, subsetText);
       validatePdfLibEmbeddableFont(subsetBytes);
       if (isDebugLogEnabled("pdf")) {
-        console.log("[pdf-font-subset]", {
+        debugLog("pdf", "[pdf-font-subset]", {
           url,
           textLength: subsetText.length,
           originalBytes: bytes.byteLength,
@@ -195,7 +195,7 @@ async function embedCustomFont(pdf: PDFDocument, url: string, getSubsetText: Fon
       return pdf.embedFont(subsetBytes, { subset: false });
     } catch (error) {
       if (isDebugLogEnabled("pdf")) {
-        console.warn("[pdf-export] HarfBuzz font subsetting failed; embedding full font", {
+        debugWarn("pdf", "[pdf-export] HarfBuzz font subsetting failed; embedding full font", {
           url,
           textLength: subsetText.length,
           originalBytes: bytes.byteLength,

@@ -57,6 +57,26 @@ test("switches the OpenType font profile", async ({ page }) => {
   await expect(page.locator("svg.svg-md-page-svg text").first()).toHaveAttribute("font-family", /Libertinus/);
 });
 
+test("captures diagnostics in the Console pane", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("svg-md-debug-log-settings");
+    window.localStorage.removeItem("vector-console-visible");
+  });
+  await page.goto("/lab");
+  await page.getByRole("button", { name: "Show console" }).click();
+  await expect(page.getByRole("region", { name: "Console" })).toBeVisible();
+
+  await page.locator(".vector-console-filter").filter({ hasText: "Preview" }).click();
+  await page.locator(".cm-content").click();
+  await page.keyboard.type(" ");
+  await expect(page.locator(".vector-console-entry").filter({ hasText: "[preview-update]" }).first()).toBeVisible({ timeout: 15000 });
+
+  await page.getByRole("button", { name: "Clear console" }).click();
+  await expect(page.locator(".vector-console-entry")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close console" }).click();
+  await expect(page.getByRole("region", { name: "Console" })).toHaveCount(0);
+});
+
 test("downloads the current PDF", async ({ page }) => {
   await page.goto("/lab");
   await expect(page.locator("svg.svg-md-page-svg").first()).toBeVisible({ timeout: 15000 });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { PagedDisplayList } from "../core/display-list/displayTypes";
 import { renderPageToSvg } from "../core/renderers/svg/renderPageToSvg";
-import { isDebugLogEnabled } from "../core/utils/debugSettings";
+import { debugLog, isDebugLogEnabled } from "../core/utils/debugSettings";
 import { PageViewport } from "./PageViewport";
 import type { CompletedPreviewUpdateTiming } from "./useDocumentLayout";
 
@@ -67,7 +67,8 @@ export function SvgPagedPreview({
       const renderMs = paintedAt - visiblePages.startedAt;
       const paintMs = paintedAt - visiblePages.finishedAt;
       const totalMs = timing.debounceMs + timing.layoutDelayMs + timing.layoutMs + renderMs;
-      console.log(
+      debugLog(
+        "preview",
         `[preview-update] total ${totalMs.toFixed(1)} ms`,
         {
           update: timing.id,

@@ -8,7 +8,7 @@ import {
 import { buildTikzDisplayList, parseTikz, tikzSummary } from "@slxu/graphsx/tikz";
 import { escapeXml } from "../../utils/sanitize";
 import { cmToPt } from "../../utils/units";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugLog } from "../../utils/debugSettings";
 import { measureText as measureDocumentText } from "../../layout/measureText";
 import { defaultTheme } from "../../theme/defaultTheme";
 import type { DocumentTheme } from "../../theme/themeTypes";
@@ -35,9 +35,7 @@ export function renderGraphSX(
 ): GraphSXArtifact {
   try {
     const defaults = graphSXDefaults(theme, nativeMathProfile);
-    if (typeof console !== "undefined" && isDebugLogEnabled("graph")) {
-      console.log("[graphsx-defaults]", defaults);
-    }
+    debugLog("graph", "[graphsx-defaults]", defaults);
     const measure = graphSXMeasure(theme, nativeMathProfile);
     const model: any = syntax === "tikz"
       ? parseTikz(source, {
@@ -65,15 +63,13 @@ export function renderGraphSX(
             ...measure
           });
     const summary = syntax === "tikz" ? tikzSummary(model).text : graphSXDocumentSummary(model).text;
-    if (typeof console !== "undefined" && isDebugLogEnabled("graph")) {
-      console.log("[graphsx-display-list]", {
+    debugLog("graph", "[graphsx-display-list]", () => ({
         type: displayList.type,
         width: displayList.width,
         height: displayList.height,
         summary,
         displayList
-      });
-    }
+    }));
     const svg = renderGraphSXDisplayListToSvg(displayList, nativeMathProfile);
     return {
       svg,

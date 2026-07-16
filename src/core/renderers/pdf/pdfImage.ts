@@ -2,7 +2,7 @@ import type { PDFDocument, PDFEmbeddedPage, PDFImage, PDFPage } from "pdf-lib";
 import { rgb } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { sanitizeImageUrl } from "../../utils/sanitize";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugWarn } from "../../utils/debugSettings";
 import { svgToDataUrl } from "../../utils/svgDataUrl";
 import type { PdfFontSet } from "./pdfFonts";
 import { hexToRgb } from "./pdfText";
@@ -62,7 +62,7 @@ export async function drawPdfImage(
       });
       return true;
     } catch (error) {
-      if (isDebugLogEnabled("pdf")) console.warn("[pdf-image-candidate-failed]", { src, error });
+      debugWarn("pdf", "[pdf-image-candidate-failed]", { src, error });
     }
   }
   drawImagePlaceholder(page, object, fonts, pageHeight);

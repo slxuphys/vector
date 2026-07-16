@@ -1,13 +1,15 @@
-import { Columns2, FileText, LayoutTemplate, Moon, PanelLeft, PanelRight, Sun } from "lucide-react";
+import { Columns2, FileText, LayoutTemplate, Moon, PanelLeft, PanelRight, SquareTerminal, Sun } from "lucide-react";
 import type { WorkspaceLayoutMode } from "../../react/MarkdownEditorPreview";
 
 export type WorkspaceRibbonProps = {
-  filesVisible: boolean;
-  layoutMode: WorkspaceLayoutMode;
-  theme: "light" | "dark";
-  onFilesToggle: () => void;
-  onLayoutChange: (mode: WorkspaceLayoutMode) => void;
-  onThemeToggle: () => void;
+  filesVisible?: boolean;
+  layoutMode?: WorkspaceLayoutMode;
+  theme?: "light" | "dark";
+  consoleVisible: boolean;
+  onFilesToggle?: () => void;
+  onLayoutChange?: (mode: WorkspaceLayoutMode) => void;
+  onThemeToggle?: () => void;
+  onConsoleToggle: () => void;
 };
 
 const layoutOptions: Array<{
@@ -24,13 +26,15 @@ export function WorkspaceRibbon({
   filesVisible,
   layoutMode,
   theme,
+  consoleVisible,
   onFilesToggle,
   onLayoutChange,
-  onThemeToggle
+  onThemeToggle,
+  onConsoleToggle
 }: WorkspaceRibbonProps) {
   return (
     <div className="workspace-ribbon" aria-label="Workspace tools">
-      <button
+      {onFilesToggle ? <button
         type="button"
         className={filesVisible ? "ribbon-button ribbon-button-active" : "ribbon-button"}
         onClick={onFilesToggle}
@@ -38,8 +42,8 @@ export function WorkspaceRibbon({
         aria-label={filesVisible ? "Hide files" : "Show files"}
       >
         <FileText size={19} aria-hidden="true" />
-      </button>
-      <details className="layout-menu">
+      </button> : null}
+      {onLayoutChange && layoutMode ? <details className="layout-menu">
         <summary className="ribbon-button" title="Change layout" aria-label="Change layout">
           <LayoutTemplate size={19} aria-hidden="true" />
         </summary>
@@ -59,8 +63,17 @@ export function WorkspaceRibbon({
             </button>
           ))}
         </div>
-      </details>
+      </details> : null}
       <button
+        type="button"
+        className={consoleVisible ? "ribbon-button ribbon-button-active" : "ribbon-button"}
+        onClick={onConsoleToggle}
+        title={consoleVisible ? "Hide console" : "Show console"}
+        aria-label={consoleVisible ? "Hide console" : "Show console"}
+      >
+        <SquareTerminal size={19} aria-hidden="true" />
+      </button>
+      {onThemeToggle && theme ? <button
         type="button"
         className="ribbon-button ribbon-theme-button"
         onClick={onThemeToggle}
@@ -68,7 +81,7 @@ export function WorkspaceRibbon({
         aria-label={theme === "dark" ? "Use light theme" : "Use dark theme"}
       >
         {theme === "dark" ? <Sun size={19} aria-hidden="true" /> : <Moon size={19} aria-hidden="true" />}
-      </button>
+      </button> : null}
     </div>
   );
 }

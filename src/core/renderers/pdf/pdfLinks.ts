@@ -1,7 +1,7 @@
 import { PDFName, PDFPage, PDFString } from "pdf-lib";
 import type { DisplayObject, PagedDisplayList } from "../../display-list/displayTypes";
 import { sanitizeUrl } from "../../utils/sanitize";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugWarn } from "../../utils/debugSettings";
 
 export type PdfLinkTarget = {
   page: PDFPage;
@@ -74,7 +74,7 @@ function internalLinkAnnotation(
 ) {
   const target = targets?.get(targetId);
   if (!target) {
-    if (isDebugLogEnabled("pdf")) console.warn("[pdf-link-missing-target]", { targetId });
+    debugWarn("pdf", "[pdf-link-missing-target]", { targetId });
     return undefined;
   }
   return target.page.doc.context.obj({

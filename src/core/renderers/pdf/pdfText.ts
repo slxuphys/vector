@@ -14,7 +14,7 @@ import {
   rgb
 } from "pdf-lib";
 import type { DisplayObject } from "../../display-list/displayTypes";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugWarn, isDebugLogEnabled } from "../../utils/debugSettings";
 import { shapeTextWithFontFile, type ShapedTextRun } from "../text/textFontMetrics";
 import { addPdfLinkAnnotation, type PdfLinkTargets } from "./pdfLinks";
 
@@ -283,7 +283,7 @@ export function logMissingPdfGlyph(context: string, text: string, fontFamily = "
   const key = `${context}:${fontFamily}:${text}:${codePoints}`;
   if (missingGlyphLogKeys.has(key)) return;
   missingGlyphLogKeys.add(key);
-  console.warn("[pdf-missing-glyph]", {
+  debugWarn("pdf", "[pdf-missing-glyph]", {
     context,
     text,
     codePoints,

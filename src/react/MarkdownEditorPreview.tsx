@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import type { EngineOptions } from "../core/engine/engineTypes";
-import { debugError, isDebugLogEnabled } from "../core/utils/debugSettings";
+import { debugError, debugLog, isDebugLogEnabled } from "../core/utils/debugSettings";
 import { MarkdownEditor, type MarkdownEditorController } from "./editor/MarkdownEditor";
 import { PreviewPane } from "./preview/PreviewPane";
 import { PreviewToolbar } from "./preview/PreviewToolbar";
@@ -11,6 +11,7 @@ export type MarkdownEditorPreviewProps = {
   options?: EngineOptions;
   sidePanel?: ReactNode;
   leftPanel?: ReactNode;
+  bottomPanel?: ReactNode;
   toolbarPlacement?: "top" | "preview";
   onSourceChange?: (source: string) => void;
   layoutMode?: WorkspaceLayoutMode;
@@ -34,6 +35,7 @@ export function MarkdownEditorPreview({
   options = {},
   sidePanel,
   leftPanel,
+  bottomPanel,
   toolbarPlacement = "top",
   onSourceChange,
   layoutMode = "split",
@@ -143,32 +145,35 @@ export function MarkdownEditorPreview({
   return (
     <div className="svg-md-shell">
       {toolbarPlacement === "top" ? toolbar : null}
-      <div className={workspaceClasses}>
-        {leftPanel ? <aside className="svg-md-file-panel">{leftPanel}</aside> : null}
-        <MarkdownEditor
-          key={documentKey}
-          initialMarkdown={initialMarkdown}
-          sourceFormat={editorSourceFormat ?? (options.sourceFormat === "latex" ? "latex" : "markdown")}
-          theme={editorTheme}
-          onReady={handleEditorReady}
-          onDebouncedChange={handleDebouncedChange}
-          onChange={onSourceChange}
-          onSelectionChange={handleEditorSourceNavigation}
-          onControllerReady={(controller) => {
-            editorControllerRef.current = controller;
-          }}
-        />
-        <PreviewPane
-          layoutState={layoutState}
-          zoom={zoom}
-          printing={printing}
-          sourceOffset={sourceNavigation?.offset}
-          sourceNavigationId={sourceNavigation?.id}
-          onSourceClick={handlePreviewSourceClick}
-          toolbar={toolbarPlacement === "preview" ? toolbar : undefined}
-          unavailableMessage={previewAvailable ? undefined : previewUnavailableMessage ?? "This file type does not have a document preview."}
-        />
-        {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
+      <div className="svg-md-workspace-stack">
+        <div className={workspaceClasses}>
+          {leftPanel ? <aside className="svg-md-file-panel">{leftPanel}</aside> : null}
+          <MarkdownEditor
+            key={documentKey}
+            initialMarkdown={initialMarkdown}
+            sourceFormat={editorSourceFormat ?? (options.sourceFormat === "latex" ? "latex" : "markdown")}
+            theme={editorTheme}
+            onReady={handleEditorReady}
+            onDebouncedChange={handleDebouncedChange}
+            onChange={onSourceChange}
+            onSelectionChange={handleEditorSourceNavigation}
+            onControllerReady={(controller) => {
+              editorControllerRef.current = controller;
+            }}
+          />
+          <PreviewPane
+            layoutState={layoutState}
+            zoom={zoom}
+            printing={printing}
+            sourceOffset={sourceNavigation?.offset}
+            sourceNavigationId={sourceNavigation?.id}
+            onSourceClick={handlePreviewSourceClick}
+            toolbar={toolbarPlacement === "preview" ? toolbar : undefined}
+            unavailableMessage={previewAvailable ? undefined : previewUnavailableMessage ?? "This file type does not have a document preview."}
+          />
+          {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
+        </div>
+        {bottomPanel}
       </div>
     </div>
   );
@@ -184,7 +189,7 @@ function logStartupMilestone(
   const startedAt = (globalThis as { __SVG_MD_PLAYGROUND_STARTED_AT__?: number }).__SVG_MD_PLAYGROUND_STARTED_AT__;
   if (startedAt === undefined) return;
   const elapsedMs = performance.now() - startedAt;
-  console.log("[startup]", {
+  debugLog("preview", "[startup]", {
     milestone,
     elapsedMs: Math.round(elapsedMs * 10) / 10
   });

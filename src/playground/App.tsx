@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MarkdownEditorPreview } from "../react/MarkdownEditorPreview";
+import { ConsolePane } from "../react/console/ConsolePane";
 import { defaultTheme } from "../core/theme/defaultTheme";
-import {
-  defaultDebugLogSettings,
-  readDebugLogSettings,
-  writeDebugLogSettings,
-  type DebugLogKey,
-  type DebugLogSettings
-} from "../core/utils/debugSettings";
 import {
   defaultOpenMathMetrics,
   getDefaultOpenMathMetricsForProfile,
@@ -21,12 +15,13 @@ import {
 } from "../core/renderers/text/latinModernRomanFont";
 import type { OpenMathFontProfileName } from "../core/renderers/math/openMathFont";
 import { mathTuningSample } from "./mathTuningSample";
+import { WorkspaceRibbon } from "./product/WorkspaceRibbon";
 
 export function App() {
   const [openMathFont, setOpenMathFont] = useState<OpenMathFontProfileName>("latin-modern");
   const [openMathMetrics, setOpenMathMetrics] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
   const [openMathDefaults, setOpenMathDefaults] = useState<NativeMathMetrics>(defaultOpenMathMetrics);
-  const [debugLogs, setDebugLogs] = useState<DebugLogSettings>(() => readDebugLogSettings());
+  const [consoleVisible, setConsoleVisible] = useState(() => window.localStorage.getItem("vector-console-visible") === "true");
   const nativeMathProfile: NativeMathFontProfileName = openMathFont === "libertinus"
     ? "openmath-libertinus"
     : "openmath";
@@ -62,9 +57,8 @@ export function App() {
   }, [nativeMathProfile, openMathFont]);
 
   useEffect(() => {
-    writeDebugLogSettings(debugLogs);
-    (globalThis as { __SVG_MD_DEBUG_LOGS__?: Partial<DebugLogSettings> }).__SVG_MD_DEBUG_LOGS__ = debugLogs;
-  }, [debugLogs]);
+    window.localStorage.setItem("vector-console-visible", String(consoleVisible));
+  }, [consoleVisible]);
 
   const updateNativeMetric = (key: keyof NativeMathMetrics, value: number) => {
     setOpenMathMetrics((current) => ({ ...current, [key]: value }));
@@ -92,16 +86,21 @@ export function App() {
               <option value="libertinus">Libertinus</option>
             </select>
           </label>
-          <DebugLogDropdown
-            settings={debugLogs}
-            onChange={(key, value) => setDebugLogs((current) => ({ ...current, [key]: value }))}
-            onReset={() => setDebugLogs(defaultDebugLogSettings)}
-          />
         </div>
       </header>
       <MarkdownEditorPreview
         initialMarkdown={mathTuningSample}
         options={options}
+        leftPanelCompact
+        leftPanel={(
+          <div className="project-navigation project-navigation-collapsed">
+            <WorkspaceRibbon
+              consoleVisible={consoleVisible}
+              onConsoleToggle={() => setConsoleVisible((visible) => !visible)}
+            />
+          </div>
+        )}
+        bottomPanel={consoleVisible ? <ConsolePane onClose={() => setConsoleVisible(false)} /> : undefined}
         sidePanel={(
           <NativeMathTuner
             metrics={openMathMetrics}
@@ -112,46 +111,6 @@ export function App() {
         )}
       />
     </main>
-  );
-}
-
-const debugLogOptions: Array<{ key: DebugLogKey; label: string }> = [
-  { key: "math", label: "Math parse" },
-  { key: "graph", label: "GraphSX" },
-  { key: "preview", label: "Preview timing" },
-  { key: "pdf", label: "PDF export" },
-  { key: "text", label: "Text fallback" },
-  { key: "parser", label: "Parser" },
-  { key: "assets", label: "Figures & assets" }
-];
-
-function DebugLogDropdown({
-  settings,
-  onChange,
-  onReset
-}: {
-  settings: DebugLogSettings;
-  onChange: (key: DebugLogKey, value: boolean) => void;
-  onReset: () => void;
-}) {
-  const activeCount = debugLogOptions.filter((option) => settings[option.key]).length;
-  return (
-    <details className="debug-log-dropdown">
-      <summary>Logs {activeCount ? `(${activeCount})` : ""}</summary>
-      <div className="debug-log-menu">
-        {debugLogOptions.map((option) => (
-          <label key={option.key} className="debug-log-option">
-            <input
-              type="checkbox"
-              checked={settings[option.key]}
-              onChange={(event) => onChange(option.key, event.target.checked)}
-            />
-            {option.label}
-          </label>
-        ))}
-        <button type="button" onClick={onReset}>Reset</button>
-      </div>
-    </details>
   );
 }
 

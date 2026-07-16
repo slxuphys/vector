@@ -1,6 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import type { PagedDisplayList } from "../../display-list/displayTypes";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugLog, debugWarn, isDebugLogEnabled } from "../../utils/debugSettings";
 import { now } from "../../utils/timing";
 import { loadPdfFonts, selectPdfTextFontFallbacks } from "./pdfFonts";
 import { drawPdfShape } from "./pdfShapes";
@@ -26,7 +26,7 @@ export async function renderToPdf(layout: PagedDisplayList, options: PdfRenderOp
   } catch (error) {
     if (!isFontSubsetError(error)) throw error;
     if (isDebugLogEnabled("pdf")) {
-      console.warn("[pdf-export] font subsetting failed; retrying with full fonts", error);
+      debugWarn("pdf", "[pdf-export] font subsetting failed; retrying with full fonts", error);
     }
     return renderToPdfAttempt(layout, options, false, "subset-fallback");
   }
@@ -54,15 +54,15 @@ function logPdfDisplayList(layout: PagedDisplayList, source: string): void {
 
   if (source === "vscode") {
     // Extension Host drops large object arguments before they reach its console.
-    console.log("[pdf-display-list]", JSON.stringify(summary));
-    console.log("[pdf-display-list-pdf-comparable]", pdfComparable);
+    debugLog("pdf", "[pdf-display-list]", summary);
+    debugLog("pdf", "[pdf-display-list-pdf-comparable]", pdfComparable);
     return;
   }
 
-  console.log("[pdf-display-list]", {
+  debugLog("pdf", "[pdf-display-list]", () => ({
     ...summary,
     layout
-  });
+  }));
 }
 
 function displayListSignature(value: string): string {
@@ -130,7 +130,7 @@ async function renderToPdfAttempt(
   const bytes = await pdf.save();
   const saveMs = now() - saveStart;
   const totalMs = now() - start;
-  if (isDebugLogEnabled("pdf")) console.log("[pdf-export]", {
+  debugLog("pdf", "[pdf-export]", {
     totalMs: round(totalMs),
     fontMs: round(fontMs),
     drawMs: round(drawMs),
@@ -147,7 +147,7 @@ async function renderToPdfAttempt(
 
 function logUndrawnMath(renderer: string | undefined, latex: string): void {
   if (!isDebugLogEnabled("pdf")) return;
-  console.warn("[pdf-math-undrawn]", {
+  debugWarn("pdf", "[pdf-math-undrawn]", {
     renderer,
     latex
   });

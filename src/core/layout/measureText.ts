@@ -1,6 +1,6 @@
 import type { InlineRun } from "./layoutBlocks";
 import { measureTextWithFontFile } from "../renderers/text/textFontMetrics";
-import { isDebugLogEnabled } from "../utils/debugSettings";
+import { debugLog, isDebugLogEnabled } from "../utils/debugSettings";
 
 export type TextStyle = {
   fontSize: number;
@@ -53,13 +53,13 @@ export function measureText(text: string, style: TextStyle): number {
 }
 
 function logTextMeasureFallback(text: string, style: TextStyle, measurementPath: "canvas" | "heuristic"): void {
-  if (typeof console === "undefined" || !isDebugLogEnabled("text")) return;
+  if (!isDebugLogEnabled("text")) return;
   const normalized = text.length > 40 ? `${text.slice(0, 40)}...` : text;
   const key = `${measurementPath}:${style.fontFamily}:${style.bold ? "b" : ""}${style.italic ? "i" : ""}:${style.code ? "code" : ""}:${normalized}`;
   if (fallbackLogKeys.has(key)) return;
   fallbackLogKeys.add(key);
   if (fallbackLogKeys.size > 80) return;
-  console.log("[text-measure-fallback]", {
+  debugLog("text", "[text-measure-fallback]", {
     text: normalized,
     fontFamily: style.fontFamily,
     fontSize: style.fontSize,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FlaskConical } from "lucide-react";
 import { MarkdownEditorPreview, type WorkspaceLayoutMode } from "../../react/MarkdownEditorPreview";
+import { ConsolePane } from "../../react/console/ConsolePane";
 import {
   openMathTextFontFaceCss,
   openMathTextFontStack
@@ -17,6 +18,7 @@ export function ProductApp() {
   const fileSystem = useProjectFileSystem();
   const [filesVisible, setFilesVisible] = useState(true);
   const [layoutMode, setLayoutMode] = useState<WorkspaceLayoutMode>("split");
+  const [consoleVisible, setConsoleVisible] = useState(() => window.localStorage.getItem("vector-console-visible") === "true");
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     const saved = window.localStorage.getItem("vector-ui-theme");
     return saved === "dark" ? "dark" : "light";
@@ -25,6 +27,10 @@ export function ProductApp() {
   useEffect(() => {
     window.localStorage.setItem("vector-ui-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem("vector-console-visible", String(consoleVisible));
+  }, [consoleVisible]);
 
   const { projects, project, activeFile, activePath, projectId } = fileSystem;
   const activeTextFile = activeFile && isProjectTextFile(activeFile) ? activeFile : undefined;
@@ -83,15 +89,18 @@ export function ProductApp() {
         editorSourceFormat={activeTextFile?.language === "latex" ? "latex" : activeTextFile?.language === "markdown" ? "markdown" : "text"}
         previewAvailable={previewAvailable}
         previewUnavailableMessage={`Preview is not available for ${activeFile?.path ?? "this project"}.`}
+        bottomPanel={consoleVisible ? <ConsolePane onClose={() => setConsoleVisible(false)} /> : undefined}
         leftPanel={(
           <div className={filesVisible ? "project-navigation" : "project-navigation project-navigation-collapsed"}>
             <WorkspaceRibbon
               filesVisible={filesVisible}
               layoutMode={layoutMode}
               theme={theme}
+              consoleVisible={consoleVisible}
               onFilesToggle={() => setFilesVisible((visible) => !visible)}
               onLayoutChange={setLayoutMode}
               onThemeToggle={() => setTheme((current) => current === "dark" ? "light" : "dark")}
+              onConsoleToggle={() => setConsoleVisible((visible) => !visible)}
             />
             {filesVisible ? (
               <ProjectSidebar

@@ -2,7 +2,7 @@ import type { GraphSXDisplayList } from "@slxu/graphsx";
 import type { DisplayObject } from "../../display-list/displayTypes";
 import { measureText as measureDocumentText } from "../../layout/measureText";
 import { defaultTheme } from "../../theme/defaultTheme";
-import { isDebugLogEnabled } from "../../utils/debugSettings";
+import { debugLog, isDebugLogEnabled } from "../../utils/debugSettings";
 import { escapeXml } from "../../utils/sanitize";
 import {
   getNativeGlyphMetrics,
@@ -2610,9 +2610,8 @@ function logNativeMathParse(
   fontSize: number,
   layout: NativeMathLayout
 ): void {
-  if (typeof console === "undefined") return;
   if (!isDebugLogEnabled("math")) return;
-  console.log("[native-math-parse]", {
+  debugLog("math", "[native-math-parse]", () => ({
     call,
     latex,
     displayMode,
@@ -2692,7 +2691,7 @@ function logNativeMathParse(
         points: node.points.map(([x, y]) => [roundNumber(x), roundNumber(y)])
       };
     })
-  });
+  }));
 }
 
 function logNativeSqrtBox(
@@ -2720,9 +2719,8 @@ function logNativeSqrtBox(
     radicalInkBottom: number;
   }
 ): void {
-  if (typeof console === "undefined") return;
   if (!isDebugLogEnabled("math")) return;
-  console.log("[native-math-sqrt-box]", {
+  debugLog("math", "[native-math-sqrt-box]", {
     bodyLatex,
     fontSize: roundNumber(box.fontSize),
     bodyHeight: roundNumber(box.bodyHeight),
