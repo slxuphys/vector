@@ -114,7 +114,23 @@ const noticePlugin: VectorPlugin = {
 const engine = createDocumentEngine({ plugins: [noticePlugin] });
 ```
 
-Block and inline plugin nodes are namespaced by plugin and kind. Layout handlers return canonical display objects, so SVG preview and PDF export share the same geometry. `setup(host)` gives plugins controlled access to diagnostics, asset resolution, text measurement, native math layout, and namespaced caches. Document plugins can use `prepareDocument`, `transformAst`, `finalizeDocument`, and `disposeDocument`; the same per-document state is available to parser handlers and lifecycle hooks. The built-in bibliography package owns Markdown citation syntax, the bibliography directive, LaTeX citation conversion, BibTeX loading, and document-wide resolution without an engine-level special case. Advanced consumers can still pass a `VectorPluginRegistry` as a complete registry override.
+Block and inline plugin nodes are namespaced by plugin and kind. Layout handlers return canonical display objects, so SVG preview and PDF export share the same geometry. `setup(host)` gives plugins controlled access to diagnostics, text measurement, native math layout, and namespaced caches. Document plugins can use `prepareDocument`, `transformAst`, `finalizeDocument`, and `disposeDocument`; the same per-document state is available to parser handlers and lifecycle hooks. Lifecycle hooks receive the document's `resources` provider for document-relative text, binary, and URL access. Hooks may be asynchronous when the document is laid out with `createDocumentEngine().layout()`.
+
+```ts
+import { createDocumentEngine, createMemoryResourceProvider } from "vector-text-engine";
+
+const resources = createMemoryResourceProvider({
+  text: { "paper/references.bib": bibtexSource },
+  urls: { "paper/figures/result.svg": resultSvgUrl }
+});
+
+const engine = createDocumentEngine({
+  sourcePath: "paper/main.md",
+  resources
+});
+```
+
+The built-in bibliography package owns Markdown citation syntax, the bibliography directive, LaTeX citation conversion, resource loading, and document-wide resolution without an engine-level special case. Advanced consumers can still pass a `VectorPluginRegistry` as a complete registry override.
 
 ## GitHub Pages
 

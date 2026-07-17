@@ -16,6 +16,7 @@ import type {
 } from "./pluginTypes";
 import type { MarkdownAst } from "../../markdown/markdownTypes";
 import type { VectorPluginDocumentContext } from "./pluginDocumentContext";
+import { isPromiseLike } from "../../resources";
 import {
   createVectorPluginHost,
   VECTOR_PLUGIN_API_VERSION,
@@ -143,28 +144,57 @@ export class VectorPluginRegistry {
   }
 
   prepareDocument(context: PluginDocumentLifecycleContext): void {
-    for (const { hooks } of this.documentHooks) hooks.prepareDocument?.(context);
+    for (const { hooks } of this.documentHooks) assertSync(hooks.prepareDocument?.(context));
+  }
+
+  async prepareDocumentAsync(context: PluginDocumentLifecycleContext): Promise<void> {
+    for (const { hooks } of this.documentHooks) await hooks.prepareDocument?.(context);
   }
 
   transformDocumentAst(ast: MarkdownAst, context: PluginDocumentLifecycleContext): MarkdownAst {
     return this.documentHooks.reduce(
-      (current, { hooks }) => hooks.transformAst?.(current, context) ?? current,
+      (current, { hooks }) => assertSync(hooks.transformAst?.(current, context)) ?? current,
       ast
     );
+  }
+
+  async transformDocumentAstAsync(ast: MarkdownAst, context: PluginDocumentLifecycleContext): Promise<MarkdownAst> {
+    let current = ast;
+    for (const { hooks } of this.documentHooks) current = await hooks.transformAst?.(current, context) ?? current;
+    return current;
   }
 
   finalizeDocument(ast: MarkdownAst, context: PluginDocumentLifecycleContext): MarkdownAst {
     return this.documentHooks.reduce(
-      (current, { hooks }) => hooks.finalizeDocument?.(current, context) ?? current,
+      (current, { hooks }) => assertSync(hooks.finalizeDocument?.(current, context)) ?? current,
       ast
     );
   }
 
+  async finalizeDocumentAsync(ast: MarkdownAst, context: PluginDocumentLifecycleContext): Promise<MarkdownAst> {
+    let current = ast;
+    for (const { hooks } of this.documentHooks) current = await hooks.finalizeDocument?.(current, context) ?? current;
+    return current;
+  }
+
   disposeDocument(context: PluginDocumentLifecycleContext): void {
     for (let index = this.documentHooks.length - 1; index >= 0; index -= 1) {
-      this.documentHooks[index].hooks.disposeDocument?.(context);
+      assertSync(this.documentHooks[index].hooks.disposeDocument?.(context));
     }
   }
+
+  async disposeDocumentAsync(context: PluginDocumentLifecycleContext): Promise<void> {
+    for (let index = this.documentHooks.length - 1; index >= 0; index -= 1) {
+      await this.documentHooks[index].hooks.disposeDocument?.(context);
+    }
+  }
+}
+
+function assertSync<T>(value: T | Promise<T> | undefined): T | undefined {
+  if (value !== undefined && isPromiseLike(value)) {
+    throw new Error("An asynchronous plugin/resource hook requires createDocumentEngine().layout().");
+  }
+  return value;
 }
 
 function registerEntries<T>(

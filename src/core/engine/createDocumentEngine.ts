@@ -35,7 +35,11 @@ import {
   type VectorPluginDocumentContext,
   type VectorPluginRegistry
 } from "../plugins/api";
-import { resolveDocumentAssetSources } from "./resolveDocumentAssetSources";
+import {
+  resolveDocumentResourceSources,
+  resolveDocumentResourceSourcesSync
+} from "./resolveDocumentAssetSources";
+import { createLegacyResourceProvider } from "../resources";
 
 export type DocumentEngine = {
   layout(markdown: string): Promise<{ layout: PagedDisplayList; stats: PreviewStats }>;
@@ -89,7 +93,7 @@ export async function prepareMarkdownLayoutWithFonts(markdown: string, options: 
   if (needsNativeMathFontsBeforeFrontMatter(document, options)) {
     await loadNativeMathFonts();
   }
-  return prepareMarkdownLayoutFromDocument(document, options, totalStart, parseStart);
+  return prepareMarkdownLayoutFromDocumentAsync(document, options, totalStart, parseStart);
 }
 
 function prepareMarkdownLayoutFromDocument(
@@ -101,6 +105,7 @@ function prepareMarkdownLayoutFromDocument(
   const sourceDefaults = applySourceFormatDefaults(document.markdown, options);
   const resolvedOptions = applyDocumentFrontMatter(sourceDefaults, document.frontMatter);
   const pluginRegistry = resolvePluginRegistry(resolvedOptions.plugins);
+  const resources = resolvedOptions.resources ?? createLegacyResourceProvider(resolvedOptions);
   warnFrontMatter(document.warnings);
   const documentOptions = {
     ...defaultDocumentOptions,
@@ -115,18 +120,19 @@ function prepareMarkdownLayoutFromDocument(
     sourcePath: resolvedOptions.sourcePath,
     options: resolvedOptions,
     frontMatter: document.frontMatter,
-    document: pluginDocument
+    document: pluginDocument,
+    resources
   });
   let blocks: LayoutBlock[];
   try {
     pluginRegistry.prepareDocument(lifecycle);
-    const sourceAst = resolveDocumentAssetSources(parseSourceAst(
+    const sourceAst = resolveDocumentResourceSourcesSync(parseSourceAst(
       document.markdown,
       resolvedOptions.sourceFormat,
       document.sourceOffset,
       pluginRegistry,
       pluginDocument
-    ), resolvedOptions.assetUrls, resolvedOptions.sourcePath);
+    ), resources, resolvedOptions.sourcePath);
     const transformedAst = pluginRegistry.transformDocumentAst(sourceAst, lifecycle);
     const referencedAst = resolveCrossReferences(transformedAst, crossRef, {
       titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
@@ -137,6 +143,66 @@ function prepareMarkdownLayoutFromDocument(
     blocks = normalizeAst(ast, pluginRegistry);
   } finally {
     pluginRegistry.disposeDocument(lifecycle);
+  }
+  const titleMatter = buildTitleMatter(documentOptions);
+  const parseMs = now() - parseStart;
+  const page = createPageConfig(resolvedOptions.pageSize ?? "letter", resolvedOptions.margin ?? 72);
+  const theme: DocumentTheme = { ...defaultTheme, ...(resolvedOptions.theme ?? {}) };
+  const mathRenderer = resolvedOptions.mathRenderer ?? "native-openmath";
+  const nativeMathMetrics = resolvedOptions.nativeMathMetrics;
+  const nativeMathProfile = resolvedOptions.nativeMathProfile;
+  const layoutConfig = mergeLayoutConfig(resolvedOptions.layout, undefined);
+
+  return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, plugins: pluginRegistry, parseMs, totalStart };
+}
+
+async function prepareMarkdownLayoutFromDocumentAsync(
+  document: ParsedMarkdownDocument,
+  options: EngineOptions,
+  totalStart: number,
+  parseStart: number
+): Promise<PreparedLayout> {
+  const sourceDefaults = applySourceFormatDefaults(document.markdown, options);
+  const resolvedOptions = applyDocumentFrontMatter(sourceDefaults, document.frontMatter);
+  const pluginRegistry = resolvePluginRegistry(resolvedOptions.plugins);
+  const resources = resolvedOptions.resources ?? createLegacyResourceProvider(resolvedOptions);
+  warnFrontMatter(document.warnings);
+  const documentOptions = {
+    ...defaultDocumentOptions,
+    ...(resolvedOptions.document ?? {})
+  };
+  const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
+  const pluginDocument = createVectorPluginDocumentContext();
+  const lifecycle = pluginRegistry.createDocumentLifecycleContext({
+    source: document.markdown,
+    sourceOffset: document.sourceOffset,
+    sourceFormat: resolvedOptions.sourceFormat ?? "markdown",
+    sourcePath: resolvedOptions.sourcePath,
+    options: resolvedOptions,
+    frontMatter: document.frontMatter,
+    document: pluginDocument,
+    resources
+  });
+  let blocks: LayoutBlock[];
+  try {
+    await pluginRegistry.prepareDocumentAsync(lifecycle);
+    const sourceAst = await resolveDocumentResourceSources(parseSourceAst(
+      document.markdown,
+      resolvedOptions.sourceFormat,
+      document.sourceOffset,
+      pluginRegistry,
+      pluginDocument
+    ), resources, resolvedOptions.sourcePath);
+    const transformedAst = await pluginRegistry.transformDocumentAstAsync(sourceAst, lifecycle);
+    const referencedAst = resolveCrossReferences(transformedAst, crossRef, {
+      titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
+      numberSections: documentOptions.numberSections,
+      sectionNumberStyle: documentOptions.sectionNumberStyle
+    });
+    const ast = await pluginRegistry.finalizeDocumentAsync(referencedAst, lifecycle);
+    blocks = normalizeAst(ast, pluginRegistry);
+  } finally {
+    await pluginRegistry.disposeDocumentAsync(lifecycle);
   }
   const titleMatter = buildTitleMatter(documentOptions);
   const parseMs = now() - parseStart;

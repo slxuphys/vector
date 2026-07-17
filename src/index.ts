@@ -31,6 +31,17 @@ export type {
   VectorPluginMetadata
 } from "./core/plugins";
 export { loadNativeMathFonts } from "./core/renderers/math/nativeFontMetrics";
+export {
+  createLegacyResourceProvider,
+  createMemoryResourceProvider,
+  normalizeResourcePath,
+  resolveResourcePath
+} from "./core/resources";
+export type {
+  DocumentResourceProvider,
+  MemoryResourceProviderInput,
+  ResourceResult
+} from "./core/resources";
 export { MarkdownEditorPreview } from "./react/MarkdownEditorPreview";
 export { MarkdownEditor } from "./react/editor/MarkdownEditor";
 export { PreviewPane } from "./react/preview/PreviewPane";

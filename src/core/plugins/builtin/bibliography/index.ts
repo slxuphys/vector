@@ -2,6 +2,7 @@ import type { VectorPlugin } from "../../api";
 import type { InlineNode } from "../../../markdown/markdownTypes";
 import { parseBibtex, type BibEntry } from "./bibtex";
 import { resolveCitations, type CitationData, type CitationItem } from "./citations";
+import { isPromiseLike } from "../../../resources";
 
 const pluginName = "@vector/bibliography";
 const stateKey = `${pluginName}:document`;
@@ -9,6 +10,7 @@ const cacheNamespace = `${pluginName}:bibtex`;
 
 type BibliographyDocumentState = {
   paths: string[];
+  files?: Record<string, string>;
 };
 
 type CachedBibliography = {
@@ -48,13 +50,35 @@ export const bibliographyPackage: VectorPlugin = {
       const paths = context.sourceFormat === "latex"
         ? readLatexBibliographyPaths(context.source)
         : context.frontMatter?.bibliography ? [context.frontMatter.bibliography] : [];
-      context.document.getState<BibliographyDocumentState>(stateKey, () => ({ paths })).paths = paths;
+      const state = context.document.getState<BibliographyDocumentState>(stateKey, () => ({ paths }));
+      state.paths = paths;
+      if (!context.resources || paths.length === 0) {
+        state.files = context.options.bibliographyFiles;
+        return;
+      }
+      const files: Record<string, string> = {};
+      const pending: Promise<void>[] = [];
+      for (const requested of paths) {
+        const candidates = requested.toLowerCase().endsWith(".bib")
+          ? [requested]
+          : [requested, `${requested}.bib`];
+        for (const candidate of candidates) {
+          const content = context.resources.readText(candidate, context.sourcePath);
+          if (isPromiseLike(content)) {
+            pending.push(content.then((value) => storeBibliographyFile(files, context.resources!.resolve(candidate, context.sourcePath), candidate, value)));
+          } else {
+            storeBibliographyFile(files, context.resources.resolve(candidate, context.sourcePath), candidate, content);
+          }
+        }
+      }
+      state.files = files;
+      if (pending.length > 0) return Promise.all(pending).then(() => undefined);
     },
     transformAst(ast, context) {
       const state = context.document.peekState<BibliographyDocumentState>(stateKey);
       return resolveCitations(ast, {
         paths: state?.paths ?? [],
-        files: context.options.bibliographyFiles,
+        files: state?.files ?? context.options.bibliographyFiles,
         sourcePath: context.sourcePath,
         onMissingFile(path) {
           context.host.diagnostics.report({
@@ -84,6 +108,17 @@ export const bibliographyPackage: VectorPlugin = {
     }
   }
 };
+
+function storeBibliographyFile(
+  files: Record<string, string>,
+  resolvedPath: string,
+  requestedPath: string,
+  content: string | undefined
+): void {
+  if (content === undefined) return;
+  files[resolvedPath] = content;
+  files[requestedPath.replaceAll("\\", "/")] = content;
+}
 
 function bibliographyMarker(sourceSpan?: { start: number; end: number }) {
   return {

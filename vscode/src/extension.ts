@@ -4,10 +4,11 @@ import { PageRequestMessage, VectorPreviewPanel } from "./previewPanel";
 import { collectDisplayAnchors, createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg, renderToPdf } from "./previewBundle";
 import type { PagedDisplayList } from "../../src/core/display-list/displayTypes";
 import { createNodePdfImageServices, prepareNodePreviewPage } from "./nodePdfImage";
+import { createNodeResourceProvider } from "./nodeResources";
+import type { DocumentResourceProvider } from "../../src/core/resources";
 
 const previewDebounceMs = 150;
 const pendingUpdates = new Map<number, PreviewTiming>();
-const bibliographyCache = new Map<string, { mtime: number; size: number; content: string }>();
 let activePreview: ActivePreview | undefined;
 let pdfExportInProgress = false;
 
@@ -162,7 +163,8 @@ type VectorPreviewBundle = {
     sourceFormat: "markdown" | "latex";
     mathRenderer: "native-openmath";
     nativeMathProfile: "openmath";
-    bibliographyFiles?: Record<string, string>;
+    sourcePath?: string;
+    resources?: DocumentResourceProvider;
   }): {
       layout(source: string): Promise<{
       layout: PagedDisplayList;
@@ -194,12 +196,13 @@ async function renderPreview(
     const fontLoadStartedAt = performance.now();
     await bundle.loadNativeMathFonts();
     if (timing) timing.fontLoadMs = performance.now() - fontLoadStartedAt;
-    const bibliographyFiles = await loadBibliographyFiles(document, sourceFormat);
+    const resources = createNodeResourceProvider(document);
     const engine = bundle.createDocumentEngine({
       sourceFormat,
       mathRenderer: "native-openmath",
       nativeMathProfile: "openmath",
-      bibliographyFiles
+      sourcePath: document.uri.fsPath,
+      resources
     });
     const result = await engine.layout(document.getText());
     if (timing) {
@@ -225,6 +228,7 @@ async function renderPreview(
         height: page.height
       })),
       anchors: collectDisplayAnchors(result.layout),
+      resources,
       renderedCache: new Map()
     };
     const postStartedAt = performance.now();
@@ -255,7 +259,7 @@ async function exportPdf(panel?: VectorPreviewPanel): Promise<void> {
     const bytes = await bundle.renderToPdf(activePreview.layout, {
       subsetFonts: true,
       debugLabel: "vscode",
-      imageServices: createNodePdfImageServices(document)
+      imageServices: createNodePdfImageServices(activePreview.resources)
     });
     const target = await exportTargetFor(document);
     if (!target) {
@@ -296,51 +300,6 @@ async function exportTargetFor(document: vscode.TextDocument): Promise<vscode.Ur
   });
 }
 
-async function loadBibliographyFiles(
-  document: vscode.TextDocument,
-  sourceFormat: "markdown" | "latex"
-): Promise<Record<string, string>> {
-  const source = document.getText();
-  const paths = sourceFormat === "latex"
-    ? [...source.matchAll(/\\bibliography\s*\{([^}]+)}/g)].flatMap((match) => match[1].split(","))
-    : [source.match(/^---[\s\S]*?^bibliography:\s*["']?([^#\n"']+)/m)?.[1] ?? ""];
-  const files: Record<string, string> = {};
-  const root = vscode.Uri.file(path.dirname(document.uri.fsPath));
-
-  for (const rawPath of paths) {
-    const requested = rawPath.trim();
-    if (!requested) continue;
-    const candidates = requested.toLowerCase().endsWith(".bib") ? [requested] : [requested, requested + ".bib"];
-    for (const candidate of candidates) {
-      try {
-        const uri = vscode.Uri.joinPath(root, ...candidate.replaceAll("\\", "/").split("/"));
-        const content = await readTextFileCached(uri);
-        files[requested] = content;
-        files[candidate] = content;
-        break;
-      } catch {
-        // The resolver renders unresolved citations in red and keeps the preview usable.
-      }
-    }
-  }
-
-  return files;
-}
-
-async function readTextFileCached(uri: vscode.Uri): Promise<string> {
-  const stat = await vscode.workspace.fs.stat(uri);
-  const key = uri.toString();
-  const cached = bibliographyCache.get(key);
-  if (cached && cached.mtime === stat.mtime && cached.size === stat.size) return cached.content;
-  const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
-  bibliographyCache.set(key, { mtime: stat.mtime, size: stat.size, content });
-  if (bibliographyCache.size > 32) {
-    const oldest = bibliographyCache.keys().next().value as string | undefined;
-    if (oldest) bibliographyCache.delete(oldest);
-  }
-  return content;
-}
-
 async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message: PageRequestMessage): Promise<void> {
   if (!panel?.alive || !activePreview || message.updateId !== activePreview.updateId) return;
   const uniqueIndexes = [...new Set(message.indexes)]
@@ -362,12 +321,7 @@ async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message
       pageSvgBytes.push({ page: index, bytes: cached.length });
       continue;
     }
-    const previewDocument = vscode.workspace.textDocuments.find(
-      (document) => document.uri.toString() === activePreview?.documentUri
-    );
-    const page = previewDocument
-      ? await prepareNodePreviewPage(previewDocument, activePreview.pages[index])
-      : activePreview.pages[index];
+    const page = await prepareNodePreviewPage(activePreview.resources, activePreview.pages[index]);
     const rawSvg = renderPageToSvg(page, { includeFontCss: false });
     rawSvgBytes += rawSvg.length;
     const svg = rawSvg;
@@ -430,6 +384,7 @@ type ActivePreview = {
   stats: { pageCount: number; totalMs: number; parseMs?: number; layoutMs?: number };
   pageMeta: PageMeta[];
   anchors: AnchorMeta[];
+  resources: DocumentResourceProvider;
   renderedCache: Map<number, string>;
 };
 

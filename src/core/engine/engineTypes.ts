@@ -6,6 +6,7 @@ import type { NativeMathFontProfileName } from "../renderers/math/nativeMathProf
 import type { DocumentTheme } from "../theme/themeTypes";
 import type { CrossRefConfig } from "../xref/xrefTypes";
 import type { VectorPlugin, VectorPluginRegistry } from "../plugins/api";
+import type { DocumentResourceProvider } from "../resources";
 
 export type EngineOptions = {
   sourceFormat?: SourceFormat;
@@ -17,7 +18,10 @@ export type EngineOptions = {
   nativeMathProfile?: NativeMathFontProfileName;
   crossRef?: Partial<CrossRefConfig>;
   layout?: Partial<LayoutConfig>;
+  resources?: DocumentResourceProvider;
+  /** @deprecated Use resources instead. */
   bibliographyFiles?: Record<string, string>;
+  /** @deprecated Use resources instead. */
   assetUrls?: Record<string, string>;
   sourcePath?: string;
   document?: Partial<DocumentOptions>;

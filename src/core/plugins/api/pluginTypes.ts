@@ -12,6 +12,7 @@ import type { LayoutConfig } from "../../layout/layoutConfig";
 import type { VectorPluginDocumentContext } from "./pluginDocumentContext";
 import type { VectorPluginHost } from "./pluginHost";
 import type { DocumentFrontMatter } from "../../config/documentConfig";
+import type { DocumentResourceProvider, ResourceResult } from "../../resources";
 
 export type VectorPluginMetadata = {
   name: string;
@@ -158,14 +159,15 @@ export type PluginDocumentLifecycleContext = {
   options: EngineOptions;
   frontMatter?: DocumentFrontMatter;
   document: VectorPluginDocumentContext;
+  resources?: DocumentResourceProvider;
   host: VectorPluginHost;
 };
 
 export type PluginDocumentHooks = {
-  prepareDocument?: (context: PluginDocumentLifecycleContext) => void;
-  transformAst?: (ast: MarkdownAst, context: PluginDocumentLifecycleContext) => MarkdownAst;
-  finalizeDocument?: (ast: MarkdownAst, context: PluginDocumentLifecycleContext) => MarkdownAst;
-  disposeDocument?: (context: PluginDocumentLifecycleContext) => void;
+  prepareDocument?: (context: PluginDocumentLifecycleContext) => ResourceResult<void>;
+  transformAst?: (ast: MarkdownAst, context: PluginDocumentLifecycleContext) => ResourceResult<MarkdownAst>;
+  finalizeDocument?: (ast: MarkdownAst, context: PluginDocumentLifecycleContext) => ResourceResult<MarkdownAst>;
+  disposeDocument?: (context: PluginDocumentLifecycleContext) => ResourceResult<void>;
 };
 
 export type VectorPlugin = {
