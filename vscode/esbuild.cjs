@@ -70,6 +70,9 @@ esbuild.build({
   platform: "node",
   target: "node18",
   format: "cjs",
+  define: {
+    "import.meta.url": "__filename"
+  },
   external: ["vscode"],
   sourcemap: true,
   logLevel: "info",

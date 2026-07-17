@@ -8,6 +8,7 @@ export class VectorPreviewPanel {
   private pageRequestHandlers: Array<(message: PageRequestMessage) => void> = [];
   private sourceRevealHandlers: Array<(message: SourceRevealMessage) => void> = [];
   private exportHandlers: Array<() => void> = [];
+  private debugLogHandlers: Array<(message: WebviewDebugLogMessage) => void> = [];
 
   private constructor(extensionUri: vscode.Uri, onDispose: () => void) {
     this.panel = vscode.window.createWebviewPanel(
@@ -29,6 +30,8 @@ export class VectorPreviewPanel {
         this.sourceRevealHandlers.forEach((handler) => handler(message));
       } else if (isExportPdfMessage(message)) {
         this.exportHandlers.forEach((handler) => handler());
+      } else if (isWebviewDebugLogMessage(message)) {
+        this.debugLogHandlers.forEach((handler) => handler(message));
       }
     });
     this.panel.webview.html = webviewHtml(this.panel.webview, extensionUri);
@@ -73,6 +76,10 @@ export class VectorPreviewPanel {
 
   onExportPdf(handler: () => void): void {
     this.exportHandlers.push(handler);
+  }
+
+  onDebugLog(handler: (message: WebviewDebugLogMessage) => void): void {
+    this.debugLogHandlers.push(handler);
   }
 
   setExportStatus(state: "pending" | "complete" | "error", message?: string): Thenable<boolean> {
@@ -133,6 +140,15 @@ export type PreviewShownMessage = {
 
 export type PageRequestMessage = { type: "requestPages"; updateId: number; indexes: number[] };
 export type SourceRevealMessage = { type: "revealSource"; start: number; end: number };
+export type WebviewDebugLogMessage = {
+  type: "debugLog";
+  entry: {
+    key: string;
+    level: "log" | "warn" | "error";
+    label: string;
+    details?: unknown;
+  };
+};
 type ExportPdfMessage = { type: "exportPdf" };
 type PageMeta = { index: number; width: number; height: number };
 type RenderedPagePayload = { index: number; svg: string };
@@ -178,6 +194,16 @@ function isSourceRevealMessage(message: unknown): message is SourceRevealMessage
 
 function isExportPdfMessage(message: unknown): message is ExportPdfMessage {
   return Boolean(message && typeof message === "object" && (message as Record<string, unknown>).type === "exportPdf");
+}
+
+function isWebviewDebugLogMessage(message: unknown): message is WebviewDebugLogMessage {
+  if (!message || typeof message !== "object") return false;
+  const record = message as Record<string, unknown>;
+  if (record.type !== "debugLog" || !record.entry || typeof record.entry !== "object") return false;
+  const entry = record.entry as Record<string, unknown>;
+  return typeof entry.key === "string"
+    && (entry.level === "log" || entry.level === "warn" || entry.level === "error")
+    && typeof entry.label === "string";
 }
 
 function randomNonce(): string {

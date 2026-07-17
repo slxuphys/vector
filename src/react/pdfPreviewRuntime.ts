@@ -1,8 +1,9 @@
-import { getDocument, GlobalWorkerOptions, VerbosityLevel } from "pdfjs-dist/build/pdf.mjs";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { getDocument, PDFWorker, VerbosityLevel } from "pdfjs-dist/build/pdf.mjs";
+import PdfJsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker&inline";
 import { debugGroup } from "../core/utils/debugSettings";
 
-let pdfRuntimeConfigured = false;
+let sharedWorker: PDFWorker | undefined;
+let sharedWorkerReady: Promise<void> | undefined;
 
 export async function renderPdfPageToDataUrl(source: string, targetWidth: number): Promise<string> {
   const totalStartedAt = performance.now();
@@ -11,13 +12,13 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
   const loadBytesMs = performance.now() - bytesStartedAt;
   const pdfBytes = bytes.byteLength;
   const pdfSignature = bytePrefix(bytes);
-  const runtimeStartedAt = performance.now();
-  const coldStart = !pdfRuntimeConfigured;
-  configurePdfRuntime();
-  const runtimeMs = performance.now() - runtimeStartedAt;
+  const workerStartedAt = performance.now();
+  const { worker, coldStart } = await getSharedWorker();
+  const workerMs = performance.now() - workerStartedAt;
   const documentStartedAt = performance.now();
   const document = await getDocument({
     data: bytes,
+    worker,
     verbosity: VerbosityLevel.ERRORS
   }).promise;
   const documentMs = performance.now() - documentStartedAt;
@@ -77,9 +78,9 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
       }],
       ["timing", {
         loadBytesMs: Math.round(loadBytesMs * 10) / 10,
-        runtimeColdStart: coldStart,
-        runtimeMs: Math.round(runtimeMs * 10) / 10,
-        workerMode: "worker",
+        workerColdStart: coldStart,
+        workerMs: Math.round(workerMs * 10) / 10,
+        workerMode: "inline-shared",
         documentMs: Math.round(documentMs * 10) / 10,
         getPageMs: Math.round(getPageMs * 10) / 10,
         renderMs: Math.round(renderMs * 10) / 10,
@@ -91,10 +92,15 @@ export async function renderPdfPageToDataUrl(source: string, targetWidth: number
   }
 }
 
-function configurePdfRuntime(): void {
-  if (pdfRuntimeConfigured) return;
-  GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-  pdfRuntimeConfigured = true;
+async function getSharedWorker(): Promise<{ worker: PDFWorker; coldStart: boolean }> {
+  const coldStart = !sharedWorker;
+  if (!sharedWorker) {
+    const port = new PdfJsWorker();
+    sharedWorker = PDFWorker.create({ port });
+    sharedWorkerReady = sharedWorker.promise.then(() => undefined);
+  }
+  await sharedWorkerReady;
+  return { worker: sharedWorker, coldStart };
 }
 
 async function canvasToDataUrl(canvas: HTMLCanvasElement): Promise<string> {

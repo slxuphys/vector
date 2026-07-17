@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Download, LoaderCircle, ZoomIn, ZoomOut } from "lucide-react";
+import { getDebugLogEntries, subscribeDebugLogs } from "../../../src/core/utils/debugSettings";
 import { hydrateSvgImages } from "../../../src/react/hydrateSvgImages";
 import { PreviewSurface } from "../../../src/react/preview/PreviewSurface";
 import { vscode } from "./vscodeBridge";
+
+const debugGlobals = globalThis as typeof globalThis & {
+  __SVG_MD_DEBUG_LOGS__?: Record<string, boolean>;
+};
+debugGlobals.__SVG_MD_DEBUG_LOGS__ = {
+  ...debugGlobals.__SVG_MD_DEBUG_LOGS__,
+  assets: true
+};
+
+let lastForwardedDebugLogId = 0;
 
 type PageMeta = { index: number; width: number; height: number };
 type Stats = { pageCount: number; totalMs: number };
@@ -29,6 +40,15 @@ export function VsCodePreviewApp() {
   useEffect(() => {
     previewRef.current = preview;
   }, [preview]);
+
+  useEffect(() => subscribeDebugLogs(() => {
+    for (const entry of getDebugLogEntries()) {
+      if (entry.id <= lastForwardedDebugLogId) continue;
+      lastForwardedDebugLogId = entry.id;
+      if (entry.key !== "assets" || !entry.label.includes("PDF")) continue;
+      vscode.postMessage({ type: "debugLog", entry });
+    }
+  }), []);
 
   const requestPages = useCallback((updateId: number, indexes: number[]) => {
     if (indexes.length === 0) return;

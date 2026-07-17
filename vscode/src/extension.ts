@@ -62,6 +62,10 @@ export function activate(context: vscode.ExtensionContext) {
         previewPanel.onExportPdf(() => {
           void exportPdf(previewPanel);
         });
+        previewPanel.onDebugLog(({ entry }) => {
+          const method = entry.level === "error" ? console.error : entry.level === "warn" ? console.warn : console.log;
+          method("[vscode-pdf-figure]", entry.label, entry.details);
+        });
         previewPanel.onPreviewShown((message) => {
           if (message.updateId === undefined) return;
           const timing = pendingUpdates.get(message.updateId);

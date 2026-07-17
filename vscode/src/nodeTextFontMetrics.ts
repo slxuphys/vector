@@ -65,6 +65,7 @@ type HarfbuzzExports = {
 
 const createHarfBuzz = rawCreateHarfBuzz as unknown as (options?: {
   wasmBinary?: ArrayBuffer | Uint8Array;
+  locateFile?: (path: string) => string;
 }) => Promise<unknown>;
 
 export type ShapedGlyph = {
@@ -119,6 +120,7 @@ let harfbuzzPromise: Promise<HarfbuzzModule> | undefined;
 export async function loadTextFontsForTheme(theme: DocumentTheme): Promise<void> {
   const family = textFontFamilyForCss(theme.fontFamily);
   if (!family) return;
+  await loadHarfbuzzTextShaper();
   await Promise.all([
     loadTextFont(`${family}:regular`),
     loadTextFont(`${family}:bold`),
@@ -292,7 +294,10 @@ async function loadHarfbuzzModule(): Promise<HarfbuzzModule> {
     const response = await fetch(harfbuzzWasmUrl);
     if (!response.ok) throw new Error("Could not load HarfBuzz text WASM");
     const wasmBinary = new Uint8Array(await response.arrayBuffer());
-    const module = await createHarfBuzz({ wasmBinary }) as HarfbuzzModule;
+    const module = await createHarfBuzz({
+      wasmBinary,
+      locateFile: () => harfbuzzWasmUrl
+    }) as HarfbuzzModule;
     harfbuzzModule = module;
     return module;
   })();
