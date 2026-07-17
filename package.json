@@ -10,7 +10,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "build:playground": "tsc && vite build --config vite.playground.config.ts",
+    "build:product": "tsc && vite build --config vite.product.config.ts",
     "preview": "vite preview --host 127.0.0.1",
+    "preview:product": "vite preview --host 127.0.0.1 --config vite.product.config.ts",
     "test": "vitest run",
     "test:ui": "playwright test",
     "test:parity": "node scripts/test-pdf-parity.mjs"

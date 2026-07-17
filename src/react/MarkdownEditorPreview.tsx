@@ -134,11 +134,14 @@ export function MarkdownEditorPreview({
       previewAvailable={previewAvailable}
     />
   );
+  const workspaceFrameClasses = [
+    "svg-md-workspace-frame",
+    leftPanel ? "svg-md-workspace-frame-with-left-panel" : "",
+    leftPanel && leftPanelCompact ? "svg-md-workspace-frame-left-compact" : ""
+  ].filter(Boolean).join(" ");
   const workspaceClasses = [
     "svg-md-workspace",
     sidePanel ? "svg-md-workspace-with-panel" : "",
-    leftPanel ? "svg-md-workspace-with-left-panel" : "",
-    leftPanel && leftPanelCompact ? "svg-md-workspace-left-compact" : "",
     `svg-md-workspace-layout-${layoutMode}`
   ].filter(Boolean).join(" ");
 
@@ -146,34 +149,38 @@ export function MarkdownEditorPreview({
     <div className="svg-md-shell">
       {toolbarPlacement === "top" ? toolbar : null}
       <div className="svg-md-workspace-stack">
-        <div className={workspaceClasses}>
+        <div className={workspaceFrameClasses}>
           {leftPanel ? <aside className="svg-md-file-panel">{leftPanel}</aside> : null}
-          <MarkdownEditor
-            key={documentKey}
-            initialMarkdown={initialMarkdown}
-            sourceFormat={editorSourceFormat ?? (options.sourceFormat === "latex" ? "latex" : "markdown")}
-            theme={editorTheme}
-            onReady={handleEditorReady}
-            onDebouncedChange={handleDebouncedChange}
-            onChange={onSourceChange}
-            onSelectionChange={handleEditorSourceNavigation}
-            onControllerReady={(controller) => {
-              editorControllerRef.current = controller;
-            }}
-          />
-          <PreviewPane
-            layoutState={layoutState}
-            zoom={zoom}
-            printing={printing}
-            sourceOffset={sourceNavigation?.offset}
-            sourceNavigationId={sourceNavigation?.id}
-            onSourceClick={handlePreviewSourceClick}
-            toolbar={toolbarPlacement === "preview" ? toolbar : undefined}
-            unavailableMessage={previewAvailable ? undefined : previewUnavailableMessage ?? "This file type does not have a document preview."}
-          />
-          {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
+          <div className="svg-md-work-area">
+            <div className={workspaceClasses}>
+              <MarkdownEditor
+                key={documentKey}
+                initialMarkdown={initialMarkdown}
+                sourceFormat={editorSourceFormat ?? (options.sourceFormat === "latex" ? "latex" : "markdown")}
+                theme={editorTheme}
+                onReady={handleEditorReady}
+                onDebouncedChange={handleDebouncedChange}
+                onChange={onSourceChange}
+                onSelectionChange={handleEditorSourceNavigation}
+                onControllerReady={(controller) => {
+                  editorControllerRef.current = controller;
+                }}
+              />
+              <PreviewPane
+                layoutState={layoutState}
+                zoom={zoom}
+                printing={printing}
+                sourceOffset={sourceNavigation?.offset}
+                sourceNavigationId={sourceNavigation?.id}
+                onSourceClick={handlePreviewSourceClick}
+                toolbar={toolbarPlacement === "preview" ? toolbar : undefined}
+                unavailableMessage={previewAvailable ? undefined : previewUnavailableMessage ?? "This file type does not have a document preview."}
+              />
+              {sidePanel ? <aside className="svg-md-side-panel">{sidePanel}</aside> : null}
+            </div>
+            {bottomPanel}
+          </div>
         </div>
-        {bottomPanel}
       </div>
     </div>
   );

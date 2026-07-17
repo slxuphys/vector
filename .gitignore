@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-playground/
+dist-product/
 tmp/
 vscode/webview-dist/
 coverage/

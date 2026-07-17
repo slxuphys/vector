@@ -497,6 +497,32 @@ button:disabled {
 .svg-md-workspace-stack {
   min-height: 0;
   flex: 1;
+  display: block;
+  overflow: hidden;
+}
+
+.svg-md-workspace-frame {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.svg-md-workspace-frame-with-left-panel {
+  --svg-md-left-panel-width: 258px;
+  grid-template-columns: var(--svg-md-left-panel-width) minmax(0, 1fr);
+}
+
+.svg-md-workspace-frame-left-compact {
+  --svg-md-left-panel-width: 48px;
+}
+
+.svg-md-work-area {
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -759,19 +785,6 @@ button:disabled {
   grid-template-columns: minmax(280px, 34%) minmax(360px, 1fr) 300px;
 }
 
-.svg-md-workspace-with-left-panel {
-  --svg-md-left-panel-width: 258px;
-  grid-template-columns: var(--svg-md-left-panel-width) minmax(300px, 38%) minmax(360px, 1fr);
-}
-
-.svg-md-workspace-with-left-panel.svg-md-workspace-with-panel {
-  grid-template-columns: var(--svg-md-left-panel-width) minmax(280px, 34%) minmax(360px, 1fr) 300px;
-}
-
-.svg-md-workspace-left-compact {
-  --svg-md-left-panel-width: 48px;
-}
-
 .svg-md-workspace-layout-editor .svg-md-preview-column {
   display: none;
 }
@@ -783,11 +796,6 @@ button:disabled {
 .svg-md-workspace-layout-editor,
 .svg-md-workspace-layout-preview {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.svg-md-workspace-with-left-panel.svg-md-workspace-layout-editor,
-.svg-md-workspace-with-left-panel.svg-md-workspace-layout-preview {
-  grid-template-columns: var(--svg-md-left-panel-width) minmax(0, 1fr);
 }
 
 .svg-md-file-panel {
@@ -1704,15 +1712,9 @@ button:disabled {
     display: none;
   }
 
-  .svg-md-workspace-with-left-panel {
+  .svg-md-workspace-frame-with-left-panel {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 38vh 1fr;
-  }
-
-  .svg-md-workspace-with-left-panel.svg-md-workspace-layout-editor,
-  .svg-md-workspace-with-left-panel.svg-md-workspace-layout-preview {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .svg-md-file-panel {
@@ -1747,6 +1749,8 @@ button:disabled {
   #root,
   .app,
   .svg-md-shell,
+  .svg-md-workspace-frame,
+  .svg-md-work-area,
   .svg-md-workspace,
   .svg-md-preview-column,
   .svg-md-preview-pane {
@@ -1774,6 +1778,12 @@ button:disabled {
   }
 
   .svg-md-workspace-stack {
+    display: block;
+    overflow: visible;
+  }
+
+  .svg-md-workspace-frame,
+  .svg-md-work-area {
     display: block;
     overflow: visible;
   }

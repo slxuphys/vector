@@ -14,7 +14,12 @@ import { useProjectFileSystem } from "./useProjectFileSystem";
 import { WorkspaceRibbon } from "./WorkspaceRibbon";
 import { isProjectTextFile, type PlaygroundProject, type ProjectAssetFile, type ProjectTextFile } from "./projectTypes";
 
-export function ProductApp() {
+export interface ProductAppProps {
+  showLabLink?: boolean;
+}
+
+export function ProductApp({ showLabLink = true }: ProductAppProps) {
+  const labAvailable = import.meta.env.VITE_PRODUCT_BUILD !== "true" && showLabLink;
   const fileSystem = useProjectFileSystem();
   const [filesVisible, setFilesVisible] = useState(true);
   const [layoutMode, setLayoutMode] = useState<WorkspaceLayoutMode>("split");
@@ -72,10 +77,12 @@ export function ProductApp() {
             onLocalFolderOpen={() => void fileSystem.openLocalFolder()}
           />
         </div>
-        <a className="app-lab-link" href="?mode=lab" title="Open debug lab">
-          <FlaskConical size={16} aria-hidden="true" />
-          <span>Debug lab</span>
-        </a>
+        {labAvailable ? (
+          <a className="app-lab-link" href="?mode=lab" title="Open debug lab">
+            <FlaskConical size={16} aria-hidden="true" />
+            <span>Debug lab</span>
+          </a>
+        ) : null}
       </header>
       <MarkdownEditorPreview
         documentKey={`${project.id}:${activeFile?.path ?? "empty"}`}

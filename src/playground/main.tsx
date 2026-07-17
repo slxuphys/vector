@@ -6,11 +6,16 @@ import "./playground.css";
 
 const root = createRoot(document.getElementById("root")!);
 const params = new URLSearchParams(window.location.search);
-const labMode = params.get("mode") === "lab" || window.location.pathname.replace(/\/$/, "").endsWith("/lab") || window.location.hash === "#lab";
+const productBuild = import.meta.env.VITE_PRODUCT_BUILD === "true";
+const labMode = !productBuild && (
+  params.get("mode") === "lab"
+  || window.location.pathname.replace(/\/$/, "").endsWith("/lab")
+  || window.location.hash === "#lab"
+);
 
 void (labMode
   ? import("./lab/LabApp").then(({ LabApp }) => <LabApp />)
-  : import("./product/ProductApp").then(({ ProductApp }) => <ProductApp />)
+  : import("./product/ProductApp").then(({ ProductApp }) => <ProductApp showLabLink={!productBuild} />)
 ).then((app) => root.render(
   <StrictMode>
     {app}
