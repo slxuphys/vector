@@ -6,6 +6,16 @@ import type { DisplayPage } from "../../src/core/display-list/displayTypes";
 import type { PdfImageServices } from "../../src/core/renderers/pdf/pdfImage";
 
 let resvgReady: Promise<void> | undefined;
+const previewAssetCache = new Map<string, PreviewAssetCacheEntry>();
+const maxPreviewAssetEntries = 48;
+const maxPreviewAssetChars = 32 * 1024 * 1024;
+let previewAssetChars = 0;
+
+type PreviewAssetCacheEntry = {
+  mtime: number;
+  size: number;
+  dataUrl: string;
+};
 
 export function createNodePdfImageServices(document: vscode.TextDocument): PdfImageServices {
   return {
@@ -20,11 +30,10 @@ export async function prepareNodePreviewPage(document: vscode.TextDocument, page
     const sources = object.sources?.length ? object.sources : [object.src];
     for (const source of sources) {
       try {
-        if (/^data:image\//i.test(source)) return { ...object, src: source, sources: [source] };
+        if (/^data:/i.test(source)) return { ...object, src: source, sources: [source] };
         if (/^https?:/i.test(source)) return object;
-        const bytes = await loadImage(document, source);
-        if (!bytes) continue;
-        const dataUrl = bytesToDataUrl(bytes, isPdf(bytes, source) ? "application/pdf" : mimeType(bytes, source));
+        const dataUrl = await loadPreviewAssetDataUrl(document, source);
+        if (!dataUrl) continue;
         return { ...object, src: dataUrl, sources: [dataUrl] };
       } catch {
         // Match LaTeX lookup semantics by trying the next graphicspath/extension candidate.
@@ -37,12 +46,49 @@ export async function prepareNodePreviewPage(document: vscode.TextDocument, page
 
 async function loadImage(document: vscode.TextDocument, src: string): Promise<Uint8Array | undefined> {
   if (/^(?:data:|https?:)/i.test(src)) return undefined;
+  const target = localAssetUri(document, src);
+  if (!target) return undefined;
+  return vscode.workspace.fs.readFile(target);
+}
+
+async function loadPreviewAssetDataUrl(document: vscode.TextDocument, src: string): Promise<string | undefined> {
+  const target = localAssetUri(document, src);
+  if (!target) return undefined;
+  const stat = await vscode.workspace.fs.stat(target);
+  const key = target.toString();
+  const cached = previewAssetCache.get(key);
+  if (cached && cached.mtime === stat.mtime && cached.size === stat.size) {
+    previewAssetCache.delete(key);
+    previewAssetCache.set(key, cached);
+    return cached.dataUrl;
+  }
+  const bytes = await vscode.workspace.fs.readFile(target);
+  const dataUrl = bytesToDataUrl(bytes, isPdf(bytes, src) ? "application/pdf" : mimeType(bytes, src));
+  setPreviewAssetCache(key, { mtime: stat.mtime, size: stat.size, dataUrl });
+  return dataUrl;
+}
+
+function localAssetUri(document: vscode.TextDocument, src: string): vscode.Uri | undefined {
   if (document.uri.scheme !== "file") return undefined;
   const clean = decodeURIComponent(src.split(/[?#]/, 1)[0]);
-  const target = path.isAbsolute(clean)
+  return path.isAbsolute(clean)
     ? vscode.Uri.file(clean)
     : vscode.Uri.file(path.resolve(path.dirname(document.uri.fsPath), clean));
-  return vscode.workspace.fs.readFile(target);
+}
+
+function setPreviewAssetCache(key: string, entry: PreviewAssetCacheEntry): void {
+  const previous = previewAssetCache.get(key);
+  if (previous) previewAssetChars -= previous.dataUrl.length;
+  previewAssetCache.delete(key);
+  previewAssetCache.set(key, entry);
+  previewAssetChars += entry.dataUrl.length;
+  while (previewAssetCache.size > maxPreviewAssetEntries || previewAssetChars > maxPreviewAssetChars) {
+    const oldestKey = previewAssetCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    const oldest = previewAssetCache.get(oldestKey);
+    previewAssetCache.delete(oldestKey);
+    previewAssetChars -= oldest?.dataUrl.length ?? 0;
+  }
 }
 
 async function rasterizeSvg(svg: Uint8Array, width: number, height: number): Promise<Uint8Array> {

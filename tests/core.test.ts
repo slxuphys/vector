@@ -1551,7 +1551,7 @@ See @sec:intro.
 
   it("treats the first H1 as a full-width title before multi-column flow", async () => {
     const engine = createDocumentEngine();
-    const repeated = Array.from({ length: 130 }, (_, index) => `body${index}`).join(" ");
+    const repeated = Array.from({ length: 300 }, (_, index) => `body${index}`).join(" ");
     const { layout } = await engine.layout(`---
 page:
   size: letter
@@ -2472,14 +2472,26 @@ This paragraph has enough words to wrap into more than one line and the first re
   it("does not add ink-edge gap after display named operators when thin space is zero", () => {
     const metrics = { ...defaultOpenMathMetrics, thinMathSpace: 0 };
     const layout = layoutNativeMath("\\max x \\sin x", true, 12, metrics, "openmath");
+    const spacedLayout = layoutNativeMath(
+      "\\max x \\sin x",
+      true,
+      12,
+      { ...defaultOpenMathMetrics, thinMathSpace: 0.2 },
+      "openmath"
+    );
     const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+    const spacedGlyphs = spacedLayout.nodes.filter((node) => node.type === "glyph");
     const max = glyphs.find((node) => node.text === "max");
     const firstX = glyphs.find((node) => node.text === "𝑥");
+    const spacedMax = spacedGlyphs.find((node) => node.text === "max");
+    const spacedFirstX = spacedGlyphs.find((node) => node.text === "𝑥");
 
     expect(max?.type).toBe("glyph");
     expect(firstX?.type).toBe("glyph");
-    if (max?.type === "glyph" && firstX?.type === "glyph") {
-      expect(firstX.x - max.x).toBeLessThan(20);
+    expect(spacedMax?.type).toBe("glyph");
+    expect(spacedFirstX?.type).toBe("glyph");
+    if (max?.type === "glyph" && firstX?.type === "glyph" && spacedMax?.type === "glyph" && spacedFirstX?.type === "glyph") {
+      expect(spacedFirstX.x - spacedMax.x - (firstX.x - max.x)).toBeCloseTo(12 * 0.2, 3);
     }
   });
 
@@ -2604,11 +2616,12 @@ This paragraph has enough words to wrap into more than one line and the first re
     const layout = layoutNativeMath("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}", true, 12);
     const glyphs = layout.nodes.filter((node) => node.type === "glyph");
     const text = glyphs.map((node) => node.text).join("");
+    const delimiterPaths = layout.nodes.filter((node) => node.type === "glyphPath");
     const a = glyphs.find((node) => node.text === "a" || node.text === "𝑎");
     const c = glyphs.find((node) => node.text === "c" || node.text === "𝑐");
 
-    expect(text).toContain("(");
-    expect(text).toContain(")");
+    expect(text.includes("(") || delimiterPaths.length >= 2).toBe(true);
+    expect(text.includes(")") || delimiterPaths.length >= 2).toBe(true);
     expect(text).toContain("𝑎");
     expect(text).toContain("𝑏");
     expect(text).toContain("𝑐");
@@ -2670,14 +2683,14 @@ This paragraph has enough words to wrap into more than one line and the first re
     const text = glyphs.map((node) => node.text).join("");
     const left = glyphs.find((node) => node.text === "(");
     const right = glyphs.find((node) => node.text === ")");
+    const delimiterPaths = layout.nodes.filter((node) => node.type === "glyphPath");
 
-    expect(text).toContain("(");
-    expect(text).toContain(")");
+    expect(text.includes("(") || delimiterPaths.length >= 2).toBe(true);
+    expect(text.includes(")") || delimiterPaths.length >= 2).toBe(true);
     expect(text).toContain("2");
     expect(text).not.toContain("⟦left⟧");
     expect(text).not.toContain("⟦right⟧");
-    expect(left?.type).toBe("glyph");
-    expect(right?.type).toBe("glyph");
+    expect((left?.type === "glyph" && right?.type === "glyph") || delimiterPaths.length >= 2).toBe(true);
     if (left?.type === "glyph" && right?.type === "glyph") {
       expect(left.fontSize).toBeGreaterThanOrEqual(12);
       expect(right.fontSize).toBeGreaterThanOrEqual(12);

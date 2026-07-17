@@ -10,5 +10,9 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": ["src/webview", "../src/react/preview/PreviewSurface.tsx"]
+  "include": [
+    "src/webview",
+    "../src/react/preview/PreviewSurface.tsx",
+    "../src/pdfjs-worker.d.ts"
+  ]
 }

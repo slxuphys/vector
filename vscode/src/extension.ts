@@ -7,11 +7,12 @@ import { createNodePdfImageServices, prepareNodePreviewPage } from "./nodePdfIma
 
 const previewDebounceMs = 150;
 const pendingUpdates = new Map<number, PreviewTiming>();
+const bibliographyCache = new Map<string, { mtime: number; size: number; content: string }>();
 let activePreview: ActivePreview | undefined;
 let pdfExportInProgress = false;
 
 export function activate(context: vscode.ExtensionContext) {
-  applyDebugSettings();
+  let pdfDebugEnabled = applyDebugSettings();
   let previewPanel: VectorPreviewPanel | undefined;
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -20,6 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
     const editedAt = performance.now();
     previewPanel.setLoading(document);
     const serial = ++currentSerial;
+    pendingUpdates.clear();
     pendingUpdates.set(serial, {
       update: serial,
       editedAt,
@@ -39,9 +41,13 @@ export function activate(context: vscode.ExtensionContext) {
       if (!document) return;
       if (!previewPanel?.alive) {
         previewPanel = VectorPreviewPanel.create(context.extensionUri, () => {
+          if (previewTimer) clearTimeout(previewTimer);
+          previewTimer = undefined;
+          pendingUpdates.clear();
           previewPanel = undefined;
           activePreview = undefined;
         });
+        void previewPanel.setDebugSettings({ pdf: pdfDebugEnabled, assets: pdfDebugEnabled });
         previewPanel.onPageRequest((message) => {
           void sendRequestedPages(previewPanel, message);
         });
@@ -95,7 +101,6 @@ export function activate(context: vscode.ExtensionContext) {
             totalUntilSvgMs: round(acknowledgedAt - timing.editedAt),
             rawSvgKB: round((timing.rawSvgBytes ?? 0) / 1024),
             sentSvgKB: round((timing.sentSvgBytes ?? 0) / 1024),
-            fontCssKB: round((timing.fontCssBytes ?? 0) / 1024),
             pageSvgKB: timing.pageSvgBytes?.map((entry) => ({
               page: entry.page,
               kb: round(entry.bytes / 1024)
@@ -130,7 +135,10 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("vector.debug.pdf")) applyDebugSettings();
+      if (event.affectsConfiguration("vector.debug.pdf")) {
+        pdfDebugEnabled = applyDebugSettings();
+        void previewPanel?.setDebugSettings({ pdf: pdfDebugEnabled, assets: pdfDebugEnabled });
+      }
     })
   );
 }
@@ -200,7 +208,10 @@ async function renderPreview(
       timing.engineTotalMs = result.stats.totalMs;
       timing.totalPages = result.layout.pages.length;
     }
-    if (!panel.alive || serial !== latestSerial()) return;
+    if (!panel.alive || serial !== latestSerial()) {
+      pendingUpdates.delete(serial);
+      return;
+    }
     activePreview = {
       updateId: serial,
       documentUri: document.uri.toString(),
@@ -219,6 +230,7 @@ async function renderPreview(
     await panel.setPreviewMetadata(document, activePreview.pageMeta, result.stats, serial);
     if (timing) timing.metadataPostMessageResolveMs = performance.now() - postStartedAt;
   } catch (error) {
+    pendingUpdates.delete(serial);
     if (!panel.alive || serial !== latestSerial()) return;
     panel.setError(document, error instanceof Error ? error.message : String(error));
   }
@@ -301,7 +313,7 @@ async function loadBibliographyFiles(
     for (const candidate of candidates) {
       try {
         const uri = vscode.Uri.joinPath(root, ...candidate.replaceAll("\\", "/").split("/"));
-        const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+        const content = await readTextFileCached(uri);
         files[requested] = content;
         files[candidate] = content;
         break;
@@ -314,6 +326,20 @@ async function loadBibliographyFiles(
   return files;
 }
 
+async function readTextFileCached(uri: vscode.Uri): Promise<string> {
+  const stat = await vscode.workspace.fs.stat(uri);
+  const key = uri.toString();
+  const cached = bibliographyCache.get(key);
+  if (cached && cached.mtime === stat.mtime && cached.size === stat.size) return cached.content;
+  const content = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+  bibliographyCache.set(key, { mtime: stat.mtime, size: stat.size, content });
+  if (bibliographyCache.size > 32) {
+    const oldest = bibliographyCache.keys().next().value as string | undefined;
+    if (oldest) bibliographyCache.delete(oldest);
+  }
+  return content;
+}
+
 async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message: PageRequestMessage): Promise<void> {
   if (!panel?.alive || !activePreview || message.updateId !== activePreview.updateId) return;
   const uniqueIndexes = [...new Set(message.indexes)]
@@ -324,7 +350,6 @@ async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message
   const svgStartedAt = performance.now();
   let rawSvgBytes = 0;
   let sentSvgBytes = 0;
-  let fontCssBytes = 0;
   const pages: RenderedPagePayload[] = [];
   const pageSvgBytes: Array<{ page: number; bytes: number }> = [];
 
@@ -356,7 +381,6 @@ async function sendRequestedPages(panel: VectorPreviewPanel | undefined, message
     timing.svgFinishedAt = performance.now();
     timing.rawSvgBytes = rawSvgBytes;
     timing.sentSvgBytes = sentSvgBytes;
-    timing.fontCssBytes = fontCssBytes;
     timing.pageSvgBytes = pageSvgBytes;
     timing.previewSentAt = performance.now();
   }
@@ -390,7 +414,6 @@ type PreviewTiming = {
   metadataPostMessageResolveMs?: number;
   rawSvgBytes?: number;
   sentSvgBytes?: number;
-  fontCssBytes?: number;
   totalPages?: number;
   pageSvgBytes?: Array<{ page: number; bytes: number }>;
 };
@@ -408,11 +431,12 @@ type ActivePreview = {
   renderedCache: Map<number, string>;
 };
 
-function applyDebugSettings(): void {
+function applyDebugSettings(): boolean {
   const enabled = vscode.workspace.getConfiguration("vector.debug").get<boolean>("pdf", false);
   (globalThis as typeof globalThis & { __SVG_MD_DEBUG_LOGS__?: Record<string, boolean> }).__SVG_MD_DEBUG_LOGS__ = {
     pdf: enabled
   };
+  return enabled;
 }
 
 type PageMeta = {
@@ -437,17 +461,5 @@ function loadPreviewBundle(): VectorPreviewBundle {
     loadNativeMathFonts,
     renderPageToSvg,
     renderToPdf
-  };
-}
-
-function stripSvgFontStyles(pages: string[]): { pages: string[]; fontCss: string } {
-  const styles = new Set<string>();
-  const strippedPages = pages.map((page) => page.replace(/<style>([\s\S]*?)<\/style>/g, (_match, css: string) => {
-    styles.add(css);
-    return "";
-  }));
-  return {
-    pages: strippedPages,
-    fontCss: [...styles].join("\n")
   };
 }

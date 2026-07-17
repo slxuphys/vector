@@ -87,6 +87,11 @@ export class VectorPreviewPanel {
     return this.panel.webview.postMessage({ type: "exportStatus", state, message });
   }
 
+  setDebugSettings(settings: { pdf: boolean; assets: boolean }): Thenable<boolean> {
+    if (this.disposed) return Promise.resolve(false);
+    return this.panel.webview.postMessage({ type: "debugSettings", settings });
+  }
+
   revealSource(anchor: { page: number; y: number; source: { start: number; end: number } }): Thenable<boolean> {
     if (this.disposed) return Promise.resolve(false);
     return this.panel.webview.postMessage({

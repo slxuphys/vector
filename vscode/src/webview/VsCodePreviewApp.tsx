@@ -5,16 +5,6 @@ import { hydrateSvgImages } from "../../../src/react/hydrateSvgImages";
 import { PreviewSurface } from "../../../src/react/preview/PreviewSurface";
 import { vscode } from "./vscodeBridge";
 
-const debugGlobals = globalThis as typeof globalThis & {
-  __SVG_MD_DEBUG_LOGS__?: Record<string, boolean>;
-};
-debugGlobals.__SVG_MD_DEBUG_LOGS__ = {
-  ...debugGlobals.__SVG_MD_DEBUG_LOGS__,
-  assets: true
-};
-
-let lastForwardedDebugLogId = 0;
-
 type PageMeta = { index: number; width: number; height: number };
 type Stats = { pageCount: number; totalMs: number };
 type PagePayload = { index: number; svg: string };
@@ -36,16 +26,18 @@ export function VsCodePreviewApp() {
   const previewRef = useRef<PreviewState | undefined>(undefined);
   const pendingRef = useRef<PendingPreview | undefined>(undefined);
   const requestedRef = useRef(new Set<number>());
+  const lastForwardedDebugLogIdRef = useRef(0);
 
   useEffect(() => {
     previewRef.current = preview;
   }, [preview]);
 
   useEffect(() => subscribeDebugLogs(() => {
-    for (const entry of getDebugLogEntries()) {
-      if (entry.id <= lastForwardedDebugLogId) continue;
-      lastForwardedDebugLogId = entry.id;
-      if (entry.key !== "assets" || !entry.label.includes("PDF")) continue;
+    const entries = getDebugLogEntries();
+    const entry = entries[entries.length - 1];
+    if (!entry || entry.id <= lastForwardedDebugLogIdRef.current) return;
+    lastForwardedDebugLogIdRef.current = entry.id;
+    if (entry.key === "assets" && entry.label.includes("PDF")) {
       vscode.postMessage({ type: "debugLog", entry });
     }
   }), []);
@@ -107,6 +99,16 @@ export function VsCodePreviewApp() {
       const message = event.data;
       if (message.type === "loading") {
         setStatus(`Updating ${message.sourceFormat} document (${message.sourceLength} chars)`);
+        return;
+      }
+      if (message.type === "debugSettings") {
+        const globals = globalThis as typeof globalThis & {
+          __SVG_MD_DEBUG_LOGS__?: Record<string, boolean>;
+        };
+        globals.__SVG_MD_DEBUG_LOGS__ = {
+          ...globals.__SVG_MD_DEBUG_LOGS__,
+          ...message.settings
+        };
         return;
       }
       if (message.type === "error") {

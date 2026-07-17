@@ -128,31 +128,19 @@ function isLibertinusSerifFont(fontFamily: string): boolean {
   return fontFamily.includes(libertinusSerifFontFamily);
 }
 
-async function loadOpenMathFont(pdf: PDFDocument, url = openMathFontUrl, getSubsetText: FontSubsetText): Promise<PDFFont | undefined> {
-  try {
-    pdf.registerFontkit(fontkit);
-    return await embedCustomFont(pdf, url, getSubsetText);
-  } catch {
-    return undefined;
-  }
+async function loadOpenMathFont(pdf: PDFDocument, url = openMathFontUrl, getSubsetText: FontSubsetText): Promise<PDFFont> {
+  pdf.registerFontkit(fontkit);
+  return embedCustomFont(pdf, url, getSubsetText);
 }
 
 async function loadLatinModernRomanFonts(pdf: PDFDocument, getSubsetText: FontSubsetText, isVariantUsed: FontVariantUsed): Promise<PdfFontSet["latinModernRoman"]> {
-  try {
-    pdf.registerFontkit(fontkit);
-    return await loadVariantFonts(pdf, latinModernRomanFontUrls, getSubsetText, isVariantUsed);
-  } catch {
-    return undefined;
-  }
+  pdf.registerFontkit(fontkit);
+  return loadVariantFonts(pdf, latinModernRomanFontUrls, getSubsetText, isVariantUsed);
 }
 
 async function loadLibertinusSerifFonts(pdf: PDFDocument, getSubsetText: FontSubsetText, isVariantUsed: FontVariantUsed): Promise<PdfFontSet["libertinusSerif"]> {
-  try {
-    pdf.registerFontkit(fontkit);
-    return await loadVariantFonts(pdf, libertinusSerifFontUrls, getSubsetText, isVariantUsed);
-  } catch {
-    return undefined;
-  }
+  pdf.registerFontkit(fontkit);
+  return loadVariantFonts(pdf, libertinusSerifFontUrls, getSubsetText, isVariantUsed);
 }
 
 async function loadVariantFonts(
