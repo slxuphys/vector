@@ -3,10 +3,33 @@ export { parseMarkdownDocument } from "./core/config/documentConfig";
 export { parseLatex } from "./core/latex/parseLatex";
 export { renderPageToSvg } from "./core/renderers/svg/renderPageToSvg";
 export { renderToPdf, downloadPdf } from "./core/renderers/pdf/renderToPdf";
-export { VectorPluginRegistry } from "./core/plugins/pluginRegistry";
-export { createFirstPartyPluginRegistry } from "./core/plugins/firstPartyPlugins";
-export type { VectorPlugin, LatexParserMode } from "./core/plugins/pluginTypes";
-export type { VectorPluginDocumentContext } from "./core/plugins/pluginDocumentContext";
+export {
+  VectorPluginRegistry,
+  createBuiltinPluginRegistry,
+  createFirstPartyPluginRegistry,
+  createVectorPluginHost,
+  VECTOR_PLUGIN_API_VERSION
+} from "./core/plugins";
+export type {
+  LatexParserMode,
+  LatexInlineTransform,
+  LatexInlineTransformContext,
+  MarkdownDirectiveContext,
+  MarkdownDirectiveHandler,
+  MarkdownInlineContext,
+  MarkdownInlineHandler,
+  MarkdownInlineMatch,
+  PluginDocumentHooks,
+  PluginDocumentLifecycleContext,
+  PluginLayoutContext,
+  PluginLayoutHandler,
+  PluginLayoutResult,
+  VectorPlugin,
+  VectorPluginDiagnostic,
+  VectorPluginDocumentContext,
+  VectorPluginHost,
+  VectorPluginMetadata
+} from "./core/plugins";
 export { loadNativeMathFonts } from "./core/renderers/math/nativeFontMetrics";
 export { MarkdownEditorPreview } from "./react/MarkdownEditorPreview";
 export { MarkdownEditor } from "./react/editor/MarkdownEditor";
@@ -24,6 +47,8 @@ export type { PageConfig } from "./core/layout/pageConfig";
 export type { LayoutConfig, LineBreakingAlgorithm, TextAlign } from "./core/layout/layoutConfig";
 export type { DocumentTheme } from "./core/theme/themeTypes";
 export type { LayoutBlock } from "./core/layout/layoutBlocks";
+export type { PluginLayoutBlock } from "./core/layout/layoutBlocks";
+export type { InlinePluginNode, PluginAstNode } from "./core/markdown/markdownTypes";
 export type { DocumentFrontMatter } from "./core/config/documentConfig";
 export type { CrossRefConfig, CrossRefFormat } from "./core/xref/xrefTypes";
 export type {

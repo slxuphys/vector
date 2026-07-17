@@ -8,7 +8,8 @@ import type { LayoutLine } from "./lineBreaking";
 import { defaultLayoutConfig, type LayoutConfig, type ParagraphSuppressAfter } from "./layoutConfig";
 import { layoutTable } from "./layoutTable";
 import { measureText } from "./measureText";
-import { renderGraphSX } from "../renderers/graphsx/renderGraphSX";
+import { builtinPlugins } from "../plugins/builtin";
+import type { VectorPluginRegistry } from "../plugins/api";
 import {
   getDefaultOpenMathMetrics,
   getDefaultOpenMathMetricsForProfile,
@@ -43,7 +44,8 @@ export function paginate(
   nativeMathProfile?: NativeMathFontProfileName,
   crossRef: CrossRefConfig = defaultCrossRefConfig,
   layoutConfig: LayoutConfig = defaultLayoutConfig,
-  titleMatter?: TitleMatter
+  titleMatter?: TitleMatter,
+  plugins: VectorPluginRegistry = builtinPlugins
 ): DisplayPage[] {
   const pages: DisplayPage[] = [];
   const columnCount = Math.max(1, Math.min(4, Math.floor(layoutConfig.columns.count)));
@@ -337,33 +339,42 @@ export function paginate(
       continue;
     }
 
-    if (block.type === "graphsx") {
-      const graph = layoutGraphSXBlock(block, cursor.contentWidth, theme, nativeMathProfile);
-      ensure(graph.totalHeight + 12);
-      const x = cursor.x + graph.x;
-      cursor.page.objects.push({
-        type: "graphsx",
-        source: block.source,
-        svg: graph.svg,
-        svgBody: graph.svgBody,
-        viewBox: graph.viewBox,
-        summary: graph.summary,
-        displayList: graph.displayList,
-        nativeMathProfile: graph.nativeMathProfile,
-        x,
-        y: cursor.y,
-        width: graph.width,
-        height: graph.height,
-        warnings: graph.warnings,
-        anchorId: block.label,
-        sourceSpan: block.sourceSpan
+    if (block.type === "plugin") {
+      const handler = plugins.layoutHandler(block.plugin, block.kind);
+      if (!handler) throw new Error(`Plugin layout block "${block.plugin}:${block.kind}" has no registered handler.`);
+      const result = handler(block, {
+        contentWidth: cursor.contentWidth,
+        theme,
+        mathRenderer,
+        nativeMathMetrics,
+        nativeMathProfile,
+        layoutConfig
+      });
+      const captionFontSize = theme.fontSize * 0.86;
+      const captionHeight = estimateCaptionHeight(block.caption, cursor.contentWidth, captionFontSize, theme);
+      ensure(result.height + captionHeight + 12);
+      const align = result.align ?? block.align ?? "left";
+      const xOffset = align === "right"
+        ? cursor.contentWidth - result.width
+        : align === "center"
+          ? (cursor.contentWidth - result.width) / 2
+          : 0;
+      result.objects.forEach((object, index) => {
+        const positioned = translateDisplayObject(object, cursor.x + xOffset, cursor.y);
+        cursor.page.objects.push({
+          ...positioned,
+          anchorId: index === 0 ? block.label : positioned.anchorId,
+          sourceSpan: positioned.sourceSpan ?? block.source
+        } as DisplayObject);
       });
       if (block.caption) {
-        const caption = block.labelNumber ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}` : block.caption;
-        drawCaption(cursor, caption, cursor.x, cursor.y + graph.height + 6, cursor.contentWidth, graph.captionFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig, block.sourceSpan);
+        const caption = block.role === "figure" && block.labelNumber
+          ? `${applyCrossRefFormat(crossRef.figure.captionFormat, { number: block.labelNumber, kind: "figure", id: block.label })} ${block.caption}`
+          : block.caption;
+        drawCaption(cursor, caption, cursor.x, cursor.y + result.height + 6, cursor.contentWidth, captionFontSize, theme, mathMeasurements, mathRenderer, nativeMathMetrics, nativeMathProfile, layoutConfig, block.source);
       }
-      cursor.y += graph.totalHeight + 12;
-      previousBlockKind = "graphsx";
+      cursor.y += result.height + captionHeight + 12;
+      previousBlockKind = "plugin";
       continue;
     }
 
@@ -807,65 +818,17 @@ function layoutFigureBlock(
   };
 }
 
-function layoutGraphSXBlock(
-  block: Extract<LayoutBlock, { type: "graphsx" }>,
-  contentWidth: number,
-  theme: DocumentTheme,
-  nativeMathProfile?: NativeMathFontProfileName
-): {
-  x: number;
-  width: number;
-  height: number;
-  totalHeight: number;
-  captionFontSize: number;
-  captionWidth: number;
-  svg: string;
-  svgBody: string;
-  viewBox: string;
-  summary: string;
-  displayList: ReturnType<typeof renderGraphSX>["displayList"];
-  nativeMathProfile: NativeMathFontProfileName;
-  warnings: string[];
-} {
-  const profile = nativeMathProfile ?? "openmath";
-  const artifact = renderGraphSX(block.source, theme, profile, block.syntax ?? "graphsx");
-  const requestedWidth = resolveImageLength(block.width, contentWidth);
-  const width = requestedWidth === undefined ? artifact.width : Math.min(contentWidth, requestedWidth);
-  const scale = artifact.width > 0 ? width / artifact.width : 1;
-  const height = Math.max(1, artifact.height * scale);
-  const align = block.align ?? "center";
-  const x = align === "right" ? contentWidth - width : align === "center" ? (contentWidth - width) / 2 : 0;
-  const warnings = requestedWidth === undefined && artifact.width > contentWidth
-    ? [`GraphSX natural width ${formatWarningNumber(artifact.width)} exceeds content width ${formatWarningNumber(contentWidth)}. Add width=100% to fit.`]
-    : [];
-  const captionFontSize = theme.fontSize * 0.86;
-  const captionWidth = block.caption
-    ? Math.min(width, measureText(block.caption, {
-        fontSize: captionFontSize,
-        fontFamily: theme.fontFamily,
-        monoFontFamily: theme.monoFontFamily
-      }))
-    : 0;
-  const totalHeight = height + estimateCaptionHeight(block.caption, contentWidth, captionFontSize, theme);
-  return {
-    x,
-    width,
-    height,
-    totalHeight,
-    captionFontSize,
-    captionWidth,
-    svg: artifact.svg,
-    svgBody: artifact.svgBody,
-    viewBox: artifact.viewBox,
-    summary: artifact.summary,
-    displayList: artifact.displayList,
-    nativeMathProfile: profile,
-    warnings
-  };
-}
-
-function formatWarningNumber(value: number): string {
-  return Number(value.toFixed(1)).toString();
+function translateDisplayObject(object: DisplayObject, offsetX: number, offsetY: number): DisplayObject {
+  if (object.type === "line") {
+    return {
+      ...object,
+      x1: object.x1 + offsetX,
+      y1: object.y1 + offsetY,
+      x2: object.x2 + offsetX,
+      y2: object.y2 + offsetY
+    };
+  }
+  return { ...object, x: object.x + offsetX, y: object.y + offsetY };
 }
 
 function drawLines(

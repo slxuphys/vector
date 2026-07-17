@@ -2,18 +2,24 @@ import type { InlineNode, MarkdownAst, MarkdownNode } from "./markdownTypes";
 import { parseInline } from "./parseInline";
 import { parseImageBlock } from "./parseImage";
 import { isTableStart, parseTableAt } from "./parseTable";
-import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
-import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
+import { builtinPlugins } from "../plugins/builtin";
+import {
+  createVectorPluginDocumentContext,
+  type VectorPluginDocumentContext,
+  type VectorPluginRegistry
+} from "../plugins/api";
 
 export function parseMarkdown(
   markdown: string,
   sourceOffset = 0,
-  plugins: VectorPluginRegistry = firstPartyPlugins
+  plugins: VectorPluginRegistry = builtinPlugins,
+  document: VectorPluginDocumentContext = createVectorPluginDocumentContext()
 ): MarkdownAst {
   const normalized = markdown.replace(/\r\n?/g, "\n");
   const lines = normalized.split("\n");
   const lineStarts = lineStartOffsets(lines);
   const children: MarkdownNode[] = [];
+  const parseDocumentInline = (source: string) => parseInline(source, plugins, document);
   let i = 0;
 
   while (i < lines.length) {
@@ -29,12 +35,26 @@ export function parseMarkdown(
       continue;
     }
 
-    if (/^:::\s*bibliography\s*$/i.test(line.trim())) {
+    const directive = line.match(/^:::\s*([A-Za-z][\w-]*)\s*(.*?)\s*$/);
+    const directiveHandler = directive ? plugins.markdownDirective(directive[1]) : undefined;
+    if (directive && directiveHandler) {
       const blockStart = i;
+      const body: string[] = [];
       i += 1;
-      while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) i += 1;
+      while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) {
+        body.push(lines[i]);
+        i += 1;
+      }
       if (i < lines.length) i += 1;
-      children.push({ type: "bibliography", sourceSpan: sourceForLines(normalized, lineStarts, blockStart, i, sourceOffset) });
+      const sourceSpan = sourceForLines(normalized, lineStarts, blockStart, i, sourceOffset);
+      const node = directiveHandler({
+        name: directive[1],
+        info: directive[2] ?? "",
+        source: body.join("\n"),
+        sourceSpan,
+        document
+      });
+      if (node) children.push(node);
       continue;
     }
 
@@ -54,7 +74,8 @@ export function parseMarkdown(
         language: language ?? "",
         info: fence[2] ?? "",
         source: code.join("\n"),
-        sourceSpan
+        sourceSpan,
+        document
       });
       if (packageNode) {
         const node: MarkdownNode = packageNode;
@@ -88,7 +109,7 @@ export function parseMarkdown(
       children.push({
         type: "heading",
         level: heading[1].length,
-        children: parseInline(labeled.text),
+        children: parseDocumentInline(labeled.text),
         label: labeled.label,
         sourceSpan: sourceForLines(normalized, lineStarts, i, i + 1, sourceOffset)
       });
@@ -112,7 +133,7 @@ export function parseMarkdown(
 
     if (isTableStart(lines, i)) {
       const blockStart = i;
-      const table = parseTableAt(lines, i);
+      const table = parseTableAt(lines, i, parseDocumentInline);
       if (!table) throw new Error("Expected table parser to accept a table start");
       const node: MarkdownNode = { type: "table", headers: table.headers, rows: table.rows, align: table.align, sourceSpan: sourceForLines(normalized, lineStarts, blockStart, table.end, sourceOffset) };
       children.push(withFollowingLabel(node, lines, table.end));
@@ -130,7 +151,7 @@ export function parseMarkdown(
         const text = lines[i].replace(/^\s*(?:[-*+]\s+|\d+\.\s+)/, "");
         const task = text.match(/^\[([ xX])]\s+(.*)$/);
         checked.push(task ? task[1].toLowerCase() === "x" : undefined);
-        items.push(parseInline(task ? task[2] : text));
+        items.push(parseDocumentInline(task ? task[2] : text));
         i += 1;
       }
       children.push({ type: "list", ordered, items, checked, sourceSpan: sourceForLines(normalized, lineStarts, blockStart, i, sourceOffset) });
@@ -146,16 +167,22 @@ export function parseMarkdown(
       !/^(#{1,6})\s+/.test(lines[i]) &&
       !parseImageBlock(lines[i]) &&
       !/^```/.test(lines[i]) &&
+      !isRegisteredDirective(lines[i], plugins) &&
       !/^\s*(?:[-*+]\s+|\d+\.\s+)/.test(lines[i]) &&
       !isTableStart(lines, i)
     ) {
       paragraph.push(lines[i].trim());
       i += 1;
     }
-    children.push({ type: "paragraph", children: parseInline(paragraph.join(" ")), sourceSpan: sourceForLines(normalized, lineStarts, blockStart, i, sourceOffset) });
+    children.push({ type: "paragraph", children: parseDocumentInline(paragraph.join(" ")), sourceSpan: sourceForLines(normalized, lineStarts, blockStart, i, sourceOffset) });
   }
 
   return { type: "document", children };
+}
+
+function isRegisteredDirective(line: string, plugins: VectorPluginRegistry): boolean {
+  const match = line.match(/^:::\s*([A-Za-z][\w-]*)\b/);
+  return Boolean(match && plugins.markdownDirective(match[1]));
 }
 
 function lineStartOffsets(lines: string[]): number[] {

@@ -1,43 +1,56 @@
-import type { InlineNode, MarkdownAst, MarkdownNode } from "../markdown/markdownTypes";
-import { parseInline } from "../markdown/parseInline";
-import type { BibEntry, CitationNode } from "./citationTypes";
-import { parseBibtex } from "./parseBibtex";
+import type { InlineNode, InlinePluginNode, MarkdownAst, MarkdownNode } from "../../../markdown/markdownTypes";
+import type { BibEntry } from "./bibtex";
+import { buildBibliographyNodes } from "./references";
 
 export type BibliographyInput = {
   paths: string[];
   files?: Record<string, string>;
   sourcePath?: string;
+  parse: (path: string, source: string) => BibEntry[];
+  onMissingFile?: (path: string) => void;
+  onMissingKey?: (key: string) => void;
 };
 
-export function resolveCitations(ast: MarkdownAst, input: BibliographyInput | undefined): MarkdownAst {
+export type CitationItem = {
+  key: string;
+  locator?: string;
+};
+
+export type CitationData = {
+  items: CitationItem[];
+  narrative?: boolean;
+};
+
+export function resolveCitations(ast: MarkdownAst, input: BibliographyInput): MarkdownAst {
   const citations = collectCitations(ast.children);
   if (citations.length === 0) return removeBibliographyPlaceholders(ast);
   const entries = loadEntries(input);
   const orderedKeys = [...new Set(citations.flatMap((citation) => citation.items.map((item) => item.key)))];
   const numbers = new Map(orderedKeys.map((key, index) => [key, index + 1]));
   const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+  for (const key of orderedKeys) if (!byKey.has(key)) input.onMissingKey?.(key);
   const resolved = ast.children.map((node) => resolveNode(node, numbers, byKey));
   const bibliography = buildBibliographyNodes(orderedKeys, byKey);
-  const markerIndex = resolved.findIndex((node) => node.type === "bibliography");
+  const markerIndex = resolved.findIndex(isBibliographyMarker);
   if (markerIndex >= 0) resolved.splice(markerIndex, 1, ...bibliography);
   else resolved.push(...bibliography);
-  return { type: "document", children: resolved.filter((node) => node.type !== "bibliography") };
+  return { type: "document", children: resolved.filter((node) => !isBibliographyMarker(node)) };
 }
 
-function loadEntries(input: BibliographyInput | undefined): BibEntry[] {
-  const files = input?.files;
-  if (!input || !files) return [];
+function loadEntries(input: BibliographyInput): BibEntry[] {
+  const files = input.files;
+  if (!files) return [];
   const sourceDirectory = dirname(normalizePath(input.sourcePath ?? ""));
   return input.paths.flatMap((path) => {
     const normalized = normalizePath(path);
     const withExtension = normalized.endsWith(".bib") ? normalized : `${normalized}.bib`;
     const relative = sourceDirectory ? normalizePath(`${sourceDirectory}/${normalized}`) : normalized;
     const relativeWithExtension = sourceDirectory ? normalizePath(`${sourceDirectory}/${withExtension}`) : withExtension;
-    const content = files[relative]
-      ?? files[relativeWithExtension]
-      ?? files[normalized]
-      ?? files[withExtension];
-    return content ? parseBibtex(content) : [];
+    const resolvedPath = [relative, relativeWithExtension, normalized, withExtension]
+      .find((candidate) => files[candidate] !== undefined);
+    const content = resolvedPath ? files[resolvedPath] : undefined;
+    if (!content) input.onMissingFile?.(withExtension);
+    return content ? input.parse(resolvedPath ?? normalized, content) : [];
   });
 }
 
@@ -55,11 +68,11 @@ function dirname(path: string): string {
   return index < 0 ? "" : path.slice(0, index);
 }
 
-function collectCitations(nodes: MarkdownNode[]): CitationNode[] {
-  const citations: CitationNode[] = [];
+function collectCitations(nodes: MarkdownNode[]): CitationData[] {
+  const citations: CitationData[] = [];
   const collect = (inline: InlineNode[]) => {
     for (const node of inline) {
-      if (node.type === "citation") citations.push(node);
+      if (isCitationNode(node)) citations.push(node.data as CitationData);
       else if (node.type === "strong" || node.type === "emphasis" || node.type === "link") collect(node.children);
     }
   };
@@ -89,9 +102,10 @@ function resolveNode(node: MarkdownNode, numbers: Map<string, number>, entries: 
 
 function resolveInline(nodes: InlineNode[], numbers: Map<string, number>, entries: Map<string, BibEntry>): InlineNode[] {
   return nodes.flatMap((node): InlineNode[] => {
-    if (node.type === "citation") {
-      const missing = node.items.some((item) => !entries.has(item.key));
-      const text = citationText(node, numbers);
+    if (isCitationNode(node)) {
+      const citation = node.data as CitationData;
+      const missing = citation.items.some((item) => !entries.has(item.key));
+      const text = citationText(citation, numbers);
       return missing
         ? [{ type: "text", text, color: "#b42318" }]
         : [{ type: "link", href: "#refs", children: [{ type: "text", text }] }];
@@ -103,44 +117,22 @@ function resolveInline(nodes: InlineNode[], numbers: Map<string, number>, entrie
   });
 }
 
-function citationText(citation: CitationNode, numbers: Map<string, number>): string {
-  const parts = citation.items.map((item) => {
+function citationText(citation: CitationData, numbers: Map<string, number>): string {
+  return `[${citation.items.map((item) => {
     const number = numbers.get(item.key);
     const base = number === undefined ? "??" : String(number);
-    return item.locator ? base + ", " + item.locator : base;
-  });
-  return "[" + parts.join(", ") + "]";
+    return item.locator ? `${base}, ${item.locator}` : base;
+  }).join(", ")}]`;
 }
 
-function buildBibliographyNodes(keys: string[], entries: Map<string, BibEntry>): MarkdownNode[] {
-  return [
-    {
-      type: "heading",
-      level: 1,
-      children: parseInline("References"),
-      label: "refs",
-      unnumbered: true
-    },
-    {
-      type: "referenceList",
-      entries: keys.map((key, index) => ({
-        key,
-        number: index + 1,
-        children: parseInline(formatEntry(entries.get(key), key))
-      }))
-    }
-  ];
-}
-
-function formatEntry(entry: BibEntry | undefined, key: string): string {
-  if (!entry) return "Missing bibliography entry: " + key;
-  const author = entry.fields.author ?? "Unknown author";
-  const title = entry.fields.title ?? key;
-  const container = entry.fields.journal ?? entry.fields.booktitle ?? entry.fields.publisher;
-  const year = entry.fields.year;
-  return [author, title, container, year].filter(Boolean).join(". ") + ".";
+function isCitationNode(node: InlineNode): node is InlinePluginNode {
+  return node.type === "inlinePlugin" && node.plugin === "@vector/bibliography" && node.kind === "citation";
 }
 
 function removeBibliographyPlaceholders(ast: MarkdownAst): MarkdownAst {
-  return { type: "document", children: ast.children.filter((node) => node.type !== "bibliography") };
+  return { type: "document", children: ast.children.filter((node) => !isBibliographyMarker(node)) };
+}
+
+function isBibliographyMarker(node: MarkdownNode): boolean {
+  return node.type === "plugin" && node.plugin === "@vector/bibliography" && node.kind === "bibliography";
 }

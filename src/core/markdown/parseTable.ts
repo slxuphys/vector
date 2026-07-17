@@ -1,4 +1,4 @@
-import type { TableAlign, TableCellNode } from "./markdownTypes";
+import type { InlineNode, TableAlign, TableCellNode } from "./markdownTypes";
 import { parseInline } from "./parseInline";
 
 export type ParsedMarkdownTable = {
@@ -8,23 +8,28 @@ export type ParsedMarkdownTable = {
   end: number;
 };
 
-export function parseTableAt(lines: string[], index: number): ParsedMarkdownTable | undefined {
+export function parseTableAt(
+  lines: string[],
+  index: number,
+  inlineParser: (source: string) => InlineNode[] = parseInline
+): ParsedMarkdownTable | undefined {
   if (!isTableStart(lines, index)) return undefined;
 
   const headerCells = splitTableRow(lines[index]);
+  const headers = headerCells.map((cell) => parseTableCell(cell, inlineParser));
   const align = splitTableRow(lines[index + 1]).map(parseAlignMarker);
   const rows: TableCellNode[][] = [];
   let cursor = index + 2;
 
   while (cursor < lines.length && isTableRow(lines[cursor])) {
-    rows.push(splitTableRow(lines[cursor]).map(parseTableCell));
+    rows.push(splitTableRow(lines[cursor]).map((cell) => parseTableCell(cell, inlineParser)));
     cursor += 1;
   }
 
   return {
-    headers: headerCells.map(parseTableCell),
+    headers,
     rows,
-    align: normalizeAlignCount(align, Math.max(totalColSpan(headerCells.map(parseTableCell)), align.length)),
+    align: normalizeAlignCount(align, Math.max(totalColSpan(headers), align.length)),
     end: cursor
   };
 }
@@ -101,10 +106,10 @@ function normalizeAlignCount(align: TableAlign[], count: number): TableAlign[] {
   return Array.from({ length: count }, (_, index) => align[index] ?? "left");
 }
 
-function parseTableCell(cell: string): TableCellNode {
+function parseTableCell(cell: string, inlineParser: (source: string) => InlineNode[]): TableCellNode {
   const { text, colSpan, rowSpan } = parseCellAttributes(cell);
   return {
-    children: parseInline(text),
+    children: inlineParser(text),
     colSpan,
     rowSpan
   };

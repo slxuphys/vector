@@ -46,6 +46,20 @@ export type TitleMatter = {
   style?: "default" | "latex-article" | "revtex";
 };
 
+export type PluginLayoutBlock = {
+  type: "plugin";
+  plugin: string;
+  kind: string;
+  data: unknown;
+  role?: "figure";
+  caption?: string;
+  width?: ImageLength;
+  align?: ImageAlign;
+  label?: string;
+  labelNumber?: string;
+  source?: SourceSpan;
+};
+
 export type LayoutBlock =
   | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; unnumbered?: boolean; source?: SourceSpan }
   | { type: "paragraph"; runs: InlineRun[]; continuation?: boolean; source?: SourceSpan }
@@ -55,7 +69,7 @@ export type LayoutBlock =
   | { type: "table"; headers: TableCellBlock[]; rows: TableCellBlock[][]; align: TableAlign[]; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "image"; src: string; sources?: string[]; alt: string; caption?: string; width?: ImageLength; height?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "figure"; images: FigureImageBlock[]; caption?: string; align?: ImageAlign; label?: string; labelNumber?: string; source?: SourceSpan }
-  | { type: "graphsx"; syntax?: "graphsx" | "tikz"; source: string; caption?: string; width?: ImageLength; align?: ImageAlign; label?: string; labelNumber?: string; sourceSpan?: SourceSpan }
+  | PluginLayoutBlock
   | { type: "math"; text: string; label?: string; labelNumber?: string; source?: SourceSpan }
   | { type: "rule"; source?: SourceSpan }
   | { type: "pageBreak"; source?: SourceSpan };
@@ -65,7 +79,7 @@ export function flattenInline(nodes: InlineNode[], inherited: Partial<InlineRun>
     if (node.type === "text") return [{ ...inherited, text: node.text, nonBreak: node.nonBreak, color: node.color }];
     if (node.type === "code") return [{ ...inherited, text: node.text, code: true }];
     if (node.type === "math") return [{ ...inherited, text: node.text, math: true }];
-    if (node.type === "citation") return [{ ...inherited, text: "[??]", nonBreak: true, color: "#b42318" }];
+    if (node.type === "inlinePlugin") return [{ ...inherited, text: `[unsupported ${node.plugin}:${node.kind}]`, nonBreak: true, color: "#b42318" }];
     if (node.type === "strong") return flattenInline(node.children, { ...inherited, bold: true });
     if (node.type === "emphasis") return flattenInline(node.children, { ...inherited, italic: true });
     return flattenInline(node.children, { ...inherited, link: node.href });

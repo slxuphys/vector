@@ -1,14 +1,14 @@
-import type { LatexCommandContext, LatexCommandDefinition, VectorPlugin } from "../pluginTypes";
+import type { LatexCommandContext, LatexCommandDefinition, VectorPlugin } from "../../api";
 
 export const latexCorePackage: VectorPlugin = {
-  name: "@vector/latex-core",
+  metadata: {
+    name: "@vector/latex-core",
+    version: "0.1.0",
+    apiVersion: "1",
+    runtimes: ["browser", "node"]
+  },
   latex: {
     commands: {
-      bibliography: {
-        arguments: ["required"],
-        modes: ["vertical"],
-        handler: () => [{ type: "bibliography" }]
-      },
       newpage: pageBreakCommand(),
       clearpage: pageBreakCommand(),
       pagebreak: pageBreakCommand(),

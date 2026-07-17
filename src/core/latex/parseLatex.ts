@@ -7,13 +7,12 @@ import {
   type LatexCommandSyntax,
   type LatexEnvironmentMatch
 } from "./latexSyntax";
-import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
-import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
-import type { LatexParserMode } from "../plugins/pluginTypes";
+import { builtinPlugins } from "../plugins/builtin";
+import type { LatexParserMode, VectorPluginRegistry } from "../plugins/api";
 import {
   createVectorPluginDocumentContext,
   type VectorPluginDocumentContext
-} from "../plugins/pluginDocumentContext";
+} from "../plugins/api";
 import { debugGroup, debugWarn } from "../utils/debugSettings";
 
 const nonBreakingSpaceMarker = "\uE110";
@@ -67,12 +66,12 @@ const maxMacroExpansions = 10_000;
 export function parseLatex(
   source: string,
   sourceOffset = 0,
-  plugins: VectorPluginRegistry = firstPartyPlugins
+  plugins: VectorPluginRegistry = builtinPlugins,
+  document: VectorPluginDocumentContext = createVectorPluginDocumentContext()
 ): MarkdownAst {
   const normalized = normalizeLatexSource(source);
   const expanded = expandLatexMacros(normalized);
   const documentStart = /\\begin\{document}/.exec(expanded);
-  const document = createVectorPluginDocumentContext();
   document.getState<LatexGraphicsState>(latexGraphicsStateKey, () => ({
     paths: readLatexGraphicsPaths(expanded)
   }));
@@ -168,13 +167,6 @@ export function readLatexPreamble(source: string): LatexPreamble {
     date: rawDate === undefined ? undefined : latexInlineToMarkdown(rawDate),
     abstract: optionalLatexInline(readEnvironment(expanded, "abstract")?.body.trim())
   };
-}
-
-export function readLatexBibliographyPaths(source: string): string[] {
-  return readCommandArguments(source, "bibliography")
-    .flatMap((value) => value.split(","))
-    .map((value) => value.trim())
-    .filter(Boolean);
 }
 
 export function readLatexGraphicsPaths(source: string): string[] {
@@ -591,12 +583,12 @@ function resolveFigure(
   const packageNodes = packageEnvironment
     ? runLatexEnvironmentHandler(packageEnvironment, plugins, "vertical", document)
     : undefined;
-  const packagedGraph = packageNodes?.find((node) => node.type === "graphsx");
-  if (packagedGraph?.type === "graphsx") {
+  const packagedFigure = packageNodes?.find((node) => node.type === "plugin" && node.role === "figure");
+  if (packagedFigure?.type === "plugin") {
     const caption = optionalLatexInline(readCommandArgument(body, "caption"));
     const label = readCommandArgument(body, "label");
     return [{
-        ...packagedGraph,
+        ...packagedFigure,
         caption,
         label,
         align: "center"
@@ -865,7 +857,9 @@ function parseLatexInline(
   plugins: VectorPluginRegistry,
   document: VectorPluginDocumentContext
 ): InlineNode[] {
-  return transformInlineMath(parseInline(latexInlineToMarkdown(source)), plugins, document);
+  const markdown = latexInlineToMarkdown(source, (value) =>
+    plugins.transformLatexInline({ source: value, mode: "horizontal", document }));
+  return transformInlineMath(parseInline(markdown, plugins, document), plugins, document);
 }
 
 function transformInlineMath(
@@ -893,14 +887,11 @@ function transformLatexMath(
   return plugins.transformLatexMath({ source, mode, document });
 }
 
-function latexInlineToMarkdown(source: string): string {
+function latexInlineToMarkdown(source: string, transformSource: (source: string) => string = (value) => value): string {
   return preserveMathWhile(source, (value) => {
-    let transformed = replaceInlineCommands(value);
+    let transformed = replaceInlineCommands(transformSource(value));
     transformed = transformed
       .replace(/~/g, nonBreakingSpaceMarker)
-      .replace(/\\(?:cite|citep)(?:\[[^\]]*])?\{([^{}]+)}/g, (_match, keys: string) =>
-        "[" + keys.split(",").map((key) => "@" + key.trim()).join("; ") + "]")
-      .replace(/\\citet(?:\[[^\]]*])?\{([^{}]+)}/g, (_match, key: string) => "@" + key.trim())
       .replace(/\\ref\{([A-Za-z][\w:.'-]*)}/g, "@!$1")
       .replace(/\\(?:eqref|autoref|cref)\{([A-Za-z][\w:.'-]*)}/g, "@$1")
       .replace(/\\LaTeX\b/g, "LaTeX")

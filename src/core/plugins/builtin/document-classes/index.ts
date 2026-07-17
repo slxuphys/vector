@@ -1,11 +1,17 @@
-import type { EngineOptions } from "../../engine/engineTypes";
-import { defaultLayoutConfig } from "../../layout/layoutConfig";
-import { getDefaultOpenMathMetricsForProfile } from "../../renderers/math/nativeMath";
-import { openMathTextFontFaceCss, openMathTextFontStack } from "../../renderers/text/latinModernRomanFont";
-import type { LatexDocumentClassContext, VectorPlugin } from "../pluginTypes";
+import type { EngineOptions } from "../../../engine/engineTypes";
+import { defaultLayoutConfig } from "../../../layout/layoutConfig";
+import { getDefaultOpenMathMetricsForProfile } from "../../../renderers/math/nativeMath";
+import { openMathTextFontFaceCss, openMathTextFontStack } from "../../../renderers/text/latinModernRomanFont";
+import type { LatexDocumentClassContext, VectorPlugin } from "../../api";
 
 export const latexDocumentClassesPackage: VectorPlugin = {
-  name: "@vector/latex-classes",
+  metadata: {
+    name: "@vector/latex-classes",
+    version: "0.1.0",
+    apiVersion: "1",
+    dependencies: ["@vector/latex-core"],
+    runtimes: ["browser", "node"]
+  },
   latex: {
     documentClasses: {
       article: articleDefaults,

@@ -1,11 +1,13 @@
 import { flattenInline, type LayoutBlock } from "../layout/layoutBlocks";
 import type { MarkdownAst } from "./markdownTypes";
-import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
-import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
+import { builtinPlugins } from "../plugins/builtin";
+import type { VectorPluginRegistry } from "../plugins/api";
 
-export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = firstPartyPlugins): LayoutBlock[] {
+export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = builtinPlugins): LayoutBlock[] {
   return ast.children.map((node): LayoutBlock => {
-    const packageBlock = plugins.astNormalizer(node.type)?.(node);
+    const packageBlock = node.type === "plugin"
+      ? plugins.astNormalizer(node.type, node.plugin, node.kind)?.(node)
+      : plugins.astNormalizer(node.type)?.(node);
     if (packageBlock) return packageBlock;
     switch (node.type) {
       case "heading":
@@ -88,16 +90,14 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = f
           labelNumber: node.labelNumber,
           source: node.sourceSpan
         };
-      case "graphsx":
-        throw new Error("GraphSX AST nodes require the @vector/graphsx package normalizer.");
+      case "plugin":
+        throw new Error(`Plugin AST node "${node.plugin}:${node.kind}" has no registered normalizer.`);
       case "mathBlock":
         return { type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber, source: node.sourceSpan };
       case "thematicBreak":
         return { type: "rule", source: node.sourceSpan };
       case "pageBreak":
         return { type: "pageBreak", source: node.sourceSpan };
-      case "bibliography":
-        return { type: "paragraph", runs: [], source: node.sourceSpan };
     }
   });
 }

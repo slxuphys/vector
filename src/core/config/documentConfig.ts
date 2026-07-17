@@ -8,8 +8,7 @@ import { openMathTextFontFaceCss, openMathTextFontStack } from "../renderers/tex
 import type { DocumentTheme } from "../theme/themeTypes";
 import { defaultCrossRefConfig, type CrossRefConfig } from "../xref/xrefTypes";
 import { readLatexDocumentClass, readLatexPreamble } from "../latex/parseLatex";
-import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
-import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
+import { builtinPlugins, resolvePluginRegistry } from "../plugins/builtin";
 
 export type DocumentFrontMatter = {
   bibliography?: string;
@@ -122,12 +121,13 @@ export function applyDocumentFrontMatter(options: EngineOptions, frontMatter: Do
   };
 }
 
-function latexDocumentClassDefaults(source: string, plugins: VectorPluginRegistry = firstPartyPlugins): EngineOptions {
+function latexDocumentClassDefaults(source: string, plugins: EngineOptions["plugins"] = builtinPlugins): EngineOptions {
+  const registry = resolvePluginRegistry(plugins);
   const documentClass = readLatexDocumentClass(source);
   const preamble = readLatexPreamble(source);
-  const handler = plugins.latexDocumentClass(documentClass.name)
-    ?? plugins.latexDocumentClass("article")
-    ?? firstPartyPlugins.latexDocumentClass("article");
+  const handler = registry.latexDocumentClass(documentClass.name)
+    ?? registry.latexDocumentClass("article")
+    ?? builtinPlugins.latexDocumentClass("article");
   if (!handler) throw new Error("The first-party LaTeX article document class is not registered.");
   return handler({ source, ...documentClass, preamble });
 }

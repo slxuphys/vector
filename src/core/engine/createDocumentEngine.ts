@@ -10,8 +10,6 @@ import type { PageConfig } from "../layout/pageConfig";
 import { normalizeAst } from "../markdown/normalizeAst";
 import { parseMarkdown } from "../markdown/parseMarkdown";
 import { parseLatex } from "../latex/parseLatex";
-import { readLatexBibliographyPaths } from "../latex/parseLatex";
-import { resolveCitations } from "../citations/resolveCitations";
 import { resolveCrossReferences } from "../xref/resolveReferences";
 import { defaultTheme } from "../theme/defaultTheme";
 import {
@@ -31,8 +29,12 @@ import { defaultDocumentOptions, type EngineOptions, type MathRendererName } fro
 import type { CrossRefConfig } from "../xref/xrefTypes";
 import { flattenInline, type TitleMatter } from "../layout/layoutBlocks";
 import { parseInline } from "../markdown/parseInline";
-import { firstPartyPlugins } from "../plugins/firstPartyPlugins";
-import type { VectorPluginRegistry } from "../plugins/pluginRegistry";
+import { builtinPlugins, resolvePluginRegistry } from "../plugins/builtin";
+import {
+  createVectorPluginDocumentContext,
+  type VectorPluginDocumentContext,
+  type VectorPluginRegistry
+} from "../plugins/api";
 import { resolveDocumentAssetSources } from "./resolveDocumentAssetSources";
 
 export type DocumentEngine = {
@@ -49,6 +51,7 @@ export type PreparedLayout = {
   nativeMathProfile?: NativeMathFontProfileName;
   crossRef: CrossRefConfig;
   layoutConfig: LayoutConfig;
+  plugins: VectorPluginRegistry;
   parseMs: number;
   totalStart: number;
 };
@@ -97,32 +100,44 @@ function prepareMarkdownLayoutFromDocument(
 ): PreparedLayout {
   const sourceDefaults = applySourceFormatDefaults(document.markdown, options);
   const resolvedOptions = applyDocumentFrontMatter(sourceDefaults, document.frontMatter);
+  const pluginRegistry = resolvePluginRegistry(resolvedOptions.plugins);
   warnFrontMatter(document.warnings);
   const documentOptions = {
     ...defaultDocumentOptions,
     ...(resolvedOptions.document ?? {})
   };
   const crossRef = mergeCrossRefConfig(resolvedOptions.crossRef, undefined);
-  const sourceAst = resolveDocumentAssetSources(parseSourceAst(
-    document.markdown,
-    resolvedOptions.sourceFormat,
-    document.sourceOffset,
-    resolvedOptions.plugins
-  ), resolvedOptions.assetUrls, resolvedOptions.sourcePath);
-  const bibliographyPaths = resolvedOptions.sourceFormat === "latex"
-    ? readLatexBibliographyPaths(document.markdown)
-    : document.frontMatter?.bibliography ? [document.frontMatter.bibliography] : [];
-  const citedAst = resolveCitations(sourceAst, {
-    paths: bibliographyPaths,
-    files: resolvedOptions.bibliographyFiles,
-    sourcePath: resolvedOptions.sourcePath
+  const pluginDocument = createVectorPluginDocumentContext();
+  const lifecycle = pluginRegistry.createDocumentLifecycleContext({
+    source: document.markdown,
+    sourceOffset: document.sourceOffset,
+    sourceFormat: resolvedOptions.sourceFormat ?? "markdown",
+    sourcePath: resolvedOptions.sourcePath,
+    options: resolvedOptions,
+    frontMatter: document.frontMatter,
+    document: pluginDocument
   });
-  const ast = resolveCrossReferences(citedAst, crossRef, {
-    titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
-    numberSections: documentOptions.numberSections,
-    sectionNumberStyle: documentOptions.sectionNumberStyle
-  });
-  const blocks = normalizeAst(ast, resolvedOptions.plugins ?? firstPartyPlugins);
+  let blocks: LayoutBlock[];
+  try {
+    pluginRegistry.prepareDocument(lifecycle);
+    const sourceAst = resolveDocumentAssetSources(parseSourceAst(
+      document.markdown,
+      resolvedOptions.sourceFormat,
+      document.sourceOffset,
+      pluginRegistry,
+      pluginDocument
+    ), resolvedOptions.assetUrls, resolvedOptions.sourcePath);
+    const transformedAst = pluginRegistry.transformDocumentAst(sourceAst, lifecycle);
+    const referencedAst = resolveCrossReferences(transformedAst, crossRef, {
+      titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
+      numberSections: documentOptions.numberSections,
+      sectionNumberStyle: documentOptions.sectionNumberStyle
+    });
+    const ast = pluginRegistry.finalizeDocument(referencedAst, lifecycle);
+    blocks = normalizeAst(ast, pluginRegistry);
+  } finally {
+    pluginRegistry.disposeDocument(lifecycle);
+  }
   const titleMatter = buildTitleMatter(documentOptions);
   const parseMs = now() - parseStart;
   const page = createPageConfig(resolvedOptions.pageSize ?? "letter", resolvedOptions.margin ?? 72);
@@ -132,18 +147,19 @@ function prepareMarkdownLayoutFromDocument(
   const nativeMathProfile = resolvedOptions.nativeMathProfile;
   const layoutConfig = mergeLayoutConfig(resolvedOptions.layout, undefined);
 
-  return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, parseMs, totalStart };
+  return { blocks, titleMatter, page, theme, mathRenderer, nativeMathMetrics, nativeMathProfile, crossRef, layoutConfig, plugins: pluginRegistry, parseMs, totalStart };
 }
 
 function parseSourceAst(
   source: string,
   format: EngineOptions["sourceFormat"] = "markdown",
   sourceOffset = 0,
-  plugins: VectorPluginRegistry = firstPartyPlugins
+  plugins: VectorPluginRegistry = builtinPlugins,
+  document: VectorPluginDocumentContext = createVectorPluginDocumentContext()
 ) {
   return format === "latex"
-    ? parseLatex(source, sourceOffset, plugins)
-    : parseMarkdown(source, sourceOffset, plugins);
+    ? parseLatex(source, sourceOffset, plugins, document)
+    : parseMarkdown(source, sourceOffset, plugins, document);
 }
 
 function needsNativeMathFontsBeforeFrontMatter(document: ParsedMarkdownDocument, options: EngineOptions): boolean {
@@ -160,7 +176,7 @@ export function finishMarkdownLayout(
   mathMeasurements?: MathMeasurementMap
 ): { layout: PagedDisplayList; stats: PreviewStats } {
   const layoutStart = now();
-  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef, prepared.layoutConfig, prepared.titleMatter);
+  const pages = paginate(prepared.blocks, prepared.page, prepared.theme, mathMeasurements, prepared.mathRenderer, prepared.nativeMathMetrics, prepared.nativeMathProfile, prepared.crossRef, prepared.layoutConfig, prepared.titleMatter, prepared.plugins);
   const layout = buildDisplayList(pages, prepared.page, prepared.theme);
   const layoutMs = now() - layoutStart;
 

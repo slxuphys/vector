@@ -48,12 +48,73 @@ npm run build:product
 
 ```text
 src/core/        parsing, layout, pagination, display lists, SVG, and PDF
+src/core/plugins/api/      public plugin contracts and host services
+src/core/plugins/builtin/  Vector's first-party plugins
 src/react/       reusable editor and preview components
 src/playground/  product workspace and local debug lab
 src/assets/      bundled text and math fonts
 vscode/          VS Code extension host and webview
 tests/           unit and integration coverage
 ```
+
+## Plugins
+
+Plugins can extend Markdown inline syntax, directives and fences; LaTeX inline transforms, commands, environments and document classes; document-wide AST transforms; normalization; and layout. Passing a plugin array adds it to Vector's built-in plugins:
+
+```ts
+import { createDocumentEngine, type VectorPlugin } from "vector-text-engine";
+
+const noticePlugin: VectorPlugin = {
+  metadata: {
+    name: "example/notice",
+    version: "1.0.0",
+    apiVersion: "1"
+  },
+  markdown: {
+    fences: {
+      notice: ({ source, sourceSpan }) => ({
+        type: "plugin",
+        plugin: "example/notice",
+        kind: "notice",
+        data: { text: source.trim() },
+        sourceSpan
+      })
+    }
+  },
+  ast: {
+    normalizers: {
+      notice: (node) => node.type === "plugin" ? {
+        type: "plugin",
+        plugin: node.plugin,
+        kind: node.kind,
+        data: node.data,
+        source: node.sourceSpan
+      } : undefined
+    }
+  },
+  layout: {
+    handlers: {
+      notice: (block, context) => ({
+        width: 120,
+        height: 24,
+        objects: [{
+          type: "text",
+          text: (block.data as { text: string }).text,
+          x: 4,
+          y: 16,
+          fontSize: context.theme.fontSize,
+          fontFamily: context.theme.fontFamily,
+          color: context.theme.text
+        }]
+      })
+    }
+  }
+};
+
+const engine = createDocumentEngine({ plugins: [noticePlugin] });
+```
+
+Block and inline plugin nodes are namespaced by plugin and kind. Layout handlers return canonical display objects, so SVG preview and PDF export share the same geometry. `setup(host)` gives plugins controlled access to diagnostics, asset resolution, text measurement, native math layout, and namespaced caches. Document plugins can use `prepareDocument`, `transformAst`, `finalizeDocument`, and `disposeDocument`; the same per-document state is available to parser handlers and lifecycle hooks. The built-in bibliography package owns Markdown citation syntax, the bibliography directive, LaTeX citation conversion, BibTeX loading, and document-wide resolution without an engine-level special case. Advanced consumers can still pass a `VectorPluginRegistry` as a complete registry override.
 
 ## GitHub Pages
 

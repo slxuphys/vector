@@ -9,7 +9,14 @@ export type InlineNode =
   | { type: "code"; text: string }
   | { type: "link"; href: string; children: InlineNode[] }
   | { type: "math"; text: string }
-  | import("../citations/citationTypes").CitationNode;
+  | InlinePluginNode;
+
+export type InlinePluginNode = {
+  type: "inlinePlugin";
+  plugin: string;
+  kind: string;
+  data: unknown;
+};
 
 export type TableAlign = "left" | "center" | "right";
 export type ImageAlign = "left" | "center" | "right";
@@ -39,9 +46,8 @@ export type MarkdownNode =
   | (({ type: "table"; headers: TableCellNode[]; rows: TableCellNode[][]; align: TableAlign[] } & LabeledNode) & SourceMapped)
   | (ImageNode & SourceMapped)
   | (FigureNode & SourceMapped)
-  | (GraphSXNode & SourceMapped)
+  | (PluginAstNode & SourceMapped)
   | (({ type: "mathBlock"; text: string } & LabeledNode) & SourceMapped)
-  | ({ type: "bibliography" } & SourceMapped)
   | ({ type: "thematicBreak" } & SourceMapped)
   | ({ type: "pageBreak" } & SourceMapped);
 
@@ -71,10 +77,12 @@ export type FigureNode = {
   align?: ImageAlign;
 } & LabeledNode;
 
-export type GraphSXNode = {
-  type: "graphsx";
-  syntax?: "graphsx" | "tikz";
-  source: string;
+export type PluginAstNode = {
+  type: "plugin";
+  plugin: string;
+  kind: string;
+  data: unknown;
+  role?: "figure";
   caption?: string;
   width?: ImageLength;
   align?: ImageAlign;

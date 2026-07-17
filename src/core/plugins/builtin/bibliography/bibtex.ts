@@ -1,4 +1,8 @@
-import type { BibEntry } from "./citationTypes";
+export type BibEntry = {
+  key: string;
+  type: string;
+  fields: Record<string, string>;
+};
 
 export function parseBibtex(source: string): BibEntry[] {
   const entries: BibEntry[] = [];
@@ -12,7 +16,7 @@ export function parseBibtex(source: string): BibEntry[] {
     if (end === -1) continue;
     const body = source.slice(start, end).trim();
     entryPattern.lastIndex = end + 1;
-    if (match[1].toLowerCase() === "comment" || match[1].toLowerCase() === "string") continue;
+    if (["comment", "string"].includes(match[1].toLowerCase())) continue;
     const separator = body.indexOf(",");
     if (separator === -1) continue;
     const key = body.slice(0, separator).trim();
@@ -39,10 +43,7 @@ function findBalancedEnd(source: string, start: number, open: string, close: str
     if (char === "\"") quoted = !quoted;
     if (quoted) continue;
     if (char === open) depth += 1;
-    if (char === close) {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
+    if (char === close && --depth === 0) return index;
   }
   return -1;
 }

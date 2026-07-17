@@ -39,14 +39,172 @@ import { loadHarfbuzzTextShaper, loadTextFontFromBytes, shapeTextWithFontFile } 
 import { latinModernRomanFontFamily, libertinusSerifFontFamily } from "../src/core/renderers/text/latinModernRomanFont";
 import { defaultTheme } from "../src/core/theme/defaultTheme";
 import type { PageConfig } from "../src/core/layout/pageConfig";
-import { createFirstPartyPluginRegistry } from "../src/core/plugins/firstPartyPlugins";
+import { createFirstPartyPluginRegistry } from "../src/core/plugins/builtin";
+import { createVectorPluginHost, VectorPluginRegistry } from "../src/core/plugins/api";
 import { findNextLatexEnvironment } from "../src/core/latex/latexSyntax";
 
 describe("plugin registry", () => {
+  it("accepts versioned plugins and exposes controlled host services", () => {
+    const diagnostics: string[] = [];
+    const host = createVectorPluginHost({
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message)
+    });
+    const registry = new VectorPluginRegistry(host).register({
+      metadata: {
+        name: "test/host",
+        version: "1.0.0",
+        apiVersion: "1"
+      },
+      setup(pluginHost) {
+        pluginHost.cache.set("test/host", "answer", 42);
+        expect(pluginHost.cache.get("test/host", "answer")).toBe(42);
+        expect(pluginHost.text.measure("abc", {
+          fontSize: 12,
+          fontFamily: "serif",
+          monoFontFamily: "monospace"
+        })).toBeGreaterThan(0);
+        expect(pluginHost.math.layout({ source: "x^2", fontSize: 12 }).width).toBeGreaterThan(0);
+        expect(pluginHost.assets.resolve("figure/a.svg", {
+          sourcePath: "paper/main.tex",
+          assetUrls: { "paper/figure/a.svg": "blob:figure" }
+        })).toBe("blob:figure");
+        pluginHost.diagnostics.report({
+          plugin: "test/host",
+          severity: "info",
+          message: "ready"
+        });
+      }
+    });
+
+    expect(registry.pluginNames()).toContain("test/host");
+    expect(diagnostics).toEqual(["ready"]);
+  });
+
+  it("rejects incompatible APIs and missing plugin dependencies", () => {
+    const registry = new VectorPluginRegistry();
+    expect(() => registry.register({
+      metadata: {
+        name: "test/future",
+        version: "1.0.0",
+        apiVersion: "2" as "1"
+      }
+    })).toThrow(/supports API 1/);
+    expect(() => registry.register({
+      metadata: {
+        name: "test/dependent",
+        version: "1.0.0",
+        apiVersion: "1",
+        dependencies: ["test/base"]
+      }
+    })).toThrow(/requires "test\/base"/);
+  });
+
+  it("accepts plugin arrays directly in engine options", async () => {
+    const engine = createDocumentEngine({
+      plugins: [{
+        metadata: {
+          name: "test/direct",
+          version: "1.0.0",
+          apiVersion: "1"
+        },
+        markdown: {
+          fences: {
+            direct: ({ source, sourceSpan }) => ({
+              type: "plugin",
+              plugin: "test/direct",
+              kind: "notice",
+              data: { text: source.trim() },
+              sourceSpan
+            })
+          }
+        },
+        ast: {
+          normalizers: {
+            notice: (node) => node.type === "plugin"
+              ? {
+                  type: "plugin",
+                  plugin: node.plugin,
+                  kind: node.kind,
+                  data: node.data,
+                  source: node.sourceSpan
+                }
+              : undefined
+          }
+        },
+        layout: {
+          handlers: {
+            notice: (block, context) => ({
+              width: 120,
+              height: 24,
+              objects: [{
+                type: "text",
+                text: (block.data as { text: string }).text,
+                x: 4,
+                y: 16,
+                fontSize: context.theme.fontSize,
+                fontFamily: context.theme.fontFamily,
+                color: context.theme.text
+              }]
+            })
+          }
+        }
+      }]
+    });
+
+    const result = await engine.layout("```direct\nPlugin array\n```");
+    expect(result.layout.pages[0].objects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "text", text: "Plugin array" })
+    ]));
+  });
+
+  it("runs document lifecycle hooks around parsing with shared plugin state", async () => {
+    const events: string[] = [];
+    const engine = createDocumentEngine({
+      plugins: [{
+        metadata: {
+          name: "test/lifecycle",
+          version: "1.0.0",
+          apiVersion: "1"
+        },
+        document: {
+          prepareDocument(context) {
+            events.push("prepare");
+            context.document.getState("test/lifecycle", () => ({ ready: true }));
+          },
+          transformAst(ast, context) {
+            expect(context.document.peekState<{ ready: boolean }>("test/lifecycle")?.ready).toBe(true);
+            events.push("transform");
+            return ast;
+          },
+          finalizeDocument(ast) {
+            events.push("finalize");
+            return ast;
+          },
+          disposeDocument() {
+            events.push("dispose");
+          }
+        },
+        markdown: {
+          fences: {
+            lifecycle: ({ document, sourceSpan }) => {
+              expect(document.peekState<{ ready: boolean }>("test/lifecycle")?.ready).toBe(true);
+              events.push("parse");
+              return { type: "paragraph", children: [{ type: "text", text: "Lifecycle" }], sourceSpan };
+            }
+          }
+        }
+      }]
+    });
+
+    await engine.layout("```lifecycle\ncontent\n```");
+    expect(events).toEqual(["prepare", "parse", "transform", "finalize", "dispose"]);
+  });
+
   it("exposes GraphSX as one package for Markdown and LaTeX", () => {
     const plugins = createFirstPartyPluginRegistry();
 
     expect(plugins.pluginNames()).toContain("@vector/graphsx");
+    expect(plugins.pluginNames()).toContain("@vector/bibliography");
     expect(plugins.markdownFence("graphsx")).toBeTypeOf("function");
     expect(plugins.latexEnvironment("tikzpicture")).toBeTypeOf("function");
   });
@@ -94,6 +252,82 @@ describe("plugin registry", () => {
       type: "paragraph",
       children: [{ type: "text", text: "Command notice" }]
     });
+  });
+
+  it("lets plugins own Markdown inline syntax and block directives", () => {
+    const plugins = createFirstPartyPluginRegistry().register({
+      metadata: {
+        name: "test/inline",
+        version: "1.0.0",
+        apiVersion: "1"
+      },
+      markdown: {
+        inline: ({ source }) => {
+          const index = source.indexOf("^^");
+          return index < 0 ? undefined : {
+            index,
+            length: 2,
+            nodes: [{ type: "inlinePlugin", plugin: "test/inline", kind: "mark", data: {} }]
+          };
+        },
+        directives: {
+          note: ({ source, sourceSpan }) => ({
+            type: "paragraph",
+            children: [{ type: "text", text: source.trim() }],
+            sourceSpan
+          })
+        }
+      }
+    });
+    const ast = parseMarkdown("Before ^^ after.\n\n::: note\nDirective body\n:::", 0, plugins);
+
+    expect(ast.children[0]).toMatchObject({
+      type: "paragraph",
+      children: expect.arrayContaining([
+        { type: "inlinePlugin", plugin: "test/inline", kind: "mark", data: {} }
+      ])
+    });
+    expect(ast.children[1]).toMatchObject({
+      type: "paragraph",
+      children: [{ type: "text", text: "Directive body" }]
+    });
+  });
+
+  it("keeps citation syntax inside the bibliography plugin", () => {
+    const ast = parseMarkdown("Prior work [@einstein1905].\n\n::: bibliography\n:::");
+    const paragraph = ast.children[0];
+    const marker = ast.children[1];
+
+    expect(paragraph).toMatchObject({
+      type: "paragraph",
+      children: expect.arrayContaining([{
+        type: "inlinePlugin",
+        plugin: "@vector/bibliography",
+        kind: "citation",
+        data: { items: [{ key: "einstein1905" }] }
+      }])
+    });
+    expect(marker).toMatchObject({
+      type: "plugin",
+      plugin: "@vector/bibliography",
+      kind: "bibliography"
+    });
+  });
+
+  it("reports missing bibliography files and citation keys through plugin diagnostics", async () => {
+    const diagnostics: string[] = [];
+    const plugins = createFirstPartyPluginRegistry(createVectorPluginHost({
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code ?? diagnostic.message)
+    }));
+    const engine = createDocumentEngine({ sourceFormat: "latex", plugins, bibliographyFiles: {} });
+
+    await engine.layout(`\\begin{document}
+Missing citation\\cite{unknown}.
+\\bibliography{missing-references}
+\\end{document}`);
+
+    expect(diagnostics).toContain("bibliography-file-missing");
+    expect(diagnostics).toContain("citation-key-missing");
   });
 
   it("uses registered document-class profiles", () => {
@@ -302,9 +536,9 @@ $$
 `);
     const graph = ast.children[0];
 
-    expect(graph?.type).toBe("graphsx");
-    if (graph?.type === "graphsx") {
-      expect(graph.source).toContain("<Graph>");
+    expect(graph).toMatchObject({ type: "plugin", plugin: "@vector/graphsx", kind: "graph" });
+    if (graph?.type === "plugin") {
+      expect((graph.data as { source: string }).source).toContain("<Graph>");
       expect(graph.caption).toBe("Figure 2. Routed graph");
       expect(graph.width).toEqual({ value: 80, unit: "percent" });
       expect(graph.align).toBe("center");
@@ -368,7 +602,13 @@ describe("latex parser", () => {
     const ast = parseLatex(`\\begin{document}\n${tikzPicture}\n\\end{document}`);
 
     expect(ast.children).toHaveLength(1);
-    expect(ast.children[0]).toMatchObject({ type: "graphsx", syntax: "tikz", align: "center" });
+    expect(ast.children[0]).toMatchObject({
+      type: "plugin",
+      plugin: "@vector/graphsx",
+      kind: "graph",
+      data: { syntax: "tikz" },
+      align: "center"
+    });
   });
 
   it("applies preamble TikZ styles and pics to later pictures", () => {
@@ -383,13 +623,14 @@ ${definition}
   \pic (u) at (0,0) {global pair};
 \end{tikzpicture}
 \end{document}`);
-    const graph = ast.children.find((node) => node.type === "graphsx");
+    const graph = ast.children.find((node) => node.type === "plugin" && node.plugin === "@vector/graphsx");
 
-    expect(graph?.type).toBe("graphsx");
-    if (graph?.type === "graphsx") {
-      expect(graph.source.indexOf(definition)).toBe(0);
-      expect(graph.source).toContain("\\pic (u) at (0,0) {global pair}");
-      const artifact = renderGraphSX(graph.source, undefined, "openmath", "tikz");
+    expect(graph?.type).toBe("plugin");
+    if (graph?.type === "plugin") {
+      const source = (graph.data as { source: string }).source;
+      expect(source.indexOf(definition)).toBe(0);
+      expect(source).toContain("\\pic (u) at (0,0) {global pair}");
+      const artifact = renderGraphSX(source, undefined, "openmath", "tikz");
       expect(artifact.summary).not.toMatch(/error/i);
       expect(artifact.displayList.items.some((item) => item.type === "rect")).toBe(true);
     }
@@ -403,11 +644,11 @@ ${definition}
 
 \begin{tikzpicture}\node[later] (b) at (0,0) {$B$};\end{tikzpicture}
 \end{document}`);
-    const graphs = ast.children.filter((node) => node.type === "graphsx");
+    const graphs = ast.children.filter((node) => node.type === "plugin" && node.plugin === "@vector/graphsx");
 
     expect(graphs).toHaveLength(2);
-    expect(graphs[0]?.type === "graphsx" ? graphs[0].source : "").not.toContain("later/.style");
-    expect(graphs[1]?.type === "graphsx" ? graphs[1].source : "").toContain("later/.style");
+    expect(graphs[0]?.type === "plugin" ? (graphs[0].data as { source: string }).source : "").not.toContain("later/.style");
+    expect(graphs[1]?.type === "plugin" ? (graphs[1].data as { source: string }).source : "").toContain("later/.style");
   });
 
   it("keeps transparent TikZ definitions from splitting surrounding prose", () => {
@@ -491,8 +732,10 @@ ${tikzPicture}
 
     expect(ast.children).toHaveLength(1);
     expect(ast.children[0]).toMatchObject({
-      type: "graphsx",
-      syntax: "tikz",
+      type: "plugin",
+      plugin: "@vector/graphsx",
+      kind: "graph",
+      data: { syntax: "tikz" },
       caption: "A TikZ diagram",
       label: "fig:tikz"
     });
@@ -851,7 +1094,7 @@ Figure~1 stays together.
     }
   });
 
-  it("parses latex citations into shared citation nodes", () => {
+  it("parses latex citations into namespaced bibliography nodes", () => {
     const ast = parseLatex(`\\begin{document}
 Prior work\\cite{einstein1905} is pending bibliography support.
 \\end{document}`);
@@ -860,9 +1103,23 @@ Prior work\\cite{einstein1905} is pending bibliography support.
     expect(paragraph?.type).toBe("paragraph");
     if (paragraph?.type === "paragraph") {
       expect(paragraph.children).toContainEqual({
-        type: "citation",
-        items: [{ key: "einstein1905" }]
+        type: "inlinePlugin",
+        plugin: "@vector/bibliography",
+        kind: "citation",
+        data: { items: [{ key: "einstein1905" }] }
       });
+    }
+  });
+
+  it("does not transform citation commands inside LaTeX math", () => {
+    const ast = parseLatex(`\\begin{document}
+Inline $\\text{\\cite{not-a-text-citation}}$ remains math.
+\\end{document}`);
+    const paragraph = ast.children.find((node) => node.type === "paragraph");
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.children).toContainEqual({ type: "math", text: "\\text{\\cite{not-a-text-citation}}" });
     }
   });
 

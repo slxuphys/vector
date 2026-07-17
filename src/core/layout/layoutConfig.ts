@@ -1,7 +1,7 @@
 export type LineBreakingAlgorithm = "greedy" | "knuth-plass";
 export type TextAlign = "left" | "justify";
 export type HeadingStyle = "default" | "revtex";
-export type ParagraphSuppressAfter = "title" | "heading" | "paragraph" | "list" | "referenceList" | "code" | "table" | "image" | "graphsx" | "math" | "rule" | "pageBreak";
+export type ParagraphSuppressAfter = "title" | "heading" | "paragraph" | "list" | "referenceList" | "code" | "table" | "image" | "plugin" | "math" | "rule" | "pageBreak";
 
 export type LayoutConfig = {
   lineBreaking: {
@@ -35,7 +35,7 @@ export const defaultLayoutConfig: LayoutConfig = {
   },
   paragraph: {
     indent: 0,
-    suppressAfter: ["title", "heading", "math", "table", "image", "graphsx", "code", "rule", "pageBreak"]
+    suppressAfter: ["title", "heading", "math", "table", "image", "plugin", "code", "rule", "pageBreak"]
   },
   headingFontSizes: {}
 };

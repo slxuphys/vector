@@ -120,7 +120,7 @@ function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
     } else if (node.type === "mathBlock" && node.label) {
       equation += 1;
       anchors.set(node.label, { id: node.label, kind: "equation", number: String(equation) });
-    } else if ((node.type === "image" || node.type === "figure" || node.type === "graphsx") && node.label) {
+    } else if ((node.type === "image" || node.type === "figure" || (node.type === "plugin" && node.role === "figure")) && node.label) {
       figure += 1;
       anchors.set(node.label, { id: node.label, kind: "figure", number: String(figure) });
     } else if (node.type === "table" && node.label) {
