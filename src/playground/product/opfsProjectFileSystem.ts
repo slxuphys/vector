@@ -9,6 +9,7 @@ import {
   renameProjectEntry,
   type LoadedProjectBackend,
   type ProjectFileSystemBackend,
+  watchProjectDirectory,
   writeProjectFile,
   writeTextFile
 } from "./projectFileSystem";
@@ -115,6 +116,10 @@ class OpfsProjectBackend implements ProjectFileSystemBackend {
 
   deleteEntry(path: string): Promise<void> {
     return deleteProjectEntry(this.directory, path);
+  }
+
+  watch(onChange: () => void): Promise<() => void> {
+    return watchProjectDirectory(this.directory, onChange);
   }
 }
 

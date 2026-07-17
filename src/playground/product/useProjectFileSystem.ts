@@ -7,6 +7,7 @@ import {
   languageForProjectPath,
   normalizeProjectPath,
   revokeProjectObjectUrls,
+  sameProjectSnapshot,
   validateProjectPath,
   type ProjectFileSystemBackend
 } from "./projectFileSystem";
@@ -25,6 +26,10 @@ export function useProjectFileSystem() {
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const saveChains = useRef(new Map<string, Promise<void>>());
   const pendingEdits = useRef(new Map<string, { projectId: string; path: string; content: string }>());
+  const watchDisposers = useRef(new Map<string, () => void>());
+  const watchStarts = useRef(new Set<string>());
+  const refreshTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const refreshingProjects = useRef(new Set<string>());
   const projectsRef = useRef(projects);
   const projectIdRef = useRef(projectId);
   const activePathRef = useRef(activePath);
@@ -53,12 +58,39 @@ export function useProjectFileSystem() {
     return () => { disposed = true; };
   }, []);
 
+  useEffect(() => {
+    for (const [id, dispose] of watchDisposers.current) {
+      if (id === projectId) continue;
+      dispose();
+      watchDisposers.current.delete(id);
+      watchStarts.current.delete(id);
+    }
+    const candidate = projects.find((current) => current.id === projectId);
+    const backend = candidate ? backends.current.get(candidate.id) : undefined;
+    if (!candidate || !backend || watchDisposers.current.has(candidate.id) || watchStarts.current.has(candidate.id)) return;
+    watchStarts.current.add(candidate.id);
+    void backend.watch(() => scheduleProjectRefresh(candidate.id)).then((dispose) => {
+      watchStarts.current.delete(candidate.id);
+      if (projectIdRef.current !== candidate.id) {
+        dispose();
+        return;
+      }
+      watchDisposers.current.set(candidate.id, dispose);
+      scheduleProjectRefresh(candidate.id, 0);
+    }).catch((error) => {
+      watchStarts.current.delete(candidate.id);
+      setOperationError(error, `Could not watch ${candidate.name}.`);
+    });
+  }, [projectId, projects]);
+
   useEffect(() => () => {
     for (const timer of saveTimers.current.values()) clearTimeout(timer);
     for (const edit of pendingEdits.current.values()) {
       const backend = backends.current.get(edit.projectId);
       if (backend) void backend.writeTextFile(edit.path, edit.content);
     }
+    for (const timer of refreshTimers.current.values()) clearTimeout(timer);
+    for (const dispose of watchDisposers.current.values()) dispose();
     for (const current of projectsRef.current) revokeProjectObjectUrls(current);
   }, []);
 
@@ -287,6 +319,12 @@ export function useProjectFileSystem() {
     try {
       await flushPendingEntries(id);
       if (target.kind === "browser") await deleteOpfsProject(id);
+      watchDisposers.current.get(id)?.();
+      watchDisposers.current.delete(id);
+      watchStarts.current.delete(id);
+      const refreshTimer = refreshTimers.current.get(id);
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimers.current.delete(id);
       backends.current.delete(id);
       revokeProjectObjectUrls(target);
       setProjects((current) => current.filter((candidate) => candidate.id !== id));
@@ -351,6 +389,53 @@ export function useProjectFileSystem() {
       if (saveChains.current.get(key) === write) saveChains.current.delete(key);
       setOperationError(error, `Could not save ${edit.path}.`);
       throw error;
+    }
+  }
+
+  function scheduleProjectRefresh(id: string, delay = 100): void {
+    const existing = refreshTimers.current.get(id);
+    if (existing) clearTimeout(existing);
+    refreshTimers.current.set(id, setTimeout(() => {
+      refreshTimers.current.delete(id);
+      void refreshProject(id);
+    }, delay));
+  }
+
+  async function refreshProject(id: string): Promise<void> {
+    if (refreshingProjects.current.has(id)) {
+      scheduleProjectRefresh(id, 100);
+      return;
+    }
+    if (matchingPendingEdits(pendingEdits.current, id).length > 0 || matchingSaveChains(saveChains.current, id).length > 0) {
+      scheduleProjectRefresh(id, 100);
+      return;
+    }
+    const backend = backends.current.get(id);
+    const previous = projectsRef.current.find((candidate) => candidate.id === id);
+    if (!backend || !previous) return;
+    refreshingProjects.current.add(id);
+    try {
+      const refreshed = await backend.loadProject();
+      const current = projectsRef.current.find((candidate) => candidate.id === id);
+      if (!current) {
+        revokeProjectObjectUrls(refreshed);
+        return;
+      }
+      if (sameProjectSnapshot(current, refreshed)) {
+        revokeProjectObjectUrls(refreshed);
+        return;
+      }
+      setProjects((all) => all.map((candidate) => candidate.id === id ? refreshed : candidate));
+      if (projectIdRef.current === id && !refreshed.files.some((file) => file.path === activePathRef.current)) {
+        setActivePath(refreshed.entryFile);
+      }
+      queueMicrotask(() => revokeProjectObjectUrls(current));
+      setStorageError(undefined);
+      setStorageStatus("idle");
+    } catch (error) {
+      setOperationError(error, `Could not refresh ${previous.name}.`);
+    } finally {
+      refreshingProjects.current.delete(id);
     }
   }
 

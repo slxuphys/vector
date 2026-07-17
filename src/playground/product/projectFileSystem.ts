@@ -1,4 +1,4 @@
-import type { PlaygroundProject, ProjectFile, ProjectFileLanguage, ProjectTextFile } from "./projectTypes";
+import { isProjectTextFile, type PlaygroundProject, type ProjectFile, type ProjectFileLanguage, type ProjectTextFile } from "./projectTypes";
 
 export type ProjectFileSystemKind = "opfs" | "local";
 
@@ -12,6 +12,7 @@ export interface ProjectFileSystemBackend {
   readFile(path: string): Promise<File>;
   renameEntry(path: string, nextPath: string): Promise<void>;
   deleteEntry(path: string): Promise<void>;
+  watch(onChange: () => void): Promise<() => void>;
 }
 
 export type LoadedProjectBackend = {
@@ -23,6 +24,15 @@ export type ProjectDirectorySnapshot = {
   files: ProjectFile[];
   directories: string[];
 };
+
+type FileSystemChangeObserver = {
+  observe(handle: FileSystemHandle, options?: { recursive?: boolean }): Promise<void>;
+  disconnect(): void;
+};
+
+type FileSystemChangeObserverConstructor = new (
+  callback: (records: unknown[], observer: FileSystemChangeObserver) => void
+) => FileSystemChangeObserver;
 
 export const editableProjectExtensions = new Set(["md", "markdown", "tex", "latex", "bib", "txt", "sty", "cls"]);
 const imageExtensions = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"]);
@@ -59,6 +69,39 @@ export async function readProjectDirectory(root: FileSystemDirectoryHandle): Pro
   snapshot.files.sort((left, right) => left.path.localeCompare(right.path));
   snapshot.directories.sort((left, right) => left.localeCompare(right));
   return snapshot;
+}
+
+export async function watchProjectDirectory(
+  root: FileSystemDirectoryHandle,
+  onChange: () => void
+): Promise<() => void> {
+  const Observer = (globalThis as typeof globalThis & {
+    FileSystemObserver?: FileSystemChangeObserverConstructor;
+  }).FileSystemObserver;
+  if (Observer) {
+    try {
+      const observer = new Observer((records) => {
+        if (records.length > 0) onChange();
+      });
+      await observer.observe(root, { recursive: true });
+      return () => observer.disconnect();
+    } catch {
+      // Permission and implementation differences are handled by the refresh fallback below.
+    }
+  }
+
+  if (typeof window === "undefined") return () => undefined;
+  const refreshWhenVisible = () => {
+    if (typeof document === "undefined" || document.visibilityState === "visible") onChange();
+  };
+  window.addEventListener("focus", refreshWhenVisible);
+  document.addEventListener("visibilitychange", refreshWhenVisible);
+  const interval = window.setInterval(refreshWhenVisible, 2_000);
+  return () => {
+    window.clearInterval(interval);
+    window.removeEventListener("focus", refreshWhenVisible);
+    document.removeEventListener("visibilitychange", refreshWhenVisible);
+  };
 }
 
 export function directoryEntries(directory: FileSystemDirectoryHandle): AsyncIterableIterator<[string, FileSystemHandle]> {
@@ -127,6 +170,24 @@ export function revokeProjectObjectUrls(project: PlaygroundProject | undefined):
   for (const file of project.files) if (file.kind !== "text" && file.url.startsWith("blob:")) URL.revokeObjectURL(file.url);
 }
 
+export function sameProjectSnapshot(left: PlaygroundProject, right: PlaygroundProject): boolean {
+  if (left.entryFile !== right.entryFile || left.files.length !== right.files.length || left.directories.length !== right.directories.length) {
+    return false;
+  }
+  if (left.directories.some((directory, index) => directory !== right.directories[index])) return false;
+  return left.files.every((file, index) => {
+    const other = right.files[index];
+    if (!other || file.kind !== other.kind || file.path !== other.path) return false;
+    if (isProjectTextFile(file) && isProjectTextFile(other)) {
+      return file.content === other.content && file.language === other.language;
+    }
+    if (isProjectTextFile(file) || isProjectTextFile(other)) return false;
+    return file.mimeType === other.mimeType
+      && file.size === other.size
+      && file.lastModified === other.lastModified;
+  });
+}
+
 async function collectEntries(
   directory: FileSystemDirectoryHandle,
   prefix: string,
@@ -142,7 +203,13 @@ async function collectEntries(
     }
     const file = await (handle as FileSystemFileHandle).getFile();
     if (isEditableProjectPath(path)) {
-      snapshot.files.push({ kind: "text", path, content: await file.text(), language: languageForProjectPath(path) });
+      snapshot.files.push({
+        kind: "text",
+        path,
+        content: await file.text(),
+        language: languageForProjectPath(path),
+        lastModified: file.lastModified
+      });
     } else {
       const mimeType = file.type || mimeTypeForPath(path);
       snapshot.files.push({
@@ -150,7 +217,8 @@ async function collectEntries(
         path,
         mimeType,
         size: file.size,
-        url: URL.createObjectURL(file)
+        url: URL.createObjectURL(file),
+        lastModified: file.lastModified
       });
     }
   }

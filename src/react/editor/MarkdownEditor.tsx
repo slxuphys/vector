@@ -1,11 +1,11 @@
 import { markdown as markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, Transaction, type Extension } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { latex } from "codemirror-lang-latex";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type MarkdownEditorController = {
   revealSource(source: { start: number; end: number }): void;
@@ -41,6 +41,9 @@ export function MarkdownEditor({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | undefined>(undefined);
   const previewUpdateRef = useRef<number | undefined>(undefined);
+  const externalNoticeTimerRef = useRef<number | undefined>(undefined);
+  const applyingExternalUpdateRef = useRef(false);
+  const [externalUpdateVisible, setExternalUpdateVisible] = useState(false);
   const callbacksRef = useRef({ onSelectionChange, onControllerReady, onChange });
   const languageCompartment = useMemo(() => new Compartment(), []);
   const themeCompartment = useMemo(() => new Compartment(), []);
@@ -69,6 +72,7 @@ export function MarkdownEditor({
       }),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
+        if (applyingExternalUpdateRef.current) return;
         const doc = update.state.doc;
         callbacksRef.current.onChange?.(doc.toString());
         const editedAt = performance.now();
@@ -105,6 +109,7 @@ export function MarkdownEditor({
     onReady?.();
     return () => {
       window.clearTimeout(previewUpdateRef.current);
+      window.clearTimeout(externalNoticeTimerRef.current);
       if (viewRef.current === view) viewRef.current = undefined;
       view.destroy();
     };
@@ -122,7 +127,51 @@ export function MarkdownEditor({
     view.dispatch({ effects: themeCompartment.reconfigure(editorTheme(theme)) });
   }, [theme, themeCompartment]);
 
-  return <div className="svg-md-editor" ref={editorRef} />;
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || view.state.doc.toString() === initialMarkdown) return;
+    window.clearTimeout(previewUpdateRef.current);
+    const scrollTop = view.scrollDOM.scrollTop;
+    const scrollLeft = view.scrollDOM.scrollLeft;
+    const anchor = Math.min(view.state.selection.main.anchor, initialMarkdown.length);
+    const head = Math.min(view.state.selection.main.head, initialMarkdown.length);
+    applyingExternalUpdateRef.current = true;
+    try {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: initialMarkdown },
+        selection: { anchor, head },
+        annotations: Transaction.addToHistory.of(false)
+      });
+      restoreEditorScroll(view, scrollTop, scrollLeft);
+    } finally {
+      applyingExternalUpdateRef.current = false;
+    }
+    setExternalUpdateVisible(true);
+    window.clearTimeout(externalNoticeTimerRef.current);
+    externalNoticeTimerRef.current = window.setTimeout(() => setExternalUpdateVisible(false), 2_000);
+  }, [initialMarkdown]);
+
+  return (
+    <div className="svg-md-editor">
+      <div className="svg-md-editor-host" ref={editorRef} />
+      {externalUpdateVisible ? (
+        <div className="svg-md-editor-external-update" role="status">Updated from disk</div>
+      ) : null}
+    </div>
+  );
+}
+
+function restoreEditorScroll(view: EditorView, scrollTop: number, scrollLeft: number): void {
+  const restore = () => {
+    view.scrollDOM.scrollTop = scrollTop;
+    view.scrollDOM.scrollLeft = scrollLeft;
+  };
+  restore();
+  view.requestMeasure({
+    read: () => undefined,
+    write: restore,
+    key: restoreEditorScroll
+  });
 }
 
 const lightHighlightStyle = HighlightStyle.define([

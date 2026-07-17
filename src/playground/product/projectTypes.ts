@@ -5,6 +5,7 @@ export type ProjectTextFile = {
   path: string;
   content: string;
   language: ProjectFileLanguage;
+  lastModified?: number;
 };
 
 export type ProjectAssetFile = {
@@ -13,6 +14,7 @@ export type ProjectAssetFile = {
   mimeType: string;
   size: number;
   url: string;
+  lastModified?: number;
 };
 
 export type ProjectFile = ProjectTextFile | ProjectAssetFile;

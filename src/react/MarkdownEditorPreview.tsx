@@ -59,11 +59,16 @@ export function MarkdownEditorPreview({
   const layoutState = useDocumentLayout(previewAvailable ? previewRequest.markdown : "", options, previewRequest.timing);
 
   useLayoutEffect(() => {
-    if (documentKeyRef.current === documentKey) return;
-    documentKeyRef.current = documentKey;
-    setPreviewRequest({ markdown: initialMarkdown });
-    setSourceNavigation(undefined);
-    startupLogRef.current = { editor: false, preview: false };
+    if (documentKeyRef.current !== documentKey) {
+      documentKeyRef.current = documentKey;
+      setPreviewRequest({ markdown: initialMarkdown });
+      setSourceNavigation(undefined);
+      startupLogRef.current = { editor: false, preview: false };
+      return;
+    }
+    setPreviewRequest((current) => current.markdown === initialMarkdown
+      ? current
+      : { markdown: initialMarkdown });
   }, [documentKey, initialMarkdown]);
 
   const handleEditorReady = useCallback(() => {
