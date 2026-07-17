@@ -150,6 +150,7 @@ export type NativeMathMetrics = {
   thinMathSpace: number;
   relationMargin: number;
   binaryMargin: number;
+  functionDelimiterMinGap: number;
 };
 
 export type NativeMathFontProfile = NativeMathFontProfileName;
@@ -204,7 +205,8 @@ export const defaultNativeMathMetrics: NativeMathMetrics = {
   displayLimitOperatorSubscriptGap: 0.18,
   thinMathSpace: 0.16,
   relationMargin: 0.32,
-  binaryMargin: 0.22
+  binaryMargin: 0.22,
+  functionDelimiterMinGap: 0.12
 };
 
 export const defaultOpenMathMetrics: NativeMathMetrics = {
@@ -222,7 +224,8 @@ export const defaultOpenMathMetrics: NativeMathMetrics = {
   accentGap: 0.03,
   thinMathSpace: 0.08,
   relationMargin: 0.16,
-  binaryMargin: 0.14
+  binaryMargin: 0.14,
+  functionDelimiterMinGap: 0.12
 };
 
 export function getDefaultOpenMathMetrics(): NativeMathMetrics {
@@ -597,6 +600,7 @@ type LastAtom = {
   scriptAdvance: number;
   italicCorrection: number;
   mathClass: MathAtomClass;
+  inkRight?: number;
   operator?: OperatorLayoutInfo;
 };
 
@@ -688,6 +692,25 @@ function layoutSequence(
     x += mathAtomSpacingSize(lastAtom.mathClass, resolvedNextClass, fontSize, metrics);
     return resolvedNextClass;
   };
+  const applyOpeningDelimiterClearance = (
+    nextClass: MathAtomClass,
+    text: string,
+    style: NativeGlyphStyle
+  ): void => {
+    if (
+      nextClass !== "mopen" ||
+      lastAtom?.inkRight === undefined ||
+      (lastAtom.mathClass !== "mord" && lastAtom.mathClass !== "mop")
+    ) {
+      return;
+    }
+    const nextMetrics = measureGlyphFontMetrics(text, fontSize, style);
+    if (!nextMetrics) return;
+    const nextInkLeft = x + nextMetrics.actualRight - nextMetrics.actualWidth;
+    const naturalGap = nextInkLeft - lastAtom.inkRight;
+    const minimumGap = fontSize * metrics.functionDelimiterMinGap;
+    x += Math.max(0, minimumGap - naturalGap);
+  };
 
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index];
@@ -703,7 +726,10 @@ function layoutSequence(
       inkBottom = Math.max(inkBottom, yShift + scriptBox.inkBottom);
       const neededAdvance = getScriptAdvance(x, anchor, scriptBox.width, lastAtom);
       x += neededAdvance;
-      if (lastAtom) lastAtom.scriptAdvance = Math.max(lastAtom.scriptAdvance, neededAdvance);
+      if (lastAtom) {
+        lastAtom.scriptAdvance = Math.max(lastAtom.scriptAdvance, neededAdvance);
+        lastAtom.inkRight = Math.max(lastAtom.inkRight ?? 0, anchor + scriptBox.width);
+      }
       else lastAtom = { x: anchor, width: scriptBox.width, ascent: scriptBox.ascent, descent: scriptBox.descent, scriptAdvance: 0, italicCorrection: 0, mathClass: "mord" };
       maxTop = Math.max(maxTop, Math.max(0, -yShift));
       maxBottom = Math.max(maxBottom, Math.max(0, yShift + scriptBox.baseline + scriptBox.descent));
@@ -949,7 +975,6 @@ function layoutSequence(
       const isDisplayLargeOperator = displayMode && displayLargeOperatorCommands.has(command.name);
       const isDisplayLimitOperator = displayMode && displayLimitOperatorCommands.has(command.name);
       const useInkRightEdge = isDisplayLimitOperator && !namedOperatorCommands.has(command.name);
-      const mathClass = applyAtomSpacing(mathAtomClassForCommand(command.name, text));
       const glyphFontSize = fontSize;
       const commandItalic = profile.shouldItalicize(rawText, text, { upright: commandIsUpright });
       const style = {
@@ -957,6 +982,8 @@ function layoutSequence(
         color: isUnsupported ? "#b42318" : undefined,
         italic: commandItalic
       };
+      const mathClass = applyAtomSpacing(mathAtomClassForCommand(command.name, text));
+      applyOpeningDelimiterClearance(mathClass, text, style);
       const largeOperatorPath = isDisplayLargeOperator && profile.isOpenMath
         ? layoutOpenMathOperatorGlyph(text, glyphFontSize, profile)
         : undefined;
@@ -1007,6 +1034,7 @@ function layoutSequence(
         scriptAdvance: 0,
         italicCorrection: largeOperatorPath?.italicCorrection ?? measureGlyphMathInfo(text, glyphFontSize, style).italicCorrection ?? 0,
         mathClass,
+        inkRight: fontMetrics ? x + fontMetrics.actualRight : x + width,
         operator
       };
       x += width + glyphGap;
@@ -1023,8 +1051,10 @@ function layoutSequence(
     const italic = profile.shouldItalicize(rawText, text);
     const style = { italic, fontFamily: profile.layoutFontFamily };
     const mathClass = applyAtomSpacing(mathAtomClassForText(rawText, text));
+    applyOpeningDelimiterClearance(mathClass, text, style);
     nodes.push(glyph(text, x, 0, fontSize, style));
     const width = measureGlyphWidth(text, fontSize, style);
+    const fontMetrics = measureGlyphFontMetrics(text, fontSize, style);
     const verticalMetrics = measureGlyphVerticalMetrics(text, fontSize, style);
     inkTop = Math.min(inkTop, -verticalMetrics.ascent);
     inkBottom = Math.max(inkBottom, verticalMetrics.descent);
@@ -1035,7 +1065,8 @@ function layoutSequence(
       descent: verticalMetrics.descent,
       scriptAdvance: 0,
       italicCorrection: measureGlyphMathInfo(text, fontSize, style).italicCorrection ?? 0,
-      mathClass
+      mathClass,
+      inkRight: fontMetrics ? x + fontMetrics.actualRight : x + width
     };
     x += width + glyphGap;
     maxTop = Math.max(maxTop, verticalMetrics.ascent);

@@ -2469,6 +2469,52 @@ This paragraph has enough words to wrap into more than one line and the first re
     expect(binaryGap - unaryGap).toBeGreaterThan(12 * defaultNativeMathMetrics.binaryMargin * 0.8);
   });
 
+  it("keeps a minimum optical clearance before opening delimiters", () => {
+    const fontSize = 12;
+    const minimumGap = fontSize * defaultOpenMathMetrics.functionDelimiterMinGap;
+    const profiles = [
+      {
+        role: "openMath" as const,
+        profile: "openmath" as const,
+        path: "src/assets/fonts/latinmodern-math.otf"
+      },
+      {
+        role: "openMathLibertinus" as const,
+        profile: "openmath-libertinus" as const,
+        path: "src/assets/fonts/libertinus-math.otf"
+      }
+    ];
+
+    for (const { role, profile, path } of profiles) {
+      loadNativeFontFromBytes(role, readFileSync(path));
+      for (const latex of ["f(x)", "p(x)", "x(x)"]) {
+        const layout = layoutNativeMath(latex, false, fontSize, defaultOpenMathMetrics, profile);
+        const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+        const previous = glyphs[0];
+        const opening = glyphs[1];
+        const previousMetrics = getNativeGlyphMetrics(role, previous.text, fontSize);
+        const openingMetrics = getNativeGlyphMetrics(role, opening.text, fontSize);
+
+        expect(previousMetrics).toBeDefined();
+        expect(openingMetrics).toBeDefined();
+        if (!previousMetrics || !openingMetrics) continue;
+        const previousInkRight = previous.x + previousMetrics.actualRight;
+        const openingInkLeft = opening.x + openingMetrics.actualRight - openingMetrics.actualWidth;
+        expect(openingInkLeft - previousInkRight).toBeGreaterThanOrEqual(minimumGap - 0.001);
+      }
+    }
+
+    const compact = layoutNativeMath("xy", false, fontSize, {
+      ...defaultOpenMathMetrics,
+      functionDelimiterMinGap: 0
+    });
+    const expanded = layoutNativeMath("xy", false, fontSize, {
+      ...defaultOpenMathMetrics,
+      functionDelimiterMinGap: 0.3
+    });
+    expect(expanded.width).toBeCloseTo(compact.width, 6);
+  });
+
   it("does not add ink-edge gap after display named operators when thin space is zero", () => {
     const metrics = { ...defaultOpenMathMetrics, thinMathSpace: 0 };
     const layout = layoutNativeMath("\\max x \\sin x", true, 12, metrics, "openmath");
