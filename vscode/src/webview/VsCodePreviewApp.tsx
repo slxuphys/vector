@@ -6,12 +6,14 @@ import { PreviewSurface } from "../../../src/react/preview/PreviewSurface";
 import { vscode } from "./vscodeBridge";
 
 type PageMeta = { index: number; width: number; height: number };
+type AnchorMeta = { id: string; page: number; y: number };
 type Stats = { pageCount: number; totalMs: number };
 type PagePayload = { index: number; svg: string };
 type PreviewState = {
   updateId: number;
   pageMeta: PageMeta[];
   stats: Stats;
+  anchors: Map<string, AnchorMeta>;
   pages: Map<number, string>;
 };
 type PendingPreview = Omit<PreviewState, "pages"> & { requested: Set<number> };
@@ -127,6 +129,7 @@ export function VsCodePreviewApp() {
           updateId: Number(message.updateId),
           pageMeta,
           stats: message.stats,
+          anchors: new Map(((message.anchors ?? []) as AnchorMeta[]).map((anchor) => [anchor.id, anchor])),
           requested: new Set()
         };
         pendingRef.current = pending;
@@ -144,7 +147,7 @@ export function VsCodePreviewApp() {
         const pending = pendingRef.current;
         if (pending && Number(message.updateId) === pending.updateId) {
           const pages = new Map(payloads.map((payload) => [payload.index, payload.svg]));
-          const next = { updateId: pending.updateId, pageMeta: pending.pageMeta, stats: pending.stats, pages };
+          const next = { updateId: pending.updateId, pageMeta: pending.pageMeta, stats: pending.stats, anchors: pending.anchors, pages };
           requestedRef.current = new Set(pending.requested);
           pendingRef.current = undefined;
           previewRef.current = next;
@@ -213,15 +216,20 @@ export function VsCodePreviewApp() {
 
   const revealRenderedAnchor = (encodedId: string) => {
     const pane = scrollRef.current;
-    if (!pane) return;
+    const active = previewRef.current;
+    if (!pane || !active) return;
     const id = decodeFragmentId(encodedId);
-    const target = pane.querySelector<SVGElement>(`#${CSS.escape(id)}`);
-    if (!target) return;
-    const paneRect = pane.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
+    const anchor = active.anchors.get(id);
+    if (!anchor) return;
+    const page = pane.querySelector<HTMLElement>(`.vector-preview-page[data-index="${anchor.page}"]`);
+    if (!page) return;
     pane.scrollTo({
-      top: Math.max(0, pane.scrollTop + targetRect.top - paneRect.top - pane.clientHeight * 0.35)
+      top: Math.max(0, page.offsetTop + anchor.y * zoom - pane.clientHeight * 0.35)
     });
+    if (!active.pages.has(anchor.page) && !requestedRef.current.has(anchor.page)) {
+      requestedRef.current.add(anchor.page);
+      requestPages(active.updateId, [anchor.page]);
+    }
   };
 
   const toolbar = (

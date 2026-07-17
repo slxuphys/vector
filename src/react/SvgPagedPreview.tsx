@@ -13,6 +13,7 @@ export type SvgPagedPreviewProps = {
   renderAllPages?: boolean;
   timing?: CompletedPreviewUpdateTiming;
   onSourceClick?: (source: { start: number; end: number }) => void;
+  onInternalLinkClick?: (id: string) => void;
   sourceHighlight?: { start: number; end: number; id: number };
 };
 
@@ -24,6 +25,7 @@ export function SvgPagedPreview({
   renderAllPages = false,
   timing,
   onSourceClick,
+  onInternalLinkClick,
   sourceHighlight
 }: SvgPagedPreviewProps) {
   const numericZoom = zoom === "fit-width" ? 1 : zoom;
@@ -93,7 +95,7 @@ export function SvgPagedPreview({
     <div className="svg-md-preview" data-page-count={layout.pages.length}>
       {layout.pages.map((page, index) => (
         index >= start && index < end
-          ? <PageViewport key={page.index} page={page} svg={visiblePages.pages[index]?.svg ?? ""} zoom={numericZoom} onSourceClick={onSourceClick} sourceHighlight={sourceHighlight} />
+          ? <PageViewport key={page.index} page={page} svg={visiblePages.pages[index]?.svg ?? ""} zoom={numericZoom} onSourceClick={onSourceClick} onInternalLinkClick={onInternalLinkClick} sourceHighlight={sourceHighlight} />
           : (
             <div
               key={page.index}

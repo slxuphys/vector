@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { PageRequestMessage, VectorPreviewPanel } from "./previewPanel";
-import { createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg, renderToPdf } from "./previewBundle";
+import { collectDisplayAnchors, createDocumentEngine, findSourceAnchorInPages, loadNativeMathFonts, renderPageToSvg, renderToPdf } from "./previewBundle";
 import type { PagedDisplayList } from "../../src/core/display-list/displayTypes";
 import { createNodePdfImageServices, prepareNodePreviewPage } from "./nodePdfImage";
 
@@ -224,10 +224,11 @@ async function renderPreview(
         width: page.width,
         height: page.height
       })),
+      anchors: collectDisplayAnchors(result.layout),
       renderedCache: new Map()
     };
     const postStartedAt = performance.now();
-    await panel.setPreviewMetadata(document, activePreview.pageMeta, result.stats, serial);
+    await panel.setPreviewMetadata(document, activePreview.pageMeta, activePreview.anchors, result.stats, serial);
     if (timing) timing.metadataPostMessageResolveMs = performance.now() - postStartedAt;
   } catch (error) {
     pendingUpdates.delete(serial);
@@ -428,6 +429,7 @@ type ActivePreview = {
   pages: DisplayPage[];
   stats: { pageCount: number; totalMs: number; parseMs?: number; layoutMs?: number };
   pageMeta: PageMeta[];
+  anchors: AnchorMeta[];
   renderedCache: Map<number, string>;
 };
 
@@ -443,6 +445,12 @@ type PageMeta = {
   index: number;
   width: number;
   height: number;
+};
+
+type AnchorMeta = {
+  id: string;
+  page: number;
+  y: number;
 };
 
 type RenderedPagePayload = {

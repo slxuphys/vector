@@ -7,10 +7,11 @@ export type PageViewportProps = {
   svg: string;
   zoom: number;
   onSourceClick?: (source: { start: number; end: number }) => void;
+  onInternalLinkClick?: (id: string) => void;
   sourceHighlight?: { start: number; end: number; id: number };
 };
 
-export const PageViewport = memo(function PageViewport({ page, svg, zoom, onSourceClick, sourceHighlight }: PageViewportProps) {
+export const PageViewport = memo(function PageViewport({ page, svg, zoom, onSourceClick, onInternalLinkClick, sourceHighlight }: PageViewportProps) {
   const svgContainerRef = useRef<HTMLDivElement>(null);
   const warnings = page.objects
     .filter((object) => object.type === "graphsx" && object.warnings?.length)
@@ -53,13 +54,19 @@ export const PageViewport = memo(function PageViewport({ page, svg, zoom, onSour
         <div
           ref={svgContainerRef}
           onClick={(event: MouseEvent<HTMLDivElement>) => {
-            if (!event.ctrlKey && !event.metaKey) return;
-            const target = event.target instanceof Element
-              ? event.target.closest<SVGGElement>("[data-vector-source-start]")
-              : undefined;
-            const start = Number(target?.dataset.vectorSourceStart);
-            const end = Number(target?.dataset.vectorSourceEnd);
-            if (Number.isInteger(start) && Number.isInteger(end)) onSourceClick?.({ start, end });
+            const element = event.target instanceof Element ? event.target : undefined;
+            if (!element) return;
+            if (event.ctrlKey || event.metaKey) {
+              const target = element.closest<SVGGElement>("[data-vector-source-start]");
+              const start = Number(target?.dataset.vectorSourceStart);
+              const end = Number(target?.dataset.vectorSourceEnd);
+              if (Number.isInteger(start) && Number.isInteger(end)) onSourceClick?.({ start, end });
+              return;
+            }
+            const href = element.closest<SVGAElement>("a[href]")?.getAttribute("href");
+            if (!href?.startsWith("#")) return;
+            event.preventDefault();
+            onInternalLinkClick?.(decodeFragmentId(href.slice(1)));
           }}
           style={{
             transform: `scale(${zoom})`,
@@ -92,3 +99,11 @@ export const PageViewport = memo(function PageViewport({ page, svg, zoom, onSour
     </div>
   );
 });
+
+function decodeFragmentId(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}

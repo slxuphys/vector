@@ -106,12 +106,13 @@ export class VectorPreviewPanel {
   setPreviewMetadata(
     document: vscode.TextDocument,
     pageMeta: PageMeta[],
+    anchors: AnchorMeta[],
     stats: { pageCount: number; totalMs: number },
     updateId?: number
   ): Thenable<boolean> {
     if (this.disposed) return Promise.resolve(false);
     this.setTitle(document);
-    return this.panel.webview.postMessage({ type: "preview", pageMeta, stats, updateId, sentAtEpochMs: Date.now() });
+    return this.panel.webview.postMessage({ type: "preview", pageMeta, anchors, stats, updateId, sentAtEpochMs: Date.now() });
   }
 
   setPreviewPages(updateId: number, pages: RenderedPagePayload[]): Thenable<boolean> {
@@ -156,6 +157,7 @@ export type WebviewDebugLogMessage = {
 };
 type ExportPdfMessage = { type: "exportPdf" };
 type PageMeta = { index: number; width: number; height: number };
+type AnchorMeta = { id: string; page: number; y: number };
 type RenderedPagePayload = { index: number; svg: string };
 
 function webviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {

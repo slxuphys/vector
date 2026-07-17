@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { indexDisplayAnchors } from "../../core/display-list/anchorIndex";
 import { previewFontFaceCss } from "../../core/renderers/svg/previewFontCss";
 import { SvgPagedPreview } from "../SvgPagedPreview";
 import type { DocumentLayoutState } from "../useDocumentLayout";
@@ -43,6 +44,22 @@ export function PreviewPane({
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [sourceHighlight, setSourceHighlight] = useState<{ start: number; end: number; id: number } | undefined>(undefined);
+  const anchorIndex = useMemo(
+    () => layoutState.layout ? indexDisplayAnchors(layoutState.layout) : new Map(),
+    [layoutState.layout]
+  );
+  const revealInternalAnchor = useCallback((id: string) => {
+    const pane = previewPaneRef.current;
+    const anchor = anchorIndex.get(id);
+    if (!pane || !anchor) return;
+    setCurrentPage(anchor.page);
+    const page = pane.querySelector<HTMLElement>(`.svg-md-page-item:nth-child(${anchor.page + 1})`);
+    if (!page) return;
+    pane.scrollTo({
+      top: Math.max(0, page.offsetTop + anchor.y * zoom - pane.clientHeight * 0.35),
+      behavior: "auto"
+    });
+  }, [anchorIndex, zoom]);
 
   useEffect(() => {
     const pane = previewPaneRef.current;
@@ -111,6 +128,7 @@ export function PreviewPane({
             renderAllPages={printing}
             timing={layoutState.timing}
             onSourceClick={onSourceClick}
+            onInternalLinkClick={revealInternalAnchor}
             sourceHighlight={sourceHighlight}
           />
         ) : null}
