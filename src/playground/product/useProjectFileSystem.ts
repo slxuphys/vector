@@ -6,6 +6,7 @@ import {
   isFigureAssetPath,
   languageForProjectPath,
   normalizeProjectPath,
+  preserveLoadedProjectText,
   revokeProjectObjectUrls,
   sameProjectSnapshot,
   validateProjectPath,
@@ -30,6 +31,7 @@ export function useProjectFileSystem() {
   const watchStarts = useRef(new Set<string>());
   const refreshTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const refreshingProjects = useRef(new Set<string>());
+  const selectionRequestRef = useRef(0);
   const projectsRef = useRef(projects);
   const projectIdRef = useRef(projectId);
   const activePathRef = useRef(activePath);
@@ -118,7 +120,29 @@ export function useProjectFileSystem() {
 
   const selectFile = useCallback((nextPath: string) => {
     commitPendingEdit(projectIdRef.current, activePathRef.current);
-    setActivePath(nextPath);
+    const currentProjectId = projectIdRef.current;
+    const target = projectsRef.current.find((candidate) => candidate.id === currentProjectId)?.files
+      .find((file) => file.path === nextPath);
+    const backend = backends.current.get(currentProjectId);
+    if (!target || !isProjectTextFile(target) || target.content !== undefined || !backend) {
+      selectionRequestRef.current += 1;
+      setActivePath(nextPath);
+      return;
+    }
+    const request = ++selectionRequestRef.current;
+    void backend.readFile(nextPath).then(async (file) => {
+      const content = await file.text();
+      if (selectionRequestRef.current !== request) return;
+      setProjects((current) => current.map((candidate) => candidate.id !== currentProjectId
+        ? candidate
+        : {
+            ...candidate,
+            files: candidate.files.map((entry) => entry.path === nextPath && isProjectTextFile(entry)
+              ? { ...entry, content, lastModified: file.lastModified }
+              : entry)
+          }));
+      setActivePath(nextPath);
+    }).catch((error) => setOperationError(error, `Could not open ${nextPath}.`));
   }, [commitPendingEdit]);
 
   const updateActiveFile = useCallback((content: string) => {
@@ -415,12 +439,13 @@ export function useProjectFileSystem() {
     if (!backend || !previous) return;
     refreshingProjects.current.add(id);
     try {
-      const refreshed = await backend.loadProject();
+      const refreshed = await backend.loadProject(projectIdRef.current === id ? activePathRef.current : undefined);
       const current = projectsRef.current.find((candidate) => candidate.id === id);
       if (!current) {
         revokeProjectObjectUrls(refreshed);
         return;
       }
+      preserveLoadedProjectText(current, refreshed);
       if (sameProjectSnapshot(current, refreshed)) {
         revokeProjectObjectUrls(refreshed);
         return;
@@ -440,18 +465,20 @@ export function useProjectFileSystem() {
   }
 
   async function addUploadedFiles(files: File[], targetDirectory: string, preserveFolders: boolean) {
+    const backend = backends.current.get(project.id);
     const additions: ProjectFile[] = [];
     for (const file of files) {
       const relative = preserveFolders && file.webkitRelativePath ? file.webkitRelativePath : file.name;
       const path = normalizeProjectPath([targetDirectory, relative].filter(Boolean).join("/"));
       additions.push(isEditablePath(path)
-        ? { kind: "text", path, content: await file.text(), language: languageForPath(path) }
+        ? { kind: "text", path, content: await file.text(), language: languageForPath(path), lastModified: file.lastModified }
         : {
             kind: isFigureAssetPath(path) ? "asset" : "binary",
             path,
             mimeType: file.type || (/\.pdf$/i.test(path) ? "application/pdf" : "application/octet-stream"),
             size: file.size,
-            url: URL.createObjectURL(file)
+            lastModified: file.lastModified,
+            ...(backend ? {} : { url: URL.createObjectURL(file) })
           });
     }
     setProjects((current) => current.map((candidate) => {
@@ -466,9 +493,23 @@ export function useProjectFileSystem() {
   async function blobForProjectFile(id: string, file: ProjectFile): Promise<Blob> {
     const backend = backends.current.get(id);
     if (backend) return backend.readFile(file.path);
-    if (isProjectTextFile(file)) return new Blob([strToU8(file.content)], { type: "text/plain;charset=utf-8" });
+    if (isProjectTextFile(file)) return new Blob([strToU8(file.content ?? "")], { type: "text/plain;charset=utf-8" });
+    if (!file.url) throw new Error(`File data is unavailable: ${file.path}`);
     return (await fetch(file.url)).blob();
   }
+
+  const readProjectFile = useCallback(async (id: string, path: string): Promise<File | undefined> => {
+    const backend = backends.current.get(id);
+    if (backend) return backend.readFile(path);
+    const file = projectsRef.current.find((candidate) => candidate.id === id)?.files.find((candidate) => candidate.path === path);
+    if (!file) return undefined;
+    if (isProjectTextFile(file)) {
+      return new File([file.content ?? ""], fileName(path), { type: "text/plain;charset=utf-8", lastModified: file.lastModified });
+    }
+    if (!file.url) return undefined;
+    const blob = await (await fetch(file.url)).blob();
+    return new File([blob], fileName(path), { type: file.mimeType, lastModified: file.lastModified });
+  }, []);
 
   function setOperationError(error: unknown, fallback: string): string {
     const message = errorMessage(error, fallback);
@@ -480,7 +521,8 @@ export function useProjectFileSystem() {
   return {
     projects, project, activeFile, activePath, projectId, storageStatus, storageError,
     selectProject, selectFile, updateActiveFile, addFile, addFolder,
-    uploadFiles, renameEntry, deleteEntry, downloadEntry, createBrowserProject, openLocalFolder, removeProject
+    uploadFiles, renameEntry, deleteEntry, downloadEntry, createBrowserProject, openLocalFolder, removeProject,
+    readProjectFile
   };
 }
 
@@ -567,7 +609,7 @@ function mergeFiles(current: ProjectFile[], additions: ProjectFile[]): ProjectFi
 function revokeReplacedObjectUrls(current: ProjectFile[], additions: ProjectFile[]): void {
   const replaced = new Set(additions.map((file) => file.path.toLowerCase()));
   for (const file of current) {
-    if (replaced.has(file.path.toLowerCase()) && !isProjectTextFile(file) && file.url.startsWith("blob:")) {
+    if (replaced.has(file.path.toLowerCase()) && !isProjectTextFile(file) && file.url?.startsWith("blob:")) {
       URL.revokeObjectURL(file.url);
     }
   }
@@ -575,7 +617,7 @@ function revokeReplacedObjectUrls(current: ProjectFile[], additions: ProjectFile
 
 function revokeEntryObjectUrls(project: PlaygroundProject, path: string): void {
   for (const file of project.files) {
-    if (entryContains(path, file.path) && !isProjectTextFile(file) && file.url.startsWith("blob:")) {
+    if (entryContains(path, file.path) && !isProjectTextFile(file) && file.url?.startsWith("blob:")) {
       URL.revokeObjectURL(file.url);
     }
   }

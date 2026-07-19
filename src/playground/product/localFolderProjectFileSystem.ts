@@ -3,6 +3,7 @@ import {
   chooseEntryFile,
   createProjectDirectory,
   deleteProjectEntry,
+  loadProjectTextFile,
   readProjectFile,
   readProjectDirectory,
   renameProjectEntry,
@@ -41,18 +42,20 @@ class LocalFolderProjectBackend implements ProjectFileSystemBackend {
 
   constructor(private readonly directory: FileSystemDirectoryHandle) {}
 
-  async loadProject(): Promise<PlaygroundProject> {
+  async loadProject(preferredPath?: string): Promise<PlaygroundProject> {
     const snapshot = await readProjectDirectory(this.directory);
     const { files, directories } = snapshot;
     if (!files.some((file) => file.kind === "text")) {
       await writeTextFile(this.directory, "main.md", "# Untitled document\n\nStart writing here.\n");
       files.push({ kind: "text", path: "main.md", content: "# Untitled document\n\nStart writing here.\n", language: "markdown" });
     }
+    const entryFile = chooseEntryFile(files, preferredPath);
+    await loadProjectTextFile(this.directory, files, entryFile);
     return {
       id: `local:${this.id}`,
       name: this.directory.name,
       kind: "local",
-      entryFile: chooseEntryFile(files),
+      entryFile,
       files,
       directories
     };

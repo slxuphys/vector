@@ -4,6 +4,7 @@ import {
   createProjectDirectory,
   deleteProjectEntry,
   directoryEntries,
+  loadProjectTextFile,
   readProjectDirectory,
   readProjectFile,
   renameProjectEntry,
@@ -72,7 +73,7 @@ class OpfsProjectBackend implements ProjectFileSystemBackend {
     private readonly directoryName: string
   ) {}
 
-  async loadProject(): Promise<PlaygroundProject> {
+  async loadProject(preferredPath?: string): Promise<PlaygroundProject> {
     const manifest = await readManifest(this.directory, this.directoryName);
     const snapshot = await readProjectDirectory(this.directory);
     const visibleFiles = snapshot.files.filter((file) => file.path !== manifestName);
@@ -80,11 +81,13 @@ class OpfsProjectBackend implements ProjectFileSystemBackend {
       await writeTextFile(this.directory, manifest.entryFile, "# Untitled document\n\nStart writing here.\n");
       visibleFiles.push({ kind: "text", path: manifest.entryFile, content: "# Untitled document\n\nStart writing here.\n", language: "markdown" });
     }
+    const entryFile = chooseEntryFile(visibleFiles, preferredPath ?? manifest.entryFile);
+    await loadProjectTextFile(this.directory, visibleFiles, entryFile);
     return {
       id: `opfs:${manifest.id}`,
       name: manifest.name,
       kind: "browser",
-      entryFile: chooseEntryFile(visibleFiles, manifest.entryFile),
+      entryFile,
       files: visibleFiles,
       directories: snapshot.directories
     };

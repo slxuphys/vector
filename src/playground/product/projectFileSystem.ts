@@ -4,7 +4,7 @@ export type ProjectFileSystemKind = "opfs" | "local";
 
 export interface ProjectFileSystemBackend {
   readonly kind: ProjectFileSystemKind;
-  loadProject(): Promise<PlaygroundProject>;
+  loadProject(preferredPath?: string): Promise<PlaygroundProject>;
   writeTextFile(path: string, content: string): Promise<void>;
   createTextFile(path: string, content?: string): Promise<void>;
   createDirectory(path: string): Promise<void>;
@@ -133,6 +133,18 @@ export async function readProjectFile(root: FileSystemDirectoryHandle, path: str
   return (await directory.getFileHandle(name)).getFile();
 }
 
+export async function loadProjectTextFile(
+  root: FileSystemDirectoryHandle,
+  files: ProjectFile[],
+  path: string
+): Promise<void> {
+  const file = files.find((candidate) => candidate.kind === "text" && candidate.path === path);
+  if (!file || !isProjectTextFile(file) || file.content !== undefined) return;
+  const source = await readProjectFile(root, path);
+  file.content = await source.text();
+  file.lastModified = source.lastModified;
+}
+
 export async function deleteProjectEntry(root: FileSystemDirectoryHandle, path: string): Promise<void> {
   const { directory, name } = await resolveParent(root, path, false);
   await directory.removeEntry(name, { recursive: true });
@@ -167,7 +179,7 @@ export function isFigureAssetPath(path: string): boolean {
 
 export function revokeProjectObjectUrls(project: PlaygroundProject | undefined): void {
   if (!project || typeof URL === "undefined" || typeof URL.revokeObjectURL !== "function") return;
-  for (const file of project.files) if (file.kind !== "text" && file.url.startsWith("blob:")) URL.revokeObjectURL(file.url);
+  for (const file of project.files) if (file.kind !== "text" && file.url?.startsWith("blob:")) URL.revokeObjectURL(file.url);
 }
 
 export function sameProjectSnapshot(left: PlaygroundProject, right: PlaygroundProject): boolean {
@@ -179,13 +191,26 @@ export function sameProjectSnapshot(left: PlaygroundProject, right: PlaygroundPr
     const other = right.files[index];
     if (!other || file.kind !== other.kind || file.path !== other.path) return false;
     if (isProjectTextFile(file) && isProjectTextFile(other)) {
-      return file.content === other.content && file.language === other.language;
+      return file.content === other.content
+        && file.language === other.language
+        && file.lastModified === other.lastModified;
     }
     if (isProjectTextFile(file) || isProjectTextFile(other)) return false;
     return file.mimeType === other.mimeType
       && file.size === other.size
       && file.lastModified === other.lastModified;
   });
+}
+
+export function preserveLoadedProjectText(previous: PlaygroundProject, refreshed: PlaygroundProject): void {
+  const previousText = new Map(previous.files
+    .filter(isProjectTextFile)
+    .map((file) => [file.path, file]));
+  for (const file of refreshed.files) {
+    if (!isProjectTextFile(file) || file.content !== undefined) continue;
+    const loaded = previousText.get(file.path);
+    if (loaded?.content !== undefined && loaded.lastModified === file.lastModified) file.content = loaded.content;
+  }
 }
 
 async function collectEntries(
@@ -206,7 +231,6 @@ async function collectEntries(
       snapshot.files.push({
         kind: "text",
         path,
-        content: await file.text(),
         language: languageForProjectPath(path),
         lastModified: file.lastModified
       });
@@ -217,7 +241,6 @@ async function collectEntries(
         path,
         mimeType,
         size: file.size,
-        url: URL.createObjectURL(file),
         lastModified: file.lastModified
       });
     }
