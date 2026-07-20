@@ -1,23 +1,24 @@
 # Vector
 
-[Open Vector in your browser](https://slxuphys.github.io/vector/)
+**[Open Vector in your browser](https://slxuphys.github.io/vector/)**
 
-Vector is a frontend-first scientific typesetting engine for Markdown and a practical LaTeX subset. It produces a fast, paginated SVG preview and exports PDF from the same canonical display list.
+Vector is a frontend-first scientific typesetting engine for Markdown and a practical LaTeX subset. It produces a fast, paginated SVG preview and exports PDF from the same canonical display list, keeping preview and export geometry aligned.
 
 The project currently includes:
 
-- selectable SVG text with virtualized page rendering;
-- native OpenType math layout and font-driven metrics;
-- Markdown and LaTeX parsers targeting a shared document model;
-- figures, tables, citations, cross-references, multi-column layouts, and PDF export;
-- GraphSX and TikZ display-list integration;
-- browser projects, local-folder editing, and a VS Code extension.
+- Selectable SVG text with virtualized page rendering.
+- Native OpenType math layout and font-driven metrics.
+- Markdown and LaTeX parsers targeting a shared document model.
+- Two-way source and preview synchronization in the browser and VS Code.
+- Figures, tables, citations, bibliographies, cross-references, multi-column layouts, and PDF export.
+- GraphSX and TikZ display-list integration.
+- Browser projects, local-folder editing, and a VS Code extension.
 
 Vector is under active development. It aims to cover practical scientific-writing workflows while keeping preview updates substantially faster than a full LaTeX compilation.
 
 ## Try It
 
-The debug lab is intentionally excluded from GitHub Pages. It remains available during local development for math-metric tuning and diagnostics.
+Open the [hosted editor](https://slxuphys.github.io/vector/) to explore the bundled Markdown and LaTeX projects, create a browser-backed project, or open a local folder in a compatible browser. The public build contains the product workspace only; the diagnostic lab remains a local development tool.
 
 ## Local Development
 
@@ -30,6 +31,10 @@ npm run dev
 
 Open the URL printed by Vite. The normal URL opens the product; append `?mode=lab` to open the local debug lab.
 
+## VS Code Extension
+
+Open the `vscode/` folder as a VS Code workspace and launch **Run Vector Extension**. Its pre-launch task builds both the Node extension host and React webview. In the Extension Development Host, use **Vector: Open Preview**, **Vector: Export PDF**, or `Ctrl+Alt+Enter` to reveal the editor cursor in the preview.
+
 ## Build And Test
 
 ```sh
@@ -37,6 +42,7 @@ npm test
 npm run build
 npm run build:playground
 npm run build:product
+npm run preview:product
 ```
 
 - `build` creates the reusable library bundle in `dist/`.
@@ -47,15 +53,21 @@ npm run build:product
 ## Repository Layout
 
 ```text
-src/core/        parsing, layout, pagination, display lists, SVG, and PDF
+src/core/             parsing, layout, pagination, display lists, SVG, and PDF
 src/core/plugins/api/      public plugin contracts and host services
 src/core/plugins/builtin/  Vector's first-party plugins
-src/react/       reusable editor and preview components
-src/playground/  product workspace and local debug lab
-src/assets/      bundled text and math fonts
-vscode/          VS Code extension host and webview
-tests/           unit and integration coverage
+src/react/            reusable editor and preview components
+src/playground/       product workspace and local diagnostic lab
+src/assets/           bundled text and math fonts
+vscode/               VS Code extension host and webview
+tests/                unit and integration coverage
 ```
+
+## Architecture
+
+Markdown and LaTeX are parsed into a shared document AST. The layout engine turns that AST into positioned pages and a canonical display list. The SVG preview and PDF backend consume that same display list, while resource providers supply document-relative bibliography files, figures, and other project assets.
+
+The core engine is framework-agnostic TypeScript. React provides reusable editor and preview surfaces for the browser product and VS Code webview; the VS Code extension host uses the same Node-safe core engine.
 
 ## Plugins
 
@@ -134,7 +146,7 @@ The built-in bibliography package owns Markdown citation syntax, the bibliograph
 
 ## GitHub Pages
 
-The Pages workflow compiles the playground with `VITE_PRODUCT_BUILD=true`. Vite removes the unreachable lab import, so the lab code and controls are absent from the deployed artifact.
+The Pages workflow runs the tests and `build:product`, then deploys `dist-product/`. The product Vite configuration fixes `VITE_PRODUCT_BUILD=true`, allowing Vite to remove the unreachable lab import so diagnostic code and controls are absent from the deployed artifact.
 
 In the repository settings, set **Pages > Build and deployment > Source** to **GitHub Actions**. Pushes to `master` then test, build, and deploy `dist-product/` automatically.
 
