@@ -61,7 +61,7 @@ export type PluginLayoutBlock = {
 };
 
 export type LayoutBlock =
-  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; unnumbered?: boolean; source?: SourceSpan }
+  | { type: "heading"; level: number; runs: InlineRun[]; label?: string; labelNumber?: string; title?: boolean; unnumbered?: boolean; appendix?: boolean; source?: SourceSpan }
   | { type: "paragraph"; runs: InlineRun[]; continuation?: boolean; source?: SourceSpan }
   | { type: "list"; ordered: boolean; items: InlineRun[][]; checked?: Array<boolean | undefined>; source?: SourceSpan }
   | { type: "referenceList"; entries: Array<{ key: string; number: number; runs: InlineRun[] }>; source?: SourceSpan }

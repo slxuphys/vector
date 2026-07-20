@@ -1347,6 +1347,60 @@ Text.
     expect(text).toContain("MATH");
   });
 
+  it("switches article sections to appendix letters and preserves equation numbering", () => {
+    const prepared = prepareMarkdownLayout(`\\documentclass{article}
+\\begin{document}
+\\section{Main}\\label{sec:main}
+\\begin{equation}x=1\\label{eq:main}\\end{equation}
+\\appendix
+\\section{Proofs}\\label{sec:proofs}
+\\subsection{Details}\\label{sec:details}
+\\begin{equation}y=2\\label{eq:appendix}\\end{equation}
+See \\ref{sec:proofs} and \\eqref{eq:appendix}.
+\\end{document}`, { sourceFormat: "latex" });
+
+    const headings = prepared.blocks.filter((block) => block.type === "heading");
+    const equations = prepared.blocks.filter((block) => block.type === "math");
+    const paragraphText = prepared.blocks
+      .filter((block) => block.type === "paragraph")
+      .flatMap((block) => block.type === "paragraph" ? block.runs.map((run) => run.text) : [])
+      .join("");
+
+    expect(headings.map((heading) => heading.type === "heading" ? heading.labelNumber : "")).toEqual(["1", "A", "A.1"]);
+    expect(headings.map((heading) => heading.type === "heading" ? heading.appendix : false)).toEqual([false, true, true]);
+    expect(equations.map((equation) => equation.type === "math" ? equation.labelNumber : "")).toEqual(["1", "2"]);
+    expect(paragraphText).toContain("See A");
+    expect(paragraphText).toContain("(2)");
+  });
+
+  it("uses REVTeX appendix headings and section-prefixed equation numbers", async () => {
+    const source = `\\documentclass{revtex4-2}
+\\begin{document}
+\\section{Main}
+\\begin{equation}x=1\\label{eq:main}\\end{equation}
+\\appendix
+\\section{First proof}\\label{sec:first-proof}
+\\begin{equation}y=2\\label{eq:first-proof}\\end{equation}
+\\section{Second proof}
+\\begin{equation}z=3\\label{eq:second-proof}\\end{equation}
+See \\ref{sec:first-proof}.
+\\end{document}`;
+    const prepared = prepareMarkdownLayout(source, { sourceFormat: "latex" });
+    const equations = prepared.blocks.filter((block) => block.type === "math");
+    const { layout } = await createDocumentEngine({ sourceFormat: "latex" }).layout(source);
+    const text = layout.pages.flatMap((page) => page.objects)
+      .filter((object) => object.type === "text")
+      .map((object) => object.type === "text" ? object.text : "")
+      .join(" ");
+
+    expect(equations.map((equation) => equation.type === "math" ? equation.labelNumber : "")).toEqual(["1", "A1", "B1"]);
+    expect(text).toContain("APPENDIX A:");
+    expect(text).toContain("FIRST PROOF");
+    expect(text).toContain("APPENDIX B:");
+    expect(text).toContain("(A1)");
+    expect(text).toContain("See  A");
+  });
+
   it("renders unresolved latex citations in red", async () => {
     const engine = createDocumentEngine({ sourceFormat: "latex" });
     const { layout } = await engine.layout(`\\begin{document}
@@ -2770,6 +2824,42 @@ This paragraph has enough words to wrap into more than one line and the first re
       functionDelimiterMinGap: 0.3
     });
     expect(expanded.width).toBeCloseTo(compact.width, 6);
+  });
+
+  it("keeps a minimum optical clearance before closing delimiters", () => {
+    const fontSize = 12;
+    const minimumGap = fontSize * defaultOpenMathMetrics.functionDelimiterMinGap;
+    const profiles = [
+      {
+        role: "openMath" as const,
+        profile: "openmath" as const,
+        path: "src/assets/fonts/latinmodern-math.otf"
+      },
+      {
+        role: "openMathLibertinus" as const,
+        profile: "openmath-libertinus" as const,
+        path: "src/assets/fonts/libertinus-math.otf"
+      }
+    ];
+
+    for (const { role, profile, path } of profiles) {
+      loadNativeFontFromBytes(role, readFileSync(path));
+      for (const latex of ["(p)", "(V)", "(F)"]) {
+        const layout = layoutNativeMath(latex, false, fontSize, defaultOpenMathMetrics, profile);
+        const glyphs = layout.nodes.filter((node) => node.type === "glyph");
+        const previous = glyphs[1];
+        const closing = glyphs[2];
+        const previousMetrics = getNativeGlyphMetrics(role, previous.text, fontSize);
+        const closingMetrics = getNativeGlyphMetrics(role, closing.text, fontSize);
+
+        expect(previousMetrics).toBeDefined();
+        expect(closingMetrics).toBeDefined();
+        if (!previousMetrics || !closingMetrics) continue;
+        const previousInkRight = previous.x + previousMetrics.actualRight;
+        const closingInkLeft = closing.x + closingMetrics.actualRight - closingMetrics.actualWidth;
+        expect(closingInkLeft - previousInkRight).toBeGreaterThanOrEqual(minimumGap - 0.001);
+      }
+    }
   });
 
   it("does not add ink-edge gap after display named operators when thin space is zero", () => {

@@ -609,6 +609,9 @@ function sectionHeadingRuns(
 ): InlineRun[] {
   const runs = headingStyle === "revtex" ? uppercaseRuns(block.runs) : block.runs;
   if (!block.labelNumber) return runs;
+  if (headingStyle === "revtex" && block.appendix && !block.labelNumber.includes(".")) {
+    return [{ text: `APPENDIX ${block.labelNumber}:   ` }, ...runs];
+  }
   const prefix = applyCrossRefFormat(crossRef.section.captionFormat, {
     number: block.labelNumber,
     kind: "section",

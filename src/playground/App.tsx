@@ -132,7 +132,7 @@ const metricGroups: Array<{ title: string; controls: MetricControl[] }> = [
       { key: "inlineBaseline", label: "Inline baseline", min: 0.55, max: 1.15, step: 0.01 },
       { key: "inlineGlyphGap", label: "Inline raw glyph gap", min: 0, max: 0.16, step: 0.005 },
       { key: "displayGlyphGap", label: "Display raw glyph gap", min: 0, max: 0.16, step: 0.005 },
-      { key: "functionDelimiterMinGap", label: "Function delimiter clearance", min: 0, max: 0.3, step: 0.005, openMath: "engine" }
+      { key: "functionDelimiterMinGap", label: "Delimiter ink clearance", min: 0, max: 0.3, step: 0.005, openMath: "engine" }
     ]
   },
   {

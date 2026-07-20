@@ -83,10 +83,10 @@ ${sharedDocumentBody}
 \usepackage{amsmath}
 \title{Fast Live Preview for Scientific Writing}
 \author{Ada Vector}
-\affiliation{Vector Institute for Scientific Computing, Northbridge University, Chicago, Illinois 60616, USA}
+\affiliation{Department of Computational Glyphs, Asteria University, New Arcadia 00042}
 \author{Emmy Layout}
-\email{emmy.layout@example.edu}
-\affiliation{Center for Digital Typesetting, Meridian Research Laboratory, Austin, Texas 78712, USA}
+\email{emmy.layout@meridian-moon.example}
+\affiliation{Laboratory for Applied Page Geometry, Meridian Moon Institute, Orbit City 10101}
 
 \begin{document}
 \maketitle

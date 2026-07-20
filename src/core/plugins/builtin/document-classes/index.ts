@@ -63,7 +63,8 @@ function articleDefaults(context: LatexDocumentClassContext): EngineOptions {
       abstract: context.preamble.abstract,
       abstractTitle: "Abstract",
       titleStyle: "latex-article",
-      numberSections: true
+      numberSections: true,
+      appendixStyle: "article"
     }
   };
 }
@@ -121,7 +122,8 @@ function revtexDefaults(context: LatexDocumentClassContext): EngineOptions {
       abstractTitle: "",
       titleStyle: "revtex",
       numberSections: true,
-      sectionNumberStyle: "revtex"
+      sectionNumberStyle: "revtex",
+      appendixStyle: "revtex"
     }
   };
 }

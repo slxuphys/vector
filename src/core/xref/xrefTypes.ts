@@ -4,6 +4,7 @@ export type CrossRefAnchor = {
   id: string;
   kind: CrossRefKind;
   number: string;
+  appendix?: boolean;
 };
 
 export type CrossRefFormat = {

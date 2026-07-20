@@ -41,6 +41,7 @@ export type DocumentOptions = {
   titleStyle?: "default" | "latex-article" | "revtex";
   numberSections?: boolean;
   sectionNumberStyle?: "decimal" | "revtex";
+  appendixStyle?: "article" | "revtex";
 };
 
 export type DocumentAuthor = {

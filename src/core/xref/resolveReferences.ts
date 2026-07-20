@@ -7,14 +7,19 @@ const refPattern = /@(!)?((?:eq|fig|tbl|sec)(?::|-)[A-Za-z][\w:'-]*(?:\.[A-Za-z0
 export function resolveCrossReferences(
   ast: MarkdownAst,
   config: CrossRefConfig = defaultCrossRefConfig,
-  options: { titleFromFirstHeading?: boolean; numberSections?: boolean; sectionNumberStyle?: "decimal" | "revtex" } = {}
+  options: {
+    titleFromFirstHeading?: boolean;
+    numberSections?: boolean;
+    sectionNumberStyle?: "decimal" | "revtex";
+    appendixStyle?: "article" | "revtex";
+  } = {}
 ): MarkdownAst {
   const children = numberSectionHeadings(
     markTitleHeading(ast.children, options.titleFromFirstHeading ?? true),
     options.numberSections ?? false,
     options.sectionNumberStyle ?? "decimal"
   );
-  const anchors = collectAnchors(children);
+  const anchors = collectAnchors(children, options.appendixStyle);
   return {
     type: "document",
     children: children.map((node) => resolveNodeReferences(annotateNode(node, anchors), anchors, config))
@@ -24,9 +29,15 @@ export function resolveCrossReferences(
 function numberSectionHeadings(nodes: MarkdownNode[], enabled: boolean, style: "decimal" | "revtex"): MarkdownNode[] {
   if (!enabled) return nodes;
   const counters = [0, 0, 0, 0, 0, 0];
+  let appendix = false;
   const firstHeading = nodes.find((node): node is Extract<MarkdownNode, { type: "heading" }> => node.type === "heading" && !node.title);
   const firstSectionLevel = firstHeading?.level ?? 1;
   return nodes.map((node) => {
+    if (node.type === "appendix") {
+      counters.fill(0);
+      appendix = true;
+      return node;
+    }
     if (node.type !== "heading" || node.title || node.unnumbered) return node;
     const rawLevel = Math.max(1, Math.min(6, node.level));
     const sectionLevel = Math.max(1, rawLevel - firstSectionLevel + 1);
@@ -34,13 +45,18 @@ function numberSectionHeadings(nodes: MarkdownNode[], enabled: boolean, style: "
     for (let index = sectionLevel; index < counters.length; index += 1) counters[index] = 0;
     return {
       ...node,
-      labelNumber: formatSectionNumber(counters, sectionLevel, style)
+      labelNumber: formatSectionNumber(counters, sectionLevel, style, appendix),
+      appendix
     };
   });
 }
 
-function formatSectionNumber(counters: number[], level: number, style: "decimal" | "revtex"): string {
+function formatSectionNumber(counters: number[], level: number, style: "decimal" | "revtex", appendix = false): string {
   const active = counters.slice(0, level).filter(Boolean);
+  if (appendix) {
+    const [section = 0, ...rest] = active;
+    return [toLetters(section), ...rest.map(String)].join(".");
+  }
   if (style !== "revtex") return active.join(".");
   const value = active[active.length - 1] ?? 0;
   if (level === 1) return toRoman(value);
@@ -93,15 +109,20 @@ function markTitleHeading(nodes: MarkdownNode[], titleFromFirstHeading: boolean)
   return nodes.map((node, index) => index === 0 ? { ...node, title: true } : node);
 }
 
-function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
+function collectAnchors(nodes: MarkdownNode[], appendixStyle?: "article" | "revtex"): Map<string, CrossRefAnchor> {
   const anchors = new Map<string, CrossRefAnchor>();
   const sectionCounters = [0, 0, 0, 0, 0, 0];
   let equation = 0;
   let figure = 0;
   let table = 0;
+  let appendix = false;
+  let appendixSection = "";
 
   for (const node of nodes) {
-    if (node.type === "heading") {
+    if (node.type === "appendix") {
+      appendix = true;
+      appendixSection = "";
+    } else if (node.type === "heading") {
       if (node.title) continue;
       if (node.unnumbered) {
         if (node.label) anchors.set(node.label, { id: node.label, kind: "section", number: "" });
@@ -114,12 +135,20 @@ function collectAnchors(nodes: MarkdownNode[]): Map<string, CrossRefAnchor> {
         anchors.set(node.label, {
           id: node.label,
           kind: "section",
-          number: node.labelNumber ?? sectionCounters.slice(0, level).filter(Boolean).join(".")
+          number: node.labelNumber ?? sectionCounters.slice(0, level).filter(Boolean).join("."),
+          appendix: node.appendix
         });
+      }
+      if (appendix && node.appendix && node.labelNumber && !node.labelNumber.includes(".")) {
+        appendixSection = node.labelNumber;
+        if (appendixStyle === "revtex") equation = 0;
       }
     } else if (node.type === "mathBlock" && node.label) {
       equation += 1;
-      anchors.set(node.label, { id: node.label, kind: "equation", number: String(equation) });
+      const number = appendixStyle === "revtex" && appendixSection
+        ? `${appendixSection}${equation}`
+        : String(equation);
+      anchors.set(node.label, { id: node.label, kind: "equation", number, appendix });
     } else if ((node.type === "image" || node.type === "figure" || (node.type === "plugin" && node.role === "figure")) && node.label) {
       figure += 1;
       anchors.set(node.label, { id: node.label, kind: "figure", number: String(figure) });
@@ -214,6 +243,7 @@ function resolveTextReferences(node: Extract<InlineNode, { type: "text" }>, anch
 function formatReference(id: string, anchor: CrossRefAnchor, config: CrossRefConfig): string {
   const prefix = id.split(":", 1)[0];
   const kind = kindForPrefix(prefix) ?? anchor.kind;
+  if (kind === "section" && anchor.appendix) return `Appendix ${anchor.number}`;
   return applyCrossRefFormat(config[kind].referenceFormat, {
     number: anchor.number,
     id,

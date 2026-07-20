@@ -12,12 +12,20 @@ export const latexCorePackage: VectorPlugin = {
       newpage: pageBreakCommand(),
       clearpage: pageBreakCommand(),
       pagebreak: pageBreakCommand(),
+      appendix: appendixCommand(),
       section: sectionCommand(2),
       subsection: sectionCommand(3),
       subsubsection: sectionCommand(4)
     }
   }
 };
+
+function appendixCommand(): LatexCommandDefinition {
+  return {
+    modes: ["vertical" as const],
+    handler: () => [{ type: "appendix" as const }]
+  };
+}
 
 function pageBreakCommand(): LatexCommandDefinition {
   return {

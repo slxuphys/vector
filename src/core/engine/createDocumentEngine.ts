@@ -137,7 +137,8 @@ function prepareMarkdownLayoutFromDocument(
     const referencedAst = resolveCrossReferences(transformedAst, crossRef, {
       titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
       numberSections: documentOptions.numberSections,
-      sectionNumberStyle: documentOptions.sectionNumberStyle
+      sectionNumberStyle: documentOptions.sectionNumberStyle,
+      appendixStyle: documentOptions.appendixStyle
     });
     const ast = pluginRegistry.finalizeDocument(referencedAst, lifecycle);
     blocks = normalizeAst(ast, pluginRegistry);
@@ -197,7 +198,8 @@ async function prepareMarkdownLayoutFromDocumentAsync(
     const referencedAst = resolveCrossReferences(transformedAst, crossRef, {
       titleFromFirstHeading: documentOptions.titleFromFirstHeading && !documentOptions.title,
       numberSections: documentOptions.numberSections,
-      sectionNumberStyle: documentOptions.sectionNumberStyle
+      sectionNumberStyle: documentOptions.sectionNumberStyle,
+      appendixStyle: documentOptions.appendixStyle
     });
     const ast = await pluginRegistry.finalizeDocumentAsync(referencedAst, lifecycle);
     blocks = normalizeAst(ast, pluginRegistry);

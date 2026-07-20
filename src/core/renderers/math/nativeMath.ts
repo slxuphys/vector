@@ -692,13 +692,13 @@ function layoutSequence(
     x += mathAtomSpacingSize(lastAtom.mathClass, resolvedNextClass, fontSize, metrics);
     return resolvedNextClass;
   };
-  const applyOpeningDelimiterClearance = (
+  const applyDelimiterClearance = (
     nextClass: MathAtomClass,
     text: string,
     style: NativeGlyphStyle
   ): void => {
     if (
-      nextClass !== "mopen" ||
+      (nextClass !== "mopen" && nextClass !== "mclose") ||
       lastAtom?.inkRight === undefined ||
       (lastAtom.mathClass !== "mord" && lastAtom.mathClass !== "mop")
     ) {
@@ -983,7 +983,7 @@ function layoutSequence(
         italic: commandItalic
       };
       const mathClass = applyAtomSpacing(mathAtomClassForCommand(command.name, text));
-      applyOpeningDelimiterClearance(mathClass, text, style);
+      applyDelimiterClearance(mathClass, text, style);
       const largeOperatorPath = isDisplayLargeOperator && profile.isOpenMath
         ? layoutOpenMathOperatorGlyph(text, glyphFontSize, profile)
         : undefined;
@@ -1051,7 +1051,7 @@ function layoutSequence(
     const italic = profile.shouldItalicize(rawText, text);
     const style = { italic, fontFamily: profile.layoutFontFamily };
     const mathClass = applyAtomSpacing(mathAtomClassForText(rawText, text));
-    applyOpeningDelimiterClearance(mathClass, text, style);
+    applyDelimiterClearance(mathClass, text, style);
     nodes.push(glyph(text, x, 0, fontSize, style));
     const width = measureGlyphWidth(text, fontSize, style);
     const fontMetrics = measureGlyphFontMetrics(text, fontSize, style);

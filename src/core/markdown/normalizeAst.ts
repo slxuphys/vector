@@ -4,14 +4,15 @@ import { builtinPlugins } from "../plugins/builtin";
 import type { VectorPluginRegistry } from "../plugins/api";
 
 export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = builtinPlugins): LayoutBlock[] {
-  return ast.children.map((node): LayoutBlock => {
+  return ast.children.flatMap((node): LayoutBlock[] => {
+    if (node.type === "appendix") return [];
     const packageBlock = node.type === "plugin"
       ? plugins.astNormalizer(node.type, node.plugin, node.kind)?.(node)
       : plugins.astNormalizer(node.type)?.(node);
-    if (packageBlock) return packageBlock;
+    if (packageBlock) return [packageBlock];
     switch (node.type) {
       case "heading":
-        return {
+        return [{
           type: "heading",
           level: node.level,
           runs: flattenInline(node.children),
@@ -19,25 +20,26 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = b
           labelNumber: node.labelNumber,
           title: node.title,
           unnumbered: node.unnumbered,
+          appendix: node.appendix,
           source: node.sourceSpan
-        };
+        }];
       case "paragraph":
-        return {
+        return [{
           type: "paragraph",
           runs: flattenInline(node.children),
           continuation: node.continuation,
           source: node.sourceSpan
-        };
+        }];
       case "list":
-        return {
+        return [{
           type: "list",
           ordered: node.ordered,
           checked: node.checked,
           items: node.items.map((item) => flattenInline(item)),
           source: node.sourceSpan
-        };
+        }];
       case "referenceList":
-        return {
+        return [{
           type: "referenceList",
           entries: node.entries.map((entry) => ({
             key: entry.key,
@@ -45,11 +47,11 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = b
             runs: flattenInline(entry.children)
           })),
           source: node.sourceSpan
-        };
+        }];
       case "codeBlock":
-        return { type: "code", language: node.language, code: node.code, source: node.sourceSpan };
+        return [{ type: "code", language: node.language, code: node.code, source: node.sourceSpan }];
       case "table":
-        return {
+        return [{
           type: "table",
           headers: node.headers.map((cell) => ({
             runs: flattenInline(cell.children),
@@ -65,9 +67,9 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = b
           label: node.label,
           labelNumber: node.labelNumber,
           source: node.sourceSpan
-        };
+        }];
       case "image":
-        return {
+        return [{
           type: "image",
           src: node.src,
           sources: node.sources,
@@ -79,9 +81,9 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = b
           label: node.label,
           labelNumber: node.labelNumber,
           source: node.sourceSpan
-        };
+        }];
       case "figure":
-        return {
+        return [{
           type: "figure",
           images: node.images.map((image) => ({ ...image })),
           caption: node.caption,
@@ -89,15 +91,15 @@ export function normalizeAst(ast: MarkdownAst, plugins: VectorPluginRegistry = b
           label: node.label,
           labelNumber: node.labelNumber,
           source: node.sourceSpan
-        };
+        }];
       case "plugin":
         throw new Error(`Plugin AST node "${node.plugin}:${node.kind}" has no registered normalizer.`);
       case "mathBlock":
-        return { type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber, source: node.sourceSpan };
+        return [{ type: "math", text: node.text, label: node.label, labelNumber: node.labelNumber, source: node.sourceSpan }];
       case "thematicBreak":
-        return { type: "rule", source: node.sourceSpan };
+        return [{ type: "rule", source: node.sourceSpan }];
       case "pageBreak":
-        return { type: "pageBreak", source: node.sourceSpan };
+        return [{ type: "pageBreak", source: node.sourceSpan }];
     }
   });
 }
