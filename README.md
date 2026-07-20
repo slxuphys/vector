@@ -33,6 +33,8 @@ Open the URL printed by Vite. The normal URL opens the product; append `?mode=la
 
 ## VS Code Extension
 
+The Vector extension keeps source editing in VS Code's native editor and opens the shared paginated preview in a webview. It watches Markdown, LaTeX, bibliography, and figure files in the workspace; supports two-way navigation between source and rendered blocks; and exports PDF through the same display-list backend as the browser product. Preview pages are virtualized so longer documents do not require every SVG page to remain mounted.
+
 Open the `vscode/` folder as a VS Code workspace and launch **Run Vector Extension**. Its pre-launch task builds both the Node extension host and React webview. In the Extension Development Host, use **Vector: Open Preview**, **Vector: Export PDF**, or `Ctrl+Alt+Enter` to reveal the editor cursor in the preview.
 
 ## Build And Test
@@ -143,13 +145,3 @@ const engine = createDocumentEngine({
 ```
 
 The built-in bibliography package owns Markdown citation syntax, the bibliography directive, LaTeX citation conversion, resource loading, and document-wide resolution without an engine-level special case. Advanced consumers can still pass a `VectorPluginRegistry` as a complete registry override.
-
-## GitHub Pages
-
-The Pages workflow runs the tests and `build:product`, then deploys `dist-product/`. The product Vite configuration fixes `VITE_PRODUCT_BUILD=true`, allowing Vite to remove the unreachable lab import so diagnostic code and controls are absent from the deployed artifact.
-
-In the repository settings, set **Pages > Build and deployment > Source** to **GitHub Actions**. Pushes to `master` then test, build, and deploy `dist-product/` automatically.
-
-## License
-
-No license has been selected yet.
